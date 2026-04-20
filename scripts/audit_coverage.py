@@ -36,35 +36,19 @@ COMPLEXITY_THRESHOLD = 10  # Files per one KI
 
 # ─── Data Loading ─────────────────────────────────────────────────────────────
 
-def load_tracked_modules(project_root):
-    config_path = os.path.join(project_root, KNOWLEDGE_ROOT, "doc_config.json") \
-        if not os.path.isabs(KNOWLEDGE_ROOT) else os.path.join(KNOWLEDGE_ROOT, "doc_config.json")
-    if os.path.exists(config_path):
-        try:
-            with open(config_path, encoding="utf-8") as f:
-                cfg = json.load(f)
-                return cfg.get("coverage_settings", {}).get("tracked_modules", [])
-        except Exception:
-            return []
-    return []
+def load_tracked_modules():
+    doc_config = ki_utils.get_doc_config()
+    return doc_config.get("coverage_settings", {}).get("tracked_modules", [])
 
 
-def load_doc_config(project_root: str) -> dict:
+def load_doc_config() -> dict:
     """Loads doc_config.json."""
-    config_path = os.path.join(KNOWLEDGE_ROOT, "doc_config.json") \
-        if os.path.isabs(KNOWLEDGE_ROOT) \
-        else os.path.join(project_root, KNOWLEDGE_ROOT, "doc_config.json")
-    if not os.path.exists(config_path):
-        return {"artifacts": {}, "knowledge_items": {}}
-    with open(config_path, encoding="utf-8") as f:
-        return json.load(f)
+    return ki_utils.get_doc_config()
 
 
-def load_ki_files(project_root: str) -> list:
+def load_ki_files() -> list:
     """Returns a list of KI file names."""
-    ki_dir = os.path.join(KNOWLEDGE_ROOT, "knowledge") \
-        if os.path.isabs(KNOWLEDGE_ROOT) \
-        else os.path.join(project_root, KNOWLEDGE_ROOT, "knowledge")
+    ki_dir = os.path.join(KNOWLEDGE_ROOT, "knowledge")
     if not os.path.isdir(ki_dir):
         return []
     return [f for f in os.listdir(ki_dir) if f.startswith("KI_") and f.endswith(".md")]
@@ -124,9 +108,7 @@ def has_ki_coverage(module_path: str, ki_files: list, doc_config: dict) -> bool:
 def get_ki_size(project_root: str, module_path: str, doc_config: dict) -> int:
     module_norm = module_path.replace("/", os.sep).rstrip(os.sep)
     total_size = 0
-    ki_dir = os.path.join(KNOWLEDGE_ROOT, "knowledge") \
-        if os.path.isabs(KNOWLEDGE_ROOT) \
-        else os.path.join(project_root, KNOWLEDGE_ROOT, "knowledge")
+    ki_dir = os.path.join(KNOWLEDGE_ROOT, "knowledge")
 
     for ki_name, entry in doc_config.get("knowledge_items", {}).items():
         covered = any(
@@ -174,8 +156,8 @@ def priority_label(priority: int) -> str:
 # ─── Matrix Builder ────────────────────────────────────────────────────────────
 
 def build_coverage_matrix(project_root: str, tracked_modules: list) -> dict:
-    doc_config = load_doc_config(project_root)
-    ki_files = load_ki_files(project_root)
+    doc_config = load_doc_config()
+    ki_files = load_ki_files()
     covered_paths = get_covered_paths(doc_config)
 
     ki_complexity = {
@@ -339,12 +321,8 @@ def main():
     parser.add_argument("--output", default=None, help="Custom output path for coverage_matrix.md")
     args = parser.parse_args()
 
-    project_root = os.path.abspath(args.root)
-    if not os.path.isdir(project_root):
-        print(f"[!] Directory not found: {project_root}")
-        sys.exit(1)
-
-    tracked_modules = load_tracked_modules(project_root)
+    project_root = ki_utils.PROJECT_ROOT
+    tracked_modules = load_tracked_modules()
     if not tracked_modules:
         print("[!] No tracked_modules found in doc_config.json. Please fill in coverage_settings.")
         sys.exit(0)
@@ -370,9 +348,7 @@ def main():
     if not args.no_save:
         generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         md_content = format_markdown(data, generated_at)
-        know_dir = KNOWLEDGE_ROOT if os.path.isabs(KNOWLEDGE_ROOT) \
-            else os.path.join(project_root, KNOWLEDGE_ROOT)
-        output_path = args.output or os.path.join(know_dir, "coverage_matrix.md")
+        output_path = args.output or os.path.join(KNOWLEDGE_ROOT, "coverage_matrix.md")
         output_path = os.path.abspath(output_path)
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         with open(output_path, "w", encoding="utf-8") as f:

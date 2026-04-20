@@ -58,7 +58,7 @@ def run_script(script_name: str):
     result = subprocess.run(
         [PYTHON_EXE, script_path],
         capture_output=True, text=True, encoding="utf-8",
-        cwd=os.path.dirname(JAIL_DIR)  # run from project root
+        cwd=ki_utils.PROJECT_ROOT  # run from project root
     )
     return {"content": [{"type": "text",
             "text": result.stdout + (result.stderr if result.stderr else "")}]}
@@ -74,7 +74,7 @@ def tool_check_changes(args):
         return {"isError": True, "content": [{"type": "text", "text": "Error: Knowledge system not active."}]}
     sys.path.insert(0, os.path.join(JAIL_DIR, "scripts"))
     from knowledge_engine import KnowledgeEngine
-    project_root = os.path.dirname(JAIL_DIR)
+    project_root = ki_utils.PROJECT_ROOT
     knowledge_root_name = os.path.basename(JAIL_DIR)
     ke = KnowledgeEngine(project_root, knowledge_root_name)
     modified, new, deleted = ke.check_for_changes()
@@ -87,7 +87,7 @@ def tool_save_state(args):
         return {"isError": True, "content": [{"type": "text", "text": "Error: Knowledge system not active."}]}
     sys.path.insert(0, os.path.join(JAIL_DIR, "scripts"))
     from knowledge_engine import KnowledgeEngine
-    project_root = os.path.dirname(JAIL_DIR)
+    project_root = ki_utils.PROJECT_ROOT
     knowledge_root_name = os.path.basename(JAIL_DIR)
     ke = KnowledgeEngine(project_root, knowledge_root_name)
     state = ke.capture_full_state()

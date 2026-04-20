@@ -68,8 +68,9 @@ def build_tree(root: str, knowledge_root_name: str,
     return lines
 
 
-def generate_dir_index(project_root: str, output_path: str,
-                        knowledge_root_name: str, max_depth: int = 3) -> None:
+def generate_dir_index(output_path: str, max_depth: int = 3) -> None:
+    project_root = ki_utils.PROJECT_ROOT
+    knowledge_root_name = os.path.basename(KNOWLEDGE_ROOT)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     project_name = os.path.basename(os.path.abspath(project_root))
     total_files = count_files_in_dir(project_root)
@@ -116,15 +117,11 @@ def main():
     parser.add_argument("--depth", type=int, default=3, help="Maximum depth (default: 3)")
     args = parser.parse_args()
 
-    project_root = os.path.abspath(args.root)
     knowledge_root_name = os.path.basename(KNOWLEDGE_ROOT) if KNOWLEDGE_ROOT else ".know"
-
-    know_dir = KNOWLEDGE_ROOT if os.path.isabs(KNOWLEDGE_ROOT) \
-        else os.path.join(project_root, KNOWLEDGE_ROOT)
-    output_path = args.output or os.path.join(know_dir, "DIR_INDEX.md")
+    output_path = args.output or os.path.join(KNOWLEDGE_ROOT, "DIR_INDEX.md")
     output_path = os.path.abspath(output_path)
 
-    generate_dir_index(project_root, output_path, knowledge_root_name, max_depth=args.depth)
+    generate_dir_index(output_path, max_depth=args.depth)
 
 
 if __name__ == "__main__":

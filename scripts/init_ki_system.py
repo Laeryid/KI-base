@@ -57,19 +57,6 @@ def detect_venv(root_dir):
     return sys.executable
 
 
-def find_project_root():
-    """Determines the project root by looking for .git or a known knowledge folder."""
-    current = Path(__file__).resolve().parent
-    for parent in [current] + list(current.parents):
-        if (parent / ".git").exists():
-            return parent
-        # If this script lives inside the knowledge folder (e.g. .know/scripts/)
-        # the project root is two levels up
-        if (parent.parent / "doc_config.json").exists():
-            return parent.parent
-    return current
-
-
 def update_gitignore(project_root, knowledge_root_name):
     """Adds KI_base ignore rules to .gitignore."""
     gitignore_path = Path(project_root) / ".gitignore"
@@ -123,25 +110,46 @@ def update_agent_instructions(agent_file, sections):
     return False
 
 
+def find_knowledge_root():
+    """Determines the knowledge root (where doc_config.json lives)."""
+    # If this script lives inside the scripts/ folder
+    current = Path(__file__).resolve().parent.parent
+    if (current / "doc_config.json").exists():
+        return current
+    
+    # Fallback to current directory or parents
+    current = Path(__file__).resolve().parent
+    for parent in [current] + list(current.parents):
+        if (parent / "doc_config.json").exists():
+            return parent
+    return current
+
+
 def init_ki_system():
     print("[*] Initializing Knowledge Infrastructure...")
 
-    project_root = find_project_root()
-    os.chdir(project_root)
-    print(f"[+] Project root detected: {project_root}")
+    knowledge_root = find_knowledge_root()
+    knowledge_root_name = knowledge_root.name
+    print(f"[+] Knowledge root detected: {knowledge_root}")
 
     parser = argparse.ArgumentParser(description="Knowledge system initialization.")
-    parser.add_argument("--root", default=".know",
-                        help="Knowledge folder name relative to project root (default: .know)")
+    parser.add_argument("--project-root", default=None,
+                        help="Path to the project root (default: one level above knowledge root)")
     parser.add_argument("--agents", default="AGENTS.md",
                         help="Path to the agent instructions file (default: AGENTS.md)")
     parser.add_argument("--workflows", default=None,
                         help="Path to the IDE workflows directory (default: auto-detect)")
-    args = parser.parse_args()
+    parser.add_argument("--root-name", default=None,
+                        help="Override knowledge root name in config (default: detected folder name)")
+    args = parser.parse_known_args()[0]
 
-    knowledge_root_name = args.root
-    knowledge_root = os.path.join(str(project_root), knowledge_root_name)
-    print(f"[+] Knowledge root: {knowledge_root}")
+    project_root = Path(args.project_root).resolve() if args.project_root else knowledge_root.parent
+    print(f"[+] Project root: {project_root}")
+
+    os.chdir(project_root)
+
+    knowledge_root_rel = os.path.relpath(knowledge_root, project_root)
+    knowledge_root_name = args.root_name or knowledge_root_rel
 
     agent_file = args.agents
     print(f"[+] Agent instructions file: {agent_file}")
@@ -149,7 +157,7 @@ def init_ki_system():
     workflows_dir = args.workflows
     if not workflows_dir:
         for d in [".agent/workflows", ".github/workflows", "workflows"]:
-            if os.path.isdir(os.path.join(str(project_root), d)):
+            if (project_root / d).is_dir():
                 workflows_dir = d
                 break
     workflows_dir = workflows_dir or ".agent/workflows"
@@ -162,6 +170,7 @@ def init_ki_system():
     config = {
         "paths": {
             "knowledge_root": knowledge_root_name,
+            "project_root": "..", # Default relative to KNOWLEDGE_ROOT
             "agent_instructions": agent_file,
             "workflows_dir": workflows_dir,
             "venv_python": venv_py
@@ -169,8 +178,11 @@ def init_ki_system():
         "auto_resolve": True
     }
 
-    os.makedirs(knowledge_root, exist_ok=True)
-    config_path = os.path.join(knowledge_root, "ki_config.json")
+    # If project root is NOT parent of knowledge root, save it as absolute or custom relative
+    if project_root != knowledge_root.parent:
+        config["paths"]["project_root"] = os.path.relpath(project_root, knowledge_root)
+
+    config_path = knowledge_root / "ki_config.json"
     with open(config_path, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=4, ensure_ascii=False)
     print(f"[+] {config_path} created.")
@@ -181,23 +193,40 @@ def init_ki_system():
         "## Project Navigation": PROJECT_NAVIGATION_EN,
         "## Knowledge Items (KI)": KNOWLEDGE_ITEMS_EN,
     }
-    if update_agent_instructions(agent_file, sections_to_check):
-        print(f"[+] {agent_file} updated with required sections.")
+    
+    # Try finding AGENTS.md in project root or relative
+    agent_path = project_root / agent_file
+    if update_agent_instructions(str(agent_path), sections_to_check):
+        print(f"[+] {agent_path} updated with required sections.")
     else:
-        print(f"[~] {agent_file} already contains all required sections.")
+        # Check if it was skipped or already has sections
+        if os.path.exists(agent_path):
+             print(f"[~] {agent_path} already contains all required sections.")
 
-    # Update .gitignore
+    # Update .gitignore in project root
     update_gitignore(project_root, knowledge_root_name)
 
-    if not os.path.exists(os.path.join(knowledge_root, "doc_config.json")):
+    if not (knowledge_root / "doc_config.json").exists():
         print(f"[!] Warning: doc_config.json not found in {knowledge_root}.")
-        print(f"    Make sure you copied the full KI_base contents into '{knowledge_root_name}/'.")
+        print(f"    Make sure you copied the full KI_base contents into '{knowledge_root}'.")
 
     # Print MCP connection instructions
-    mcp_script = os.path.join(knowledge_root_name, "scripts", "knowledge_mcp.py")
-    print("\n[!] To activate KnowledgeManager in your IDE (Cursor/Windsurf/Claude), add this to your MCP config:")
-    print(f'    "command": "{venv_py}"')
-    print(f'    "args": ["{mcp_script}", "--config", "{config_path}"]')
+    mcp_script = os.path.abspath(os.path.join(str(knowledge_root), 'scripts', 'knowledge_mcp.py'))
+    project_name = project_root.name
+    
+    print("\n" + "="*60)
+    print("MCP CONFIGURATION INSTRUCTIONS")
+    print("="*60)
+    print("Add the following entry to your 'mcpServers' config file:")
+    print(f"\n\"knowledge-manager-{project_name}\": {{")
+    print(f"  \"command\": {json.dumps(str(venv_py))},")
+    print(f"  \"args\": [")
+    print(f"    {json.dumps(str(mcp_script))},")
+    print(f"    \"--config\",")
+    print(f"    {json.dumps(str(config_path))}")
+    print(f"  ],")
+    print(f"  \"cwd\": {json.dumps(str(project_root))}")
+    print("}")
     print("-" * 60)
     print("[*] Initialization complete.")
 
