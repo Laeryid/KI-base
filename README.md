@@ -85,19 +85,29 @@ Options:
 The script will:
 - Detect your virtual environment automatically
 - Write `.know/ki_config.json` with resolved paths
-- Add required sections to `AGENTS.md`
+- Add required sections to `AGENTS.md` (or your custom instructions file)
 - Add selective `.gitignore` rules (keeps KI data, ignores service files)
+- **Automatically setup Hard Links** for workflow files in `.agent/workflows/` (with collision handling and automatic suffixes)
 
-### 3. Configure your modules
+### 3. Pre-configuration (Optional)
 
-Edit `.know/doc_config.json` → `coverage_settings.tracked_modules`. Each entry is:
+If you need specific paths (e.g., using `CLAUDE.md` instead of `AGENTS.md`), you can create `.know/ki_config.json` **before** running the init script:
+
 ```json
-["src/my_module", "Human Label", 8]
+{
+    "paths": {
+        "knowledge_root": ".know",
+        "project_root": "..",
+        "agent_instructions": "CLAUDE.md",
+        "workflows_dir": ".agent/workflows",
+        "venv_python": ".venv/Scripts/python.exe"
+    },
+    "auto_resolve": true
+}
 ```
-*(path relative to project root, display label, importance weight 1–10)*
 
 ### 4. Connect the MCP Server
-
+ 
 Add to your IDE's MCP config (e.g., `mcp_config.json`):
 ```json
 {
@@ -109,13 +119,17 @@ Add to your IDE's MCP config (e.g., `mcp_config.json`):
   }
 }
 ```
-
-### 5. Copy workflows to your IDE
-
-```powershell
-# Example for Antigravity / Cursor / Windsurf
-Copy-Item .know\workflows\* .agent\workflows\
-```
+ 
+> [!IMPORTANT]
+> **Restart your IDE** after this step to enable the MCP server and refresh the hard-linked workflows.
+ 
+### 5. Start using Workflows
+ 
+Workflows are now linked to your IDE's workflows directory (default: `.agent/workflows/`).
+ 
+**To begin your work, use the command:**  
+`/expand-knowledge` (from `.agent/workflows/expand-knowledge.md`)  
+This will run a coverage audit and help you identify the first module to document.
 
 ---
 
@@ -136,9 +150,10 @@ Copy-Item .know\workflows\* .agent\workflows\
 | `knowledge/*.md` | ✅ | Your intellectual data |
 | `decisions/*.md` | ✅ | Architecture history |
 | `doc_config.json` | ✅ | Module manifest |
-| `scripts/*.py` | ✅ | Infrastructure scripts |
-| `workflows/*.md` | ✅ | Agent workflow guides |
-| `tests/` | ✅ | Infrastructure tests |
+| `scripts/*.py` | ❌ | Service scripts (restored from repo) |
+| `workflows/*.md" | ❌ | Workflow guides (restored from repo) |
+| `tests/` | ❌ | Service tests |
+| `README.md` | ❌ | Service description |
 | `ki_config.json` | ❌ | Local paths (machine-specific) |
 | `doc_state.json` | ❌ | File hashes (regenerated) |
 | `coverage_matrix.md` | ❌ | Auto-generated report |

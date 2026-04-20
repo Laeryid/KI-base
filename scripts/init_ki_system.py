@@ -2,6 +2,8 @@ import os
 import json
 import sys
 import argparse
+import secrets
+import string
 from pathlib import Path
 
 # Fixed English sections injected into AGENTS.md during initialization
@@ -62,12 +64,15 @@ def update_gitignore(project_root, knowledge_root_name):
     gitignore_path = Path(project_root) / ".gitignore"
 
     rules = [
-        f"\n# KI_base: ignore service files, keep only knowledge data",
-        f"{knowledge_root_name}/__pycache__/",
-        f"{knowledge_root_name}/ki_config.json",
-        f"{knowledge_root_name}/doc_state.json",
-        f"{knowledge_root_name}/coverage_matrix.md",
-        f"{knowledge_root_name}/tests/__pycache__/",
+        f"\n# KI_base: ignore everything except knowledge data",
+        f"{knowledge_root_name}/*",
+        f"!{knowledge_root_name}/knowledge/",
+        f"!{knowledge_root_name}/decisions/",
+        f"!{knowledge_root_name}/doc_config.json",
+        f"{knowledge_root_name}/knowledge/*",
+        f"!{knowledge_root_name}/knowledge/*.md",
+        f"{knowledge_root_name}/decisions/*",
+        f"!{knowledge_root_name}/decisions/*.md",
     ]
 
     content = ""
@@ -75,7 +80,7 @@ def update_gitignore(project_root, knowledge_root_name):
         with open(gitignore_path, "r", encoding="utf-8") as f:
             content = f.read()
 
-    marker = f"{knowledge_root_name}/ki_config.json"
+    marker = "# KI_base: ignore everything except knowledge data"
     if marker in content:
         print(f"[~] .gitignore already contains rules for '{knowledge_root_name}'. Skipping.")
         return
@@ -108,6 +113,56 @@ def update_agent_instructions(agent_file, sections):
             f.write(content)
         return True
     return False
+
+
+def setup_workflow_links(knowledge_root, project_root, workflows_rel_path):
+    """Creates hard links for individual workflow files with collision handling."""
+    know_workflows = Path(knowledge_root) / "workflows"
+    target_dir = Path(project_root) / workflows_rel_path
+
+    if not know_workflows.exists():
+        print(f"[~] Source workflows directory not found: {know_workflows}. Skipping.")
+        return
+
+    if not target_dir.exists():
+        print(f"[+] Creating target workflows directory: {target_dir}")
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+    # Specific files to link as requested by user
+    files_to_link = ["create-adr.md", "expand-knowledge.md", "sync-knowledge.md"]
+    
+    print(f"[*] Setting up workflow links in {target_dir}...")
+
+    for filename in files_to_link:
+        src_file = know_workflows / filename
+        if not src_file.exists():
+            print(f"[!] Source file {src_file} does not exist. Skipping.")
+            continue
+
+        dst_file = target_dir / filename
+        
+        # Collision handling
+        if dst_file.exists():
+            # If it's already a link (or file) to the correct place, skip
+            # Note: for hardlinks, we check if they point to the same inode
+            if dst_file.stat().st_ino == src_file.stat().st_ino and dst_file.stat().st_dev == src_file.stat().st_dev:
+                print(f"[~] Hard link for {filename} already exists and is correct.")
+                continue
+            
+            # Generate new name with random suffix
+            suffix = "".join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(4))
+            name_parts = filename.rsplit(".", 1)
+            new_filename = f"{name_parts[0]}_{suffix}.{name_parts[1]}" if len(name_parts) > 1 else f"{filename}_{suffix}"
+            dst_file = target_dir / new_filename
+            print(f"[!] Destination {filename} occupied. Using unique name: {new_filename}")
+
+        try:
+            # On Windows, hard links (os.link) usually don't require admin rights.
+            os.link(src_file.resolve(), dst_file)
+            print(f"[+] Created hard link: {dst_file.name} -> {filename}")
+        except OSError as e:
+            print(f"[!] Failed to create link for {filename}: {e}")
+            print("    Hint: Ensure source and destination are on the same disk drive.")
 
 
 def find_knowledge_root():
@@ -186,6 +241,9 @@ def init_ki_system():
     with open(config_path, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=4, ensure_ascii=False)
     print(f"[+] {config_path} created.")
+
+    # Setup individual workflow links
+    setup_workflow_links(knowledge_root, project_root, workflows_dir)
 
     # Update AGENTS.md
     sections_to_check = {
