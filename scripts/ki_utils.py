@@ -6,8 +6,8 @@ Handles loading ki_config.json and resolving key paths.
 """
 
 import os
-import json
 import sys
+import json
 import argparse
 from pathlib import Path
 
@@ -15,7 +15,7 @@ from pathlib import Path
 def load_ki_config(config_default="ki_config.json"):
     """
     Loads configuration from ki_config.json.
-    Tries to find the path in the --config argument or uses the default.
+    Tries to find the path in the --ki-config argument or uses the default.
     """
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--config", type=str, default=config_default)
@@ -32,24 +32,31 @@ def load_ki_config(config_default="ki_config.json"):
 
 
 def resolve_knowledge_root(config_paths=None) -> str:
-    """
-    Determines the knowledge root folder.
-    Priority:
-    1. From the configuration path dictionary (if present).
-    2. Checking the parent folder of this script (scripts/ → knowledge_root/).
-    3. Checking for doc_config.json in the same folder as this script.
-    4. Searching for any folder with doc_config.json in the current working directory.
-    """
     config_paths = config_paths or {}
 
-    # 1. From config
+    # 1. From CLI --config (if it looks like a ki_config.json)
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--config", type=str)
+    args, _ = parser.parse_known_args()
+    if args.config:
+        cfg_path = os.path.abspath(args.config)
+        # If it's a file, we look for doc_config.json in its directory
+        if os.path.isfile(cfg_path):
+            parent = os.path.dirname(cfg_path)
+            if os.path.exists(os.path.join(parent, "doc_config.json")):
+                return parent
+        # If it's a directory, check it
+        if os.path.isdir(cfg_path) and os.path.exists(os.path.join(cfg_path, "doc_config.json")):
+            return cfg_path
+
+    # 2. From config_paths
     root = config_paths.get("knowledge_root")
     if root:
         abs_root = os.path.abspath(root)
         if os.path.exists(os.path.join(abs_root, "doc_config.json")):
             return abs_root
 
-    # 2. Parent folder of scripts/ (usual location)
+    # 3. Parent folder of scripts/ (usual location)
     script_dir = os.path.dirname(os.path.abspath(__file__))
     parent_dir = os.path.dirname(script_dir)
     if os.path.exists(os.path.join(parent_dir, "doc_config.json")):
@@ -91,21 +98,58 @@ def resolve_project_root(config_paths, knowledge_root) -> str:
     return os.getcwd()
 
 
-# Global configuration objects (resolved at import time)
-KI_CFG = load_ki_config()
-PATHS = KI_CFG.get("paths", {})
-KNOWLEDGE_ROOT = resolve_knowledge_root(PATHS)
-PROJECT_ROOT = resolve_project_root(PATHS, KNOWLEDGE_ROOT)
-DOC_CONFIG_PATH = os.path.join(KNOWLEDGE_ROOT, "doc_config.json") if KNOWLEDGE_ROOT else ""
-PYTHON_EXE = PATHS.get("venv_python") or sys.executable
+# Internal cache
+_CACHE = {}
+
+
+def get_ki_cfg():
+    if "ki_cfg" not in _CACHE:
+        _CACHE["ki_cfg"] = load_ki_config()
+    return _CACHE["ki_cfg"]
+
+
+def get_paths():
+    return get_ki_cfg().get("paths", {})
+
+
+def get_knowledge_root():
+    if "knowledge_root" not in _CACHE:
+        _CACHE["knowledge_root"] = resolve_knowledge_root(get_paths())
+    return _CACHE["knowledge_root"]
+
+
+def get_project_root():
+    if "project_root" not in _CACHE:
+        _CACHE["project_root"] = resolve_project_root(get_paths(), get_knowledge_root())
+    return _CACHE["project_root"]
+
+
+def get_doc_config_path():
+    # doc_config.json is always located in the knowledge root
+    root = get_knowledge_root()
+    return os.path.join(root, "doc_config.json") if root else ""
+
+
+def get_python_exe():
+    return get_paths().get("venv_python") or sys.executable
 
 
 def get_doc_config():
     """Loads doc_config.json (knowledge system manifest)."""
-    if DOC_CONFIG_PATH and os.path.exists(DOC_CONFIG_PATH):
-        try:
-            with open(DOC_CONFIG_PATH, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
+    path = get_doc_config_path()
+    if path:
+        abs_path = os.path.abspath(path)
+        if os.path.exists(abs_path):
+            try:
+                with open(abs_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                pass
     return {}
+
+
+# Legacy compatibility layer (keep for short-term compatibility)
+KNOWLEDGE_ROOT = get_knowledge_root()
+PROJECT_ROOT = get_project_root()
+DOC_CONFIG_PATH = get_doc_config_path()
+PYTHON_EXE = get_python_exe()

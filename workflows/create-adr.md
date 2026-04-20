@@ -10,6 +10,17 @@ Triggered on user demand when it's necessary to document a significant architect
 - **Never modify old ADRs.** If a decision is revisited, create a new ADR with a reference to the old one.
 - The internal structure of an ADR should be a chronological log (append-only).
 
+## Safety & Tooling Rules (Mandatory)
+> [!IMPORTANT]
+> When working with this workflow, it is **STRICTLY PROHIBITED** to use general file editing tools (e.g., `filesystem.edit_file`) for files inside the <knowledge_root> directory.
+> 
+> You **MUST** use the following MCP tools from the `KnowledgeManager` server:
+> - `write_know_file` — to create or fully overwrite a KI / ADR.
+> - `edit_know_file` — for precise text replacement.
+> - `make_know_dir` — to create directories inside the knowledge base.
+> 
+> This ensures that ADRs and documentation changes remain isolated within the knowledge sandbox and do not accidentally affect the project's source code.
+
 ## Step 0 — Discovery Phase
 Before writing the document, the AI must analyze the context of recent changes to "infer" the problem independently:
 1. **Git History**: Run `git log --since="3 days ago" -p` (or another reasonable period) to see code changes and commits.

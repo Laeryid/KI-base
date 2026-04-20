@@ -27,11 +27,14 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ki_utils
 
-KNOWLEDGE_ROOT = ki_utils.KNOWLEDGE_ROOT
+# ─── Configuration ────────────────────────────────────────────────────────────
 
-EXCLUDED_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv", "dist", "build"}
-DENSITY_THRESHOLD = 50.0   # KI bytes per 1 KB of code
-COMPLEXITY_THRESHOLD = 10  # Files per one KI
+def get_knowledge_root():
+    return ki_utils.get_knowledge_root()
+
+
+def get_project_root():
+    return ki_utils.get_project_root()
 
 
 # ─── Data Loading ─────────────────────────────────────────────────────────────
@@ -48,7 +51,7 @@ def load_doc_config() -> dict:
 
 def load_ki_files() -> list:
     """Returns a list of KI file names."""
-    ki_dir = os.path.join(KNOWLEDGE_ROOT, "knowledge")
+    ki_dir = os.path.join(get_knowledge_root(), "knowledge")
     if not os.path.isdir(ki_dir):
         return []
     return [f for f in os.listdir(ki_dir) if f.startswith("KI_") and f.endswith(".md")]
@@ -92,7 +95,13 @@ def get_covered_paths(doc_config: dict) -> set:
 
 
 def is_path_covered(file_path: str, covered_paths: set) -> bool:
-    return file_path in covered_paths
+    """Checks if a path is covered by any of the registered KI dependencies."""
+    file_norm = file_path.replace("/", os.sep).lower()
+    for cp in covered_paths:
+        cp_norm = cp.replace("/", os.sep).lower()
+        if file_norm == cp_norm or file_norm.startswith(cp_norm + os.sep):
+            return True
+    return False
 
 
 def has_ki_coverage(module_path: str, ki_files: list, doc_config: dict) -> bool:
@@ -108,7 +117,7 @@ def has_ki_coverage(module_path: str, ki_files: list, doc_config: dict) -> bool:
 def get_ki_size(project_root: str, module_path: str, doc_config: dict) -> int:
     module_norm = module_path.replace("/", os.sep).rstrip(os.sep)
     total_size = 0
-    ki_dir = os.path.join(KNOWLEDGE_ROOT, "knowledge")
+    ki_dir = os.path.join(get_knowledge_root(), "knowledge")
 
     for ki_name, entry in doc_config.get("knowledge_items", {}).items():
         covered = any(
@@ -321,7 +330,7 @@ def main():
     parser.add_argument("--output", default=None, help="Custom output path for coverage_matrix.md")
     args = parser.parse_args()
 
-    project_root = ki_utils.PROJECT_ROOT
+    project_root = get_project_root()
     tracked_modules = load_tracked_modules()
     if not tracked_modules:
         print("[!] No tracked_modules found in doc_config.json. Please fill in coverage_settings.")
@@ -348,13 +357,17 @@ def main():
     if not args.no_save:
         generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         md_content = format_markdown(data, generated_at)
-        output_path = args.output or os.path.join(KNOWLEDGE_ROOT, "coverage_matrix.md")
+        output_path = args.output or os.path.join(get_knowledge_root(), "coverage_matrix.md")
         output_path = os.path.abspath(output_path)
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(md_content)
         print(f"[+] Matrix saved: {output_path}")
 
+
+EXCLUDED_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv", "dist", "build"}
+DENSITY_THRESHOLD = 50.0   # KI bytes per 1 KB of code
+COMPLEXITY_THRESHOLD = 10  # Files per one KI
 
 if __name__ == "__main__":
     if sys.platform == "win32":

@@ -28,7 +28,7 @@ def tmp_project(tmp_path):
                 knowledge/
                 decisions/
     """
-    know_name = ".know"
+    know_name = os.environ.get("KNOWLEDGE_DIR_NAME", ".know")
     know = tmp_path / know_name
     know.mkdir()
     (know / "knowledge").mkdir()

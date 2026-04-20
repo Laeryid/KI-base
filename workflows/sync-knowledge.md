@@ -6,6 +6,17 @@ description: Synchronize the project knowledge system (KI, DIR_INDEX, artifacts)
 
 Triggered manually after completing significant work (refactoring, new feature, architectural change).
 
+## Safety & Tooling Rules (Mandatory)
+> [!IMPORTANT]
+> When working with this workflow, it is **STRICTLY PROHIBITED** to use general file editing tools (e.g., `filesystem.edit_file`) for files inside the <knowledge_root> directory.
+> 
+> You **MUST** use the following MCP tools from the `KnowledgeManager` server:
+> - `write_know_file` — to create or fully overwrite a KI.
+> - `edit_know_file` — for precise text replacement.
+> - `make_know_dir` — to create directories inside the knowledge base.
+> 
+> This ensures that documentation changes remain isolated within the knowledge sandbox and do not accidentally affect the project's source code.
+
 ## Step 1 — Identify Changes
 
 Run `KnowledgeEngine.check_for_changes()` to get a list of modified files:
@@ -26,6 +37,15 @@ For each artifact in `AFFECTED ARTIFACTS`:
 After updating an artifact, add the following line to the file header:
 ```
 <!-- last_verified: YYYY-MM-DD -->
+```
+
+## Step 2.1 — Analyze Dependencies
+
+Automatically identify and update inter-KI links for changed files.
+
+// turbo
+```powershell
+.venv\Scripts\python.exe .know/scripts/ki_dependency_analyzer.py --changed
 ```
 
 ## Step 3 — Update DIR_INDEX.md

@@ -112,9 +112,14 @@ Add to your IDE's MCP config (e.g., `mcp_config.json`):
 ```json
 {
   "mcpServers": {
-    "KnowledgeManager": {
+    "knowledge-manager-project-name": {
       "command": ".venv/Scripts/python.exe",
-      "args": [".know/scripts/knowledge_mcp.py", "--config", ".know/ki_config.json"]
+      "args": [
+        "project-path\\.know\\scripts\\knowledge_mcp.py",
+        "--config",
+        "project-path\\.know\\ki_config.json"
+      ],
+      "cwd": "project-path"
     }
   }
 }

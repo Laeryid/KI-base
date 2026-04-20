@@ -101,15 +101,6 @@
                     {"name": "path", "type": "string", "description": "Path to analyze"},
                     {"name": "recursive", "type": "boolean", "description": "Depth of analysis"}
                 ]
-            },
-            {
-                "name": "analyze_dependencies",
-                "description": "Analyze and update 'Related KIs' sections based on code imports.",
-                "method": "analyze_dependencies",
-                "args": [
-                    {"name": "ki_name", "type": "string", "description": "Specific KI file to analyze (optional)"},
-                    {"name": "only_changed", "type": "boolean", "description": "Analyze only modified Files/KIs (optional)"}
-                ]
             }
         ]
     }

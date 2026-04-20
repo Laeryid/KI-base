@@ -13,7 +13,13 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ki_utils
 
-KNOWLEDGE_ROOT = ki_utils.KNOWLEDGE_ROOT
+def get_knowledge_root():
+    return ki_utils.get_knowledge_root()
+
+
+def get_project_root():
+    return ki_utils.get_project_root()
+
 
 EXCLUDED_DIRS = {
     ".git", "__pycache__", "node_modules", "venv", ".venv",
@@ -32,7 +38,7 @@ def count_files_in_dir(dirpath: str) -> int:
 
 def build_tree(root: str, knowledge_root_name: str,
                prefix: str = "", max_depth: int = 3, current_depth: int = 0) -> list:
-    if current_depth > max_depth:
+    if current_depth >= max_depth:
         return []
     lines = []
     try:
@@ -69,8 +75,9 @@ def build_tree(root: str, knowledge_root_name: str,
 
 
 def generate_dir_index(output_path: str, max_depth: int = 3) -> None:
-    project_root = ki_utils.PROJECT_ROOT
-    knowledge_root_name = os.path.basename(KNOWLEDGE_ROOT)
+    project_root = get_project_root()
+    knowledge_root = get_knowledge_root()
+    knowledge_root_name = os.path.basename(knowledge_root) if knowledge_root else ".know"
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     project_name = os.path.basename(os.path.abspath(project_root))
     total_files = count_files_in_dir(project_root)
@@ -117,8 +124,9 @@ def main():
     parser.add_argument("--depth", type=int, default=3, help="Maximum depth (default: 3)")
     args = parser.parse_args()
 
-    knowledge_root_name = os.path.basename(KNOWLEDGE_ROOT) if KNOWLEDGE_ROOT else ".know"
-    output_path = args.output or os.path.join(KNOWLEDGE_ROOT, "DIR_INDEX.md")
+    kr = get_knowledge_root()
+    knowledge_root_name = os.path.basename(kr) if kr else ".know"
+    output_path = args.output or os.path.join(kr, "DIR_INDEX.md")
     output_path = os.path.abspath(output_path)
 
     generate_dir_index(output_path, max_depth=args.depth)

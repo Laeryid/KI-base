@@ -33,7 +33,7 @@ def add_ki(ki_name: str, description: str, covers: list, depends_on: list):
         "depends_on": depends_on,
     }
 
-    with open(ki_utils.DOC_CONFIG_PATH, "w", encoding="utf-8") as f:
+    with open(ki_utils.get_doc_config_path(), "w", encoding="utf-8") as f:
         json.dump(config, f, indent=4, ensure_ascii=False)
 
     print(f"[+] KI registered in doc_config.json: {ki_name}")

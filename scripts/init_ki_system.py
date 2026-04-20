@@ -4,6 +4,7 @@ import sys
 import argparse
 import secrets
 import string
+import re
 from pathlib import Path
 
 # Fixed English sections injected into AGENTS.md during initialization
@@ -69,6 +70,7 @@ def update_gitignore(project_root, knowledge_root_name):
         f"!{knowledge_root_name}/knowledge/",
         f"!{knowledge_root_name}/decisions/",
         f"!{knowledge_root_name}/doc_config.json",
+        f"{knowledge_root_name}/ki_config.json",
         f"{knowledge_root_name}/knowledge/*",
         f"!{knowledge_root_name}/knowledge/*.md",
         f"{knowledge_root_name}/decisions/*",
@@ -270,7 +272,9 @@ def init_ki_system():
 
     # Print MCP connection instructions
     mcp_script = os.path.abspath(os.path.join(str(knowledge_root), 'scripts', 'knowledge_mcp.py'))
-    project_name = project_root.name
+    # Sanitize project name for MCP: replace all non-alphanumeric with dashes
+    raw_name = project_root.name
+    project_name = re.sub(r'[^a-zA-Z0-9]+', '-', raw_name).strip('-')
     
     print("\n" + "="*60)
     print("MCP CONFIGURATION INSTRUCTIONS")

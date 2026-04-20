@@ -21,10 +21,12 @@ def sync_agents_md():
 
     # Resolve AGENTS.md: try next to knowledge root, then project root, then CWD
     candidates = []
-    if ki_utils.PROJECT_ROOT:
-        candidates.append(os.path.join(ki_utils.PROJECT_ROOT, "AGENTS.md"))
-    if ki_utils.KNOWLEDGE_ROOT:
-        candidates.append(os.path.join(ki_utils.KNOWLEDGE_ROOT, "..", "AGENTS.md"))
+    pr = ki_utils.get_project_root()
+    kr = ki_utils.get_knowledge_root()
+    if pr:
+        candidates.append(os.path.join(pr, "AGENTS.md"))
+    if kr:
+        candidates.append(os.path.join(kr, "..", "AGENTS.md"))
     candidates.append("AGENTS.md")
 
     agents_file_path = None

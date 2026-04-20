@@ -46,11 +46,15 @@ class KnowledgeEngine:
         except Exception:
             return ""
 
-    def load_state(self) -> Dict[str, Any]:
-        """Loads the state from doc_state.json."""
-        if self.state_file.exists():
+    def load_state(self) -> Dict:
+        """Loads state from doc_state.json."""
+        if not os.path.exists(self.state_file):
+            return {}
+        try:
             with open(self.state_file, "r", encoding="utf-8") as f:
                 return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return {}
         return {}
 
     def save_state(self, state: Dict[str, Any]) -> None:

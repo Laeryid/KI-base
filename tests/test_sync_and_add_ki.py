@@ -18,16 +18,23 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
-def _setup_modules(monkeypatch, tmp_project):
-    """Reload ki_utils for a given tmp_project context."""
-    for mod in ["ki_utils", "sync_agents_md", "add_ki_to_config"]:
-        if mod in sys.modules:
-            del sys.modules[mod]
+@pytest.fixture(autouse=True)
+def setup_env(monkeypatch, tmp_project):
+    """Setup environment for sync and add_ki tests."""
+    import ki_utils
     from conftest import get_know_info
     _, _, config_path = get_know_info(tmp_project)
-    config_path = str(config_path)
-    monkeypatch.setattr(sys, "argv", ["prog", "--config", config_path])
+    
+    monkeypatch.setattr(ki_utils, "_CACHE", {})
+    monkeypatch.setattr(sys, "argv", ["prog", "--config", str(config_path)])
     monkeypatch.chdir(tmp_project)
+    
+    # Pre-import to ensure they use the monkeypatched ki_utils
+    if "sync_agents_md" not in sys.modules:
+        import sync_agents_md
+    if "add_ki_to_config" not in sys.modules:
+        import add_ki_to_config
+    return sys.modules["sync_agents_md"], sys.modules["add_ki_to_config"]
 
 
 def _make_agents_md(tmp_project, extra_ki_rows=""):
@@ -45,12 +52,12 @@ def _make_agents_md(tmp_project, extra_ki_rows=""):
 
 # ─── sync_agents_md tests ─────────────────────────────────────────────────────
 
-def test_sync_empty_ki_list(tmp_project, monkeypatch):
+@pytest.mark.positive
+def test_sync_empty_ki_list(tmp_project, setup_env):
     """With no KIs in doc_config, sync leaves the table header intact but empty."""
-    _setup_modules(monkeypatch, tmp_project)
+    sync_agents_md, _ = setup_env
     agents = _make_agents_md(tmp_project)
 
-    import sync_agents_md
     sync_agents_md.sync_agents_md()
 
     content = agents.read_text(encoding="utf-8")
@@ -61,8 +68,10 @@ def test_sync_empty_ki_list(tmp_project, monkeypatch):
     assert rows == [], f"Expected no KI rows, got: {rows}"
 
 
-def test_sync_adds_ki_rows(tmp_project, monkeypatch):
+@pytest.mark.positive
+def test_sync_adds_ki_rows(tmp_project, setup_env):
     """After registering a KI in doc_config, sync_agents_md adds its row."""
+    sync_agents_md, _ = setup_env
     from conftest import get_know_info
     know_name, know_path, _ = get_know_info(tmp_project)
     cfg_path = know_path / "doc_config.json"
@@ -74,10 +83,8 @@ def test_sync_adds_ki_rows(tmp_project, monkeypatch):
     }
     cfg_path.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
 
-    _setup_modules(monkeypatch, tmp_project)
     agents = _make_agents_md(tmp_project)
 
-    import sync_agents_md
     sync_agents_md.sync_agents_md()
 
     content = agents.read_text(encoding="utf-8")
@@ -85,8 +92,10 @@ def test_sync_adds_ki_rows(tmp_project, monkeypatch):
     assert "Module A documentation" in content
 
 
-def test_sync_replaces_stale_rows(tmp_project, monkeypatch):
+@pytest.mark.positive
+def test_sync_replaces_stale_rows(tmp_project, setup_env):
     """Stale rows from a previous sync are replaced, not duplicated."""
+    sync_agents_md, _ = setup_env
     from conftest import get_know_info
     know_name, know_path, _ = get_know_info(tmp_project)
     cfg_path = know_path / "doc_config.json"
@@ -94,11 +103,9 @@ def test_sync_replaces_stale_rows(tmp_project, monkeypatch):
     cfg["knowledge_items"]["KI_new.md"] = {"description": "New KI", "covers": [], "depends_on": []}
     cfg_path.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
 
-    _setup_modules(monkeypatch, tmp_project)
     # Prime AGENTS.md with an old stale row
     agents = _make_agents_md(tmp_project, "| `KI_old.md` | Old stuff |\n")
 
-    import sync_agents_md
     sync_agents_md.sync_agents_md()
 
     content = agents.read_text(encoding="utf-8")
@@ -106,13 +113,13 @@ def test_sync_replaces_stale_rows(tmp_project, monkeypatch):
     assert "KI_new.md" in content
 
 
-def test_sync_missing_table_is_graceful(tmp_project, monkeypatch):
+@pytest.mark.positive
+def test_sync_missing_table_is_graceful(tmp_project, setup_env):
     """sync_agents_md exits gracefully when AGENTS.md has no KI table."""
-    _setup_modules(monkeypatch, tmp_project)
+    sync_agents_md, _ = setup_env
     agents = tmp_project / "AGENTS.md"
     agents.write_text("# AGENTS\n\nNo KI table here.\n", encoding="utf-8")
 
-    import sync_agents_md
     # Should not raise
     sync_agents_md.sync_agents_md()
     # File should be unchanged
@@ -121,11 +128,11 @@ def test_sync_missing_table_is_graceful(tmp_project, monkeypatch):
 
 # ─── add_ki_to_config tests ───────────────────────────────────────────────────
 
-def test_add_ki_registers_entry(tmp_project, monkeypatch):
+@pytest.mark.positive
+def test_add_ki_registers_entry(tmp_project, setup_env):
     """add_ki() writes the new KI entry to doc_config.json."""
-    _setup_modules(monkeypatch, tmp_project)
+    _, add_ki_to_config = setup_env
 
-    import add_ki_to_config
     add_ki_to_config.add_ki(
         ki_name="KI_utils.md",
         description="Utility helpers",
@@ -142,11 +149,10 @@ def test_add_ki_registers_entry(tmp_project, monkeypatch):
     assert "src/utils/" in ki["depends_on"]
 
 
-def test_add_ki_idempotent_update(tmp_project, monkeypatch):
+@pytest.mark.positive
+def test_add_ki_idempotent_update(tmp_project, setup_env):
     """Calling add_ki twice with the same key overwrites cleanly."""
-    _setup_modules(monkeypatch, tmp_project)
-
-    import add_ki_to_config
+    _, add_ki_to_config = setup_env
     add_ki_to_config.add_ki("KI_x.md", "First", ["A"], [])
     add_ki_to_config.add_ki("KI_x.md", "Second", ["B"], ["src/"])
 
@@ -156,8 +162,10 @@ def test_add_ki_idempotent_update(tmp_project, monkeypatch):
     assert cfg["knowledge_items"]["KI_x.md"]["description"] == "Second"
 
 
-def test_add_ki_creates_knowledge_items_key(tmp_project, monkeypatch):
+@pytest.mark.positive
+def test_add_ki_creates_knowledge_items_key(tmp_project, setup_env):
     """add_ki() creates the knowledge_items key if it was missing."""
+    _, add_ki_to_config = setup_env
     from conftest import get_know_info
     _, know_path, _ = get_know_info(tmp_project)
     cfg_path = know_path / "doc_config.json"
@@ -165,9 +173,6 @@ def test_add_ki_creates_knowledge_items_key(tmp_project, monkeypatch):
     del cfg["knowledge_items"]
     cfg_path.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
 
-    _setup_modules(monkeypatch, tmp_project)
-
-    import add_ki_to_config
     add_ki_to_config.add_ki("KI_fresh.md", "Fresh", [], [])
 
     cfg_after = json.loads(cfg_path.read_text())

@@ -9,6 +9,7 @@ from pathlib import Path
 from knowledge_engine import KnowledgeEngine
 
 
+@pytest.mark.positive
 def test_capture_and_save_state(tmp_project):
     """Engine captures state and writes doc_state.json."""
     from conftest import get_know_info
@@ -26,6 +27,7 @@ def test_capture_and_save_state(tmp_project):
     assert isinstance(loaded, dict)
 
 
+@pytest.mark.positive
 def test_no_changes_after_save(tmp_project):
     """No changes reported immediately after saving state."""
     from conftest import get_know_info
@@ -39,6 +41,7 @@ def test_no_changes_after_save(tmp_project):
     assert deleted == [], f"Unexpected deletions: {deleted}"
 
 
+@pytest.mark.positive
 def test_detects_modified_file(tmp_project):
     """Engine detects a file modification after save."""
     from conftest import get_know_info
@@ -59,6 +62,7 @@ def test_detects_modified_file(tmp_project):
     assert len(modified) > 0, "Modified file should be detected"
 
 
+@pytest.mark.positive
 def test_detects_new_file(tmp_project):
     """Engine detects a new file that wasn't in the saved state."""
     from conftest import get_know_info

@@ -12,57 +12,53 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 
 
 @pytest.fixture(autouse=True)
-def patch_jail(tmp_project, monkeypatch):
-    """Patch JAIL_DIR in knowledge_mcp to use the tmp knowledge root folder."""
-    # We import validate_path directly after patching ki_utils
-    if "ki_utils" in sys.modules:
-        del sys.modules["ki_utils"]
-    if "knowledge_mcp" in sys.modules:
-        del sys.modules["knowledge_mcp"]
-
+def setup_mcp(monkeypatch, tmp_project):
+    """Setup environment for MCP security tests."""
+    import ki_utils
+    import knowledge_mcp
+    
     from conftest import get_know_info
     _, _, config_path = get_know_info(tmp_project)
-    config_path = str(config_path)
-    monkeypatch.setattr(sys, "argv", ["prog", "--config", config_path])
+    
+    monkeypatch.setattr(ki_utils, "_CACHE", {})
+    monkeypatch.setattr(sys, "argv", ["prog", "--config", str(config_path)])
     monkeypatch.chdir(tmp_project)
+    return knowledge_mcp
 
 
-def get_validate_path(tmp_project):
-    """Helper: import validate_path with JAIL_DIR set to tmp knowledge root."""
-    import importlib
-    import knowledge_mcp
+@pytest.mark.positive
+def test_valid_path_allowed(tmp_project, setup_mcp):
     from conftest import get_know_info
-    know_name, know_path, _ = get_know_info(tmp_project)
-    knowledge_mcp.JAIL_DIR = str(know_path)
-    return knowledge_mcp.validate_path
-
-
-def test_valid_path_allowed(tmp_project):
-    validate_path = get_validate_path(tmp_project)
+    know_name, _, _ = get_know_info(tmp_project)
+    validate_path = setup_mcp.validate_path
     result = validate_path("knowledge/KI_template.md")
     assert know_name in result
 
 
-def test_parent_traversal_blocked(tmp_project):
-    validate_path = get_validate_path(tmp_project)
+@pytest.mark.negative
+def test_parent_traversal_blocked(setup_mcp):
+    validate_path = setup_mcp.validate_path
     with pytest.raises(PermissionError):
         validate_path("../src/secret.py")
 
 
-def test_absolute_path_blocked(tmp_project):
-    validate_path = get_validate_path(tmp_project)
+@pytest.mark.negative
+def test_absolute_path_blocked(setup_mcp):
+    validate_path = setup_mcp.validate_path
     with pytest.raises(PermissionError):
         validate_path("/etc/passwd")
 
 
-def test_write_python_blocked(tmp_project):
-    validate_path = get_validate_path(tmp_project)
+@pytest.mark.negative
+def test_write_python_blocked(setup_mcp):
+    validate_path = setup_mcp.validate_path
     with pytest.raises(PermissionError):
         validate_path("scripts/evil.py", is_write=True)
 
 
-def test_write_markdown_allowed(tmp_project):
-    validate_path = get_validate_path(tmp_project)
+@pytest.mark.positive
+def test_write_markdown_allowed(setup_mcp):
+    validate_path = setup_mcp.validate_path
     # Should NOT raise
     result = validate_path("knowledge/new_ki.md", is_write=True)
     assert result.endswith("new_ki.md")

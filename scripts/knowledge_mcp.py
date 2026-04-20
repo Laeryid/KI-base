@@ -10,22 +10,25 @@ from typing import Dict, Any, List
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ki_utils
 
-JAIL_DIR = ki_utils.KNOWLEDGE_ROOT
-PYTHON_EXE = ki_utils.PYTHON_EXE
-DOC_CONFIG = ki_utils.get_doc_config()
-MS_CFG = DOC_CONFIG.get("knowledge_system", {}).get("mcp_server", {})
-TOOLS_CFG = DOC_CONFIG.get("knowledge_system", {}).get("tools", [])
+def get_jail_dir(): return ki_utils.get_knowledge_root()
+def get_python_exe(): return ki_utils.get_python_exe()
+def get_project_root(): return ki_utils.get_project_root()
+def get_doc_config(): return ki_utils.get_doc_config()
+
+def get_ms_cfg(): return get_doc_config().get("knowledge_system", {}).get("mcp_server", {})
+def get_tools_cfg(): return get_doc_config().get("knowledge_system", {}).get("tools", [])
 
 
 def validate_path(rel_path: str, is_write: bool = False) -> str:
-    if not JAIL_DIR:
+    jail = get_jail_dir()
+    if not jail:
         raise PermissionError("Knowledge root not initialized.")
     normalized = os.path.normpath(rel_path)
     if normalized.startswith("..") or os.path.isabs(normalized):
         raise PermissionError(f"Access Denied: Path '{rel_path}' is outside sandbox.")
 
-    target = os.path.abspath(os.path.join(JAIL_DIR, normalized))
-    if not target.startswith(JAIL_DIR):
+    target = os.path.abspath(os.path.join(jail, normalized))
+    if not target.startswith(jail):
         raise PermissionError(f"Access Denied: Jail breach detected for '{rel_path}'.")
 
     if is_write:
@@ -40,25 +43,30 @@ def validate_path(rel_path: str, is_write: bool = False) -> str:
 
 # --- Tool Implementations ---
 
-def run_script(script_name: str):
-    if not JAIL_DIR:
+def run_script(script_name: str, args: List[str] = None):
+    jail = get_jail_dir()
+    if not jail:
         return {"isError": True, "content": [{"type": "text",
                 "text": "Error: Knowledge system not active here."}]}
 
-    scripts_dir = os.path.join(JAIL_DIR, "scripts")
+    scripts_dir = os.path.join(jail, "scripts")
     script_path = os.path.join(scripts_dir, script_name)
 
     if not os.path.exists(script_path):
-        script_path = os.path.join(JAIL_DIR, script_name)
+        script_path = os.path.join(jail, script_name)
 
     if not os.path.exists(script_path):
         return {"isError": True, "content": [{"type": "text",
                 "text": f"Error: Script {script_name} not found."}]}
 
+    cmd = [get_python_exe(), script_path]
+    if args:
+        cmd.extend(args)
+
     result = subprocess.run(
-        [PYTHON_EXE, script_path],
+        cmd,
         capture_output=True, text=True, encoding="utf-8",
-        cwd=ki_utils.PROJECT_ROOT  # run from project root
+        cwd=get_project_root()  # run from project root
     )
     return {"content": [{"type": "text",
             "text": result.stdout + (result.stderr if result.stderr else "")}]}
@@ -69,13 +77,38 @@ def tool_sync_agents_md(args):   return run_script("sync_agents_md.py")
 def tool_generate_dir_index(args): return run_script("generate_dir_index.py")
 
 
+def tool_analyze_module(args):
+    path = args.get("path", ".")
+    recursive = args.get("recursive", False)
+    cmd_args = [path]
+    if recursive:
+        cmd_args.append("--recursive")
+    return run_script("analyze_module.py", cmd_args)
+
+
+def tool_analyze_dependencies(args):
+    ki_name = args.get("ki_name")
+    only_changed = args.get("only_changed", False)
+    cmd_args = []
+    if ki_name:
+        cmd_args.extend(["--ki", ki_name])
+    if only_changed:
+        cmd_args.append("--changed")
+    
+    if not cmd_args:
+        return {"isError": True, "content": [{"type": "text", "text": "Error: Either 'ki_name' or 'only_changed' must be provided."}]}
+    
+    return run_script("ki_dependency_analyzer.py", cmd_args)
+
+
 def tool_check_changes(args):
-    if not JAIL_DIR:
+    jail = get_jail_dir()
+    if not jail:
         return {"isError": True, "content": [{"type": "text", "text": "Error: Knowledge system not active."}]}
-    sys.path.insert(0, os.path.join(JAIL_DIR, "scripts"))
+    sys.path.insert(0, os.path.join(jail, "scripts"))
     from knowledge_engine import KnowledgeEngine
-    project_root = ki_utils.PROJECT_ROOT
-    knowledge_root_name = os.path.basename(JAIL_DIR)
+    project_root = get_project_root()
+    knowledge_root_name = os.path.basename(jail)
     ke = KnowledgeEngine(project_root, knowledge_root_name)
     modified, new, deleted = ke.check_for_changes()
     res = f"Modified: {modified}\nNew: {new}\nDeleted: {deleted}"
@@ -83,12 +116,13 @@ def tool_check_changes(args):
 
 
 def tool_save_state(args):
-    if not JAIL_DIR:
+    jail = get_jail_dir()
+    if not jail:
         return {"isError": True, "content": [{"type": "text", "text": "Error: Knowledge system not active."}]}
-    sys.path.insert(0, os.path.join(JAIL_DIR, "scripts"))
+    sys.path.insert(0, os.path.join(jail, "scripts"))
     from knowledge_engine import KnowledgeEngine
-    project_root = ki_utils.PROJECT_ROOT
-    knowledge_root_name = os.path.basename(JAIL_DIR)
+    project_root = get_project_root()
+    knowledge_root_name = os.path.basename(jail)
     ke = KnowledgeEngine(project_root, knowledge_root_name)
     state = ke.capture_full_state()
     ke.save_state(state)
@@ -157,6 +191,8 @@ METHODS = {
     "edit_file":         tool_edit_file,
     "make_dir":          tool_make_dir,
     "read_file":         tool_read_file,
+    "analyze_module":     tool_analyze_module,
+    "analyze_dependencies": tool_analyze_dependencies,
 }
 
 
@@ -198,18 +234,18 @@ def main():
                 "protocolVersion": "2024-11-05",
                 "capabilities": {"tools": {}},
                 "serverInfo": {
-                    "name":    MS_CFG.get("name",    "KnowledgeManager"),
-                    "version": MS_CFG.get("version", "1.0.0")
+                    "name":    get_ms_cfg().get("name",    "KnowledgeManager"),
+                    "version": get_ms_cfg().get("version", "1.0.0")
                 }
             })
 
         elif method == "tools/list":
-            if not JAIL_DIR:
+            if not get_jail_dir():
                 send_response(req_id, {"tools": []})
                 continue
 
             tools = []
-            for t in TOOLS_CFG:
+            for t in get_tools_cfg():
                 tool_def = {
                     "name": t["name"],
                     "description": t["description"],
@@ -228,7 +264,8 @@ def main():
             tool_name = params.get("name")
             tool_args = params.get("arguments", {})
 
-            target_tool = next((t for t in TOOLS_CFG if t["name"] == tool_name), None)
+            tools_cfg = get_tools_cfg()
+            target_tool = next((t for t in tools_cfg if t["name"] == tool_name), None)
             if not target_tool:
                 send_response(req_id, error={"code": -32601,
                               "message": f"Tool {tool_name} not found"})

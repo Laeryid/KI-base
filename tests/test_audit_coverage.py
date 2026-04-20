@@ -18,26 +18,28 @@ SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 
-def _reload_audit(monkeypatch, tmp_project):
-    """Reload audit_coverage with ki_utils pointing at tmp_project."""
-    if "ki_utils" in sys.modules:
-        del sys.modules["ki_utils"]
-    if "audit_coverage" in sys.modules:
-        del sys.modules["audit_coverage"]
-
+@pytest.fixture(autouse=True)
+def setup_ki_utils(monkeypatch, tmp_project):
+    """Setup ki_utils for testing without reloading modules."""
     from conftest import get_know_info
     _, _, config_path = get_know_info(tmp_project)
-    config_path = str(config_path)
-    monkeypatch.setattr(sys, "argv", ["prog", "--config", config_path])
+    
+    import ki_utils
+    # Clear cache and set config path
+    monkeypatch.setattr(ki_utils, "_CACHE", {})
+    monkeypatch.setattr(sys, "argv", ["prog", "--config", str(config_path)])
     monkeypatch.chdir(tmp_project)
+    
+    # Pre-import audit_coverage if not already present
+    if "audit_coverage" not in sys.modules:
+        import audit_coverage
+    return sys.modules["audit_coverage"]
 
-    import audit_coverage
-    return audit_coverage
 
-
-def test_no_ki_gives_uncovered(tmp_project, monkeypatch):
+@pytest.mark.positive
+def test_no_ki_gives_uncovered(tmp_project, setup_ki_utils):
     """Without any KI, the module should be marked as not covered."""
-    ac = _reload_audit(monkeypatch, tmp_project)
+    ac = setup_ki_utils
     tracked = [["src/module_a", "Module A", 5]]
     data = ac.build_coverage_matrix(str(tmp_project), tracked)
 
@@ -47,7 +49,8 @@ def test_no_ki_gives_uncovered(tmp_project, monkeypatch):
     assert row["coverage_pct"] == 0.0
 
 
-def test_registered_ki_gives_coverage(tmp_project, monkeypatch):
+@pytest.mark.positive
+def test_registered_ki_gives_coverage(tmp_project, setup_ki_utils):
     """After registering a KI with depends_on pointing to the module, coverage improves."""
     from conftest import get_know_info
     know_name, know_path, _ = get_know_info(tmp_project)
@@ -64,7 +67,7 @@ def test_registered_ki_gives_coverage(tmp_project, monkeypatch):
     ki_file = know_path / "knowledge" / "KI_module_a.md"
     ki_file.write_text("# KI: Module A\n\nSome content here.\n", encoding="utf-8")
 
-    ac = _reload_audit(monkeypatch, tmp_project)
+    ac = setup_ki_utils
     tracked = [["src/module_a", "Module A", 5]]
     data = ac.build_coverage_matrix(str(tmp_project), tracked)
 
@@ -74,9 +77,10 @@ def test_registered_ki_gives_coverage(tmp_project, monkeypatch):
     assert row["status"] == "✅ Covered"
 
 
-def test_format_markdown_contains_table(tmp_project, monkeypatch):
+@pytest.mark.positive
+def test_format_markdown_contains_table(tmp_project, setup_ki_utils):
     """format_markdown output contains module table header."""
-    ac = _reload_audit(monkeypatch, tmp_project)
+    ac = setup_ki_utils
     tracked = [["src/module_a", "Module A", 5]]
     data = ac.build_coverage_matrix(str(tmp_project), tracked)
     md = ac.format_markdown(data, "2026-01-01")
@@ -86,14 +90,15 @@ def test_format_markdown_contains_table(tmp_project, monkeypatch):
     assert "## Summary" in md
 
 
-def test_untracked_dirs_detected(tmp_project, monkeypatch):
+@pytest.mark.positive
+def test_untracked_dirs_detected(tmp_project, setup_ki_utils):
     """Directories with code that are not tracked should appear in untracked."""
     # Create a new directory not in tracked_modules
     hidden_src = tmp_project / "untracked_module"
     hidden_src.mkdir()
     (hidden_src / "helper.py").write_text("x = 1\n", encoding="utf-8")
 
-    ac = _reload_audit(monkeypatch, tmp_project)
+    ac = setup_ki_utils
     tracked = [["src/module_a", "Module A", 5]]
     data = ac.build_coverage_matrix(str(tmp_project), tracked)
 
@@ -102,6 +107,7 @@ def test_untracked_dirs_detected(tmp_project, monkeypatch):
     assert "untracked_module" in untracked_names
 
 
+@pytest.mark.positive
 def test_priority_label():
     """priority_label returns correct emoji-prefixed strings."""
     import audit_coverage as ac
