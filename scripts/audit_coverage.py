@@ -59,17 +59,6 @@ def load_ki_files() -> list:
 
 # ─── Metrics ──────────────────────────────────────────────────────────────────
 
-def count_code_size_kb(dirpath: str) -> float:
-    total = 0
-    for root, dirs, files in os.walk(dirpath):
-        dirs[:] = [d for d in dirs if d not in EXCLUDED_DIRS]
-        for f in files:
-            if f.endswith((".py", ".ts", ".tsx", ".js", ".jsx")):
-                try:
-                    total += os.path.getsize(os.path.join(root, f))
-                except OSError:
-                    pass
-    return round(total / 1024, 1)
 
 
 def get_module_files(project_root: str, module_path: str) -> list:
@@ -179,13 +168,25 @@ def build_coverage_matrix(project_root: str, tracked_modules: list) -> dict:
         module_files = get_module_files(project_root, module_path)
         total_files = len(module_files)
 
-        if total_files == 0:
+        module_total_bytes = 0
+        module_covered_bytes = 0
+        for f in module_files:
+            abs_f = os.path.join(project_root, f)
+            try:
+                f_size = os.path.getsize(abs_f)
+                module_total_bytes += f_size
+                if is_path_covered(f, covered_paths):
+                    module_covered_bytes += f_size
+            except OSError:
+                continue
+
+        size_kb = round(module_total_bytes / 1024, 1)
+        covered_size_kb = round(module_covered_bytes / 1024, 1)
+
+        if module_total_bytes == 0:
             coverage_pct = 100.0 if os.path.exists(os.path.join(project_root, module_path)) else 0.0
-            size_kb = 0.0
         else:
-            covered_count = sum(1 for f in module_files if is_path_covered(f, covered_paths))
-            coverage_pct = (covered_count / total_files) * 100
-            size_kb = count_code_size_kb(os.path.join(project_root, module_path.replace("/", os.sep)))
+            coverage_pct = (module_covered_bytes / module_total_bytes) * 100
 
         has_ki = has_ki_coverage(module_path, ki_files, doc_config)
         ki_size = get_ki_size(project_root, module_path, doc_config)
@@ -210,6 +211,7 @@ def build_coverage_matrix(project_root: str, tracked_modules: list) -> dict:
             "label": label,
             "files": total_files,
             "size_kb": size_kb,
+            "covered_size_kb": covered_size_kb,
             "has_ki": has_ki,
             "ki_size": ki_size,
             "density": density,
@@ -259,18 +261,22 @@ def format_markdown(data: dict, generated_at: str) -> str:
             f"{r['size_kb']} | {r['density']} | {p} | {r['status']} |"
         )
 
-    covered = sum(1 for r in rows if r["has_ki"] and r["coverage_pct"] == 100)
-    total = len(rows)
-    progress = round(covered / total * 100) if total > 0 else 0
+    total_kb = sum(r["size_kb"] for r in rows)
+    covered_kb = sum(r["covered_size_kb"] for r in rows)
+    progress = round(covered_kb / total_kb * 100) if total_kb > 0 else 0
+    fully_covered_count = sum(1 for r in rows if r["coverage_pct"] == 100)
+    total_count = len(rows)
 
     lines += [
         "",
         "## Summary",
         "",
-        "| Status | Count |",
+        "| Metric | Value |",
         "|---|---|",
-        f"| ✅ Fully Covered | {covered} / {total} |",
-        f"| 📊 Progress | **{progress}%** |",
+        f"| ✅ Fully Covered Modules | {fully_covered_count} / {total_count} |",
+        f"| 📚 Total Code Size | {round(total_kb, 1)} KB |",
+        f"| 📖 Documented Code | {round(covered_kb, 1)} KB |",
+        f"| 📊 Full Progress | **{progress}%** |",
         "",
     ]
 
