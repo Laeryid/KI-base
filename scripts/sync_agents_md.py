@@ -51,7 +51,7 @@ def sync_agents_md():
 
     ki_items = doc_config.get("knowledge_items", {})
     new_rows = sorted(
-        f"| `{ki_name}` | {ki_info.get('description', 'No description')} |"
+        f"| `{ki_name}` | {ki_info.get('summary', ki_info.get('description', 'No description'))} |"
         for ki_name, ki_info in ki_items.items()
     )
 

@@ -30,14 +30,14 @@ def test_detect_venv_finds_scripts_python(tmp_path):
     fake_py.write_bytes(b"")  # empty fake executable
 
     result = init_ki_system.detect_venv(str(tmp_path))
-    assert str(fake_py) == result
+    assert Path(fake_py).as_posix() == result
 
 
 @pytest.mark.positive
 def test_detect_venv_falls_back_to_sys_executable(tmp_path):
     """detect_venv returns sys.executable when no venv is found."""
     result = init_ki_system.detect_venv(str(tmp_path))
-    assert result == sys.executable
+    assert result == Path(sys.executable).as_posix()
 
 
 # ─── update_gitignore ─────────────────────────────────────────────────────────

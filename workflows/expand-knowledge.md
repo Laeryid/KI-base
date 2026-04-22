@@ -107,7 +107,7 @@ Automatically identify and link related KIs based on code imports.
 
 // turbo
 ```powershell
-.venv\Scripts\python.exe .know/scripts/ki_dependency_analyzer.py --ki <KI_FILENAME.md>
+# Call via MCP: KnowledgeManager.analyze_dependencies(ki_name="KI_FILENAME.md", only_changed=false)
 ```
 
 ---

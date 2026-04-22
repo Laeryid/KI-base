@@ -15,6 +15,13 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Any
 from pathlib import Path
 
+try:
+    import ki_utils
+except ImportError:
+    import sys
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import ki_utils
+
 
 class KnowledgeEngine:
     def __init__(self, project_root: str, knowledge_root: str = ".know"):
@@ -175,3 +182,51 @@ class KnowledgeEngine:
                 "generated_at": datetime.utcnow().isoformat(),
             }
         }
+    def restore_mapping(self) -> str:
+        """Restores doc_config.json mapping by extracting paths from KI markdown files."""
+        import re
+        config = ki_utils.get_doc_config()
+        ki_items = config.get("knowledge_items", {})
+        
+        # Reset all dependencies first
+        for ki in ki_items:
+            ki_items[ki]["depends_on"] = []
+
+        knowledge_dir = self.project_root / ".know" / "knowledge"
+        if not knowledge_dir.exists():
+            return "Knowledge directory not found"
+
+        path_pattern = re.compile(r"`((?:app|ui|extensions|\.know|\.agent|scripts|tests)/[a-zA-Z0-9_\-\./]+)`")
+        
+        updated_count = 0
+        for filename in os.listdir(knowledge_dir):
+            if not filename.endswith(".md"):
+                continue
+                
+            ki_path = knowledge_dir / filename
+            with open(ki_path, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            mentioned = path_pattern.findall(content)
+            valid_paths = set()
+            for p in mentioned:
+                p = p.rstrip(".,")
+                if (self.project_root / p).exists():
+                    valid_paths.add(p.replace("\\", "/"))
+
+            if filename not in ki_items:
+                ki_items[filename] = {
+                    "path": f"knowledge/{filename}",
+                    "summary": "Auto-restored KI",
+                    "depends_on": []
+                }
+            
+            ki_items[filename]["depends_on"] = sorted(list(valid_paths))
+            updated_count += 1
+
+        config["knowledge_items"] = ki_items
+        
+        with open(ki_utils.get_doc_config_path(), "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
+        
+        return f"Restored mapping for {updated_count} KI files."

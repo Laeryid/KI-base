@@ -20,7 +20,7 @@ FORCED_EFFICIENCY_EN = """
 2. **Mandatory validation (Linter)**:
    After every save or modification of a `.py` file, you **MUST** check it for syntax errors:
    ```powershell
-   .venv\\Scripts\\python.exe -m py_compile <full_path_to_file.py>
+   .venv/Scripts/python.exe -m py_compile <full_path_to_file.py>
    ```
    You are not allowed to proceed to the next steps until you fix the found `SyntaxError`.
 
@@ -52,12 +52,12 @@ def detect_venv(root_dir):
         # Windows
         py_exe = Path(root_dir) / name / "Scripts" / "python.exe"
         if py_exe.exists():
-            return str(py_exe)
+            return str(py_exe.as_posix())
         # Linux / macOS
         py_unix = Path(root_dir) / name / "bin" / "python"
         if py_unix.exists():
-            return str(py_unix)
-    return sys.executable
+            return str(py_unix.as_posix())
+    return str(Path(sys.executable).as_posix())
 
 
 def update_gitignore(project_root, knowledge_root_name):
@@ -232,7 +232,13 @@ def init_ki_system():
             "workflows_dir": workflows_dir,
             "venv_python": venv_py
         },
-        "auto_resolve": True
+        "auto_resolve": True,
+        "knowledge_system": {
+            "mcp_server": {
+                "name": "KnowledgeManager",
+                "version": "1.1.0"
+            }
+        }
     }
 
     # If project root is NOT parent of knowledge root, save it as absolute or custom relative
@@ -281,13 +287,13 @@ def init_ki_system():
     print("="*60)
     print("Add the following entry to your 'mcpServers' config file:")
     print(f"\n\"knowledge-manager-{project_name}\": {{")
-    print(f"  \"command\": {json.dumps(str(venv_py))},")
+    print(f"  \"command\": {json.dumps(Path(venv_py).as_posix())},")
     print(f"  \"args\": [")
-    print(f"    {json.dumps(str(mcp_script))},")
+    print(f"    {json.dumps(Path(mcp_script).as_posix())},")
     print(f"    \"--config\",")
-    print(f"    {json.dumps(str(config_path))}")
+    print(f"    {json.dumps(Path(config_path).as_posix())}")
     print(f"  ],")
-    print(f"  \"cwd\": {json.dumps(str(project_root))}")
+    print(f"  \"cwd\": {json.dumps(Path(project_root).as_posix())}")
     print("}")
     print("-" * 60)
     print("[*] Initialization complete.")

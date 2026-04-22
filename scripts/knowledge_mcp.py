@@ -10,16 +10,16 @@ from typing import Dict, Any, List
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ki_utils
 
-def get_jail_dir(): return ki_utils.get_knowledge_root()
+def get_jail_dir(): return ki_utils.get_knowledge_root_strict()
 def get_python_exe(): return ki_utils.get_python_exe()
 def get_project_root(): return ki_utils.get_project_root()
 def get_doc_config(): return ki_utils.get_doc_config()
 
-def get_ms_cfg(): return get_doc_config().get("knowledge_system", {}).get("mcp_server", {})
-def get_tools_cfg(): return get_doc_config().get("knowledge_system", {}).get("tools", [])
+def get_ms_cfg(): return ki_utils.get_ki_cfg().get("knowledge_system", {}).get("mcp_server", {})
+def get_tools_cfg(): return ki_utils.get_ki_cfg().get("knowledge_system", {}).get("tools", [])
 
 
-def validate_path(rel_path: str, is_write: bool = False) -> str:
+def validate_path(rel_path: str, is_write: bool = False, forbidden_files: List[str] = None) -> str:
     jail = get_jail_dir()
     if not jail:
         raise PermissionError("Knowledge root not initialized.")
@@ -37,8 +37,121 @@ def validate_path(rel_path: str, is_write: bool = False) -> str:
             raise PermissionError(
                 f"Access Denied: Modifying executable or script files ({ext}) is forbidden."
             )
+        
+        if forbidden_files:
+            filename = os.path.basename(target).lower()
+            if filename in [f.lower() for f in forbidden_files]:
+                raise PermissionError(
+                    f"Access Denied: Direct overwrite of '{filename}' is forbidden. Use 'edit_know_file' for partial updates."
+                )
 
     return target
+
+
+# --- Tool Definitions ---
+
+DEFAULT_TOOLS = [
+    {
+        "name": "audit_coverage",
+        "description": "Run knowledge base coverage audit. Returns coverage matrix and recommendations.",
+        "method": "audit_coverage",
+        "args": []
+    },
+    {
+        "name": "sync_agents_md",
+        "description": "Synchronize AGENTS.md with current KI state.",
+        "method": "sync_agents_md",
+        "args": []
+    },
+    {
+        "name": "generate_dir_index",
+        "description": "Generate or update DIR_INDEX.md.",
+        "method": "generate_dir_index",
+        "args": []
+    },
+    {
+        "name": "check_changes",
+        "description": "Check changes in tracked project files.",
+        "method": "check_changes",
+        "args": []
+    },
+    {
+        "name": "restore_mapping",
+        "description": "Restore doc_config.json mapping from KI markdown files.",
+        "method": "restore_mapping",
+        "args": []
+    },
+    {
+        "name": "save_state",
+        "description": "Commit current hash state (doc_state.json).",
+        "method": "save_state",
+        "args": []
+    },
+    {
+        "name": "analyze_dependencies",
+        "description": "Analyze Python/TS imports to update 'Related KIs'.",
+        "method": "analyze_dependencies",
+        "args": [
+            {"name": "ki_name", "type": "string", "description": "Specific KI file to analyze"},
+            {"name": "only_changed", "type": "boolean", "description": "Analyze only modified Files/KIs"}
+        ]
+    },
+    {
+        "name": "find_unmapped_files",
+        "description": "Find files in a directory that are not covered by any KI.",
+        "method": "find_unmapped_files",
+        "args": [
+            {"name": "path", "type": "string", "description": "Relative path from project root to scan"}
+        ]
+    },
+    {
+        "name": "analyze_module",
+        "description": "Analyze directory stats with knowledge coverage context.",
+        "method": "analyze_module",
+        "args": [
+            {"name": "path", "type": "string", "description": "Path to analyze"},
+            {"name": "recursive", "type": "boolean", "description": "Depth of analysis"}
+        ]
+    },
+    {
+        "name": "read_know_file",
+        "description": "Read file inside .know.",
+        "method": "read_file",
+        "args": [
+            {"name": "rel_path", "type": "string", "description": "Path relative to .know/"}
+        ]
+    },
+    {
+        "name": "write_know_file",
+        "description": "Safely create or overwrite file inside .know.",
+        "method": "write_file",
+        "args": [
+            {"name": "rel_path", "type": "string", "description": "Path relative to .know/"},
+            {"name": "content", "type": "string", "description": "File content"}
+        ]
+    },
+    {
+        "name": "edit_know_file",
+        "description": "Safely edit file inside .know via text replacement.",
+        "method": "edit_file",
+        "args": [
+            {"name": "rel_path", "type": "string", "description": "Path relative to .know/"},
+            {"name": "old_text", "type": "string", "description": "Text to replace"},
+            {"name": "new_text", "type": "string", "description": "New text"}
+        ]
+    },
+    {
+        "name": "make_know_dir",
+        "description": "Create new directory inside .know.",
+        "method": "make_dir",
+        "args": [
+            {"name": "rel_path", "type": "string", "description": "Path relative to .know/"}
+        ]
+    }
+]
+
+def get_ms_cfg(): return ki_utils.get_ki_cfg().get("knowledge_system", {}).get("mcp_server", {})
+def get_tools_cfg(): return DEFAULT_TOOLS
 
 
 # --- Tool Implementations ---
@@ -86,6 +199,11 @@ def tool_analyze_module(args):
     return run_script("analyze_module.py", cmd_args)
 
 
+def tool_find_unmapped_files(args):
+    path = args.get("path", ".")
+    return run_script("find_unmapped_files.py", [path])
+
+
 def tool_analyze_dependencies(args):
     ki_name = args.get("ki_name")
     only_changed = args.get("only_changed", False)
@@ -115,6 +233,19 @@ def tool_check_changes(args):
     return {"content": [{"type": "text", "text": res}]}
 
 
+def tool_restore_mapping(args):
+    jail = get_jail_dir()
+    if not jail:
+        return {"isError": True, "content": [{"type": "text", "text": "Error: Knowledge system not active."}]}
+    sys.path.insert(0, os.path.join(jail, "scripts"))
+    from knowledge_engine import KnowledgeEngine
+    project_root = get_project_root()
+    knowledge_root_name = os.path.basename(jail)
+    ke = KnowledgeEngine(project_root, knowledge_root_name)
+    res = ke.restore_mapping()
+    return {"content": [{"type": "text", "text": res}]}
+
+
 def tool_save_state(args):
     jail = get_jail_dir()
     if not jail:
@@ -130,7 +261,7 @@ def tool_save_state(args):
 
 
 def tool_write_file(args):
-    path = validate_path(args.get("rel_path"), is_write=True)
+    path = validate_path(args.get("rel_path"), is_write=True, forbidden_files=["doc_config.json"])
     content = args.get("content", "")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
@@ -186,6 +317,7 @@ METHODS = {
     "sync_agents_md":    tool_sync_agents_md,
     "generate_dir_index": tool_generate_dir_index,
     "check_changes":     tool_check_changes,
+    "restore_mapping":   tool_restore_mapping,
     "save_state":        tool_save_state,
     "write_file":        tool_write_file,
     "edit_file":         tool_edit_file,
@@ -193,6 +325,7 @@ METHODS = {
     "read_file":         tool_read_file,
     "analyze_module":     tool_analyze_module,
     "analyze_dependencies": tool_analyze_dependencies,
+    "find_unmapped_files": tool_find_unmapped_files,
 }
 
 
@@ -230,12 +363,14 @@ def main():
         params  = request.get("params", {})
 
         if method == "initialize":
+            jail = get_jail_dir()
             send_response(req_id, {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {"tools": {}},
                 "serverInfo": {
                     "name":    get_ms_cfg().get("name",    "KnowledgeManager"),
-                    "version": get_ms_cfg().get("version", "1.0.0")
+                    "version": get_ms_cfg().get("version", "1.0.0"),
+                    "description": f"Serving knowledge from: {jail}"
                 }
             })
 

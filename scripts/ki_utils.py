@@ -15,14 +15,35 @@ from pathlib import Path
 def load_ki_config(config_default="ki_config.json"):
     """
     Loads configuration from ki_config.json.
-    Tries to find the path in the --ki-config argument or uses the default.
+    Tries to find the path in the --config argument, then in .know/, then in current dir.
     """
     parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("--config", type=str, default=config_default)
+    parser.add_argument("--config", type=str)
     args, _ = parser.parse_known_args()
 
-    config_path = args.config
-    if os.path.exists(config_path):
+    # Priority 1: --config argument
+    if args.config and os.path.exists(args.config):
+        config_path = args.config
+        if os.path.isdir(config_path):
+            config_path = os.path.join(config_path, config_default)
+    else:
+        # Priority 2: In .know/ directory relative to project root
+        # We try to find project root first
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        possible_locations = [
+            os.path.join(os.path.dirname(script_dir), config_default), # .know/ki_config.json
+            os.path.join(os.getcwd(), ".know", config_default),
+            os.path.join(os.getcwd(), config_default),
+            config_default
+        ]
+        
+        config_path = None
+        for loc in possible_locations:
+            if os.path.exists(loc):
+                config_path = loc
+                break
+
+    if config_path and os.path.exists(config_path):
         with open(config_path, "r", encoding="utf-8") as f:
             try:
                 return json.load(f)
@@ -31,50 +52,57 @@ def load_ki_config(config_default="ki_config.json"):
     return {}
 
 
-def resolve_knowledge_root(config_paths=None) -> str:
+def resolve_knowledge_root(config_paths=None, strict=False) -> str:
+    """
+    Determines the knowledge root folder (knowledge_root).
+    Priority:
+    1. CLI Argument --config (Mandatory if strict=True)
+    2. CWD (for MCP Isolation, ignored if strict=True)
+    3. Auto-detection based on the location of the ki_utils module itself
+    """
     config_paths = config_paths or {}
-
-    # 1. From CLI --config (if it looks like a ki_config.json)
+    
+    # 1. From CLI --config (explicit path is always priority)
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--config", type=str)
     args, _ = parser.parse_known_args()
     if args.config:
         cfg_path = os.path.abspath(args.config)
-        # If it's a file, we look for doc_config.json in its directory
         if os.path.isfile(cfg_path):
             parent = os.path.dirname(cfg_path)
             if os.path.exists(os.path.join(parent, "doc_config.json")):
                 return parent
-        # If it's a directory, check it
         if os.path.isdir(cfg_path) and os.path.exists(os.path.join(cfg_path, "doc_config.json")):
             return cfg_path
 
-    # 2. From config_paths
+    # If strict mode is on, we ONLY allow --config
+    if strict:
+        return ""
+
+    # 2. From CWD (MCP Isolation)
+    cwd = os.getcwd()
+    target_know = os.path.join(cwd, ".know")
+    if os.path.isdir(target_know) and os.path.exists(os.path.join(target_know, "doc_config.json")):
+        return target_know
+    if os.path.exists(os.path.join(cwd, "doc_config.json")):
+        return cwd
+
+    # 3. From config_paths (passed from ki_config.json)
     root = config_paths.get("knowledge_root")
     if root:
         abs_root = os.path.abspath(root)
         if os.path.exists(os.path.join(abs_root, "doc_config.json")):
             return abs_root
 
-    # 3. Parent folder of scripts/ (usual location)
+    # 4. Fallback: Parent folder of scripts/ (relative to script location)
     script_dir = os.path.dirname(os.path.abspath(__file__))
     parent_dir = os.path.dirname(script_dir)
     if os.path.exists(os.path.join(parent_dir, "doc_config.json")):
         return parent_dir
 
-    # 3. Same folder as this script
+    # 5. Fallback: Same folder as this script
     if os.path.exists(os.path.join(script_dir, "doc_config.json")):
         return script_dir
-
-    # 4. Search in CWD
-    for d in [".", ".."]: # Check current and parent (if script run from elsewhere)
-        target = os.path.join(os.path.abspath(d), ".know")
-        if os.path.isdir(target) and os.path.exists(os.path.join(target, "doc_config.json")):
-            return target
-        
-        # Or look for doc_config.json in current folder itself
-        if os.path.exists(os.path.join(os.path.abspath(d), "doc_config.json")):
-            return os.path.abspath(d)
 
     return ""
 
@@ -116,6 +144,13 @@ def get_knowledge_root():
     if "knowledge_root" not in _CACHE:
         _CACHE["knowledge_root"] = resolve_knowledge_root(get_paths())
     return _CACHE["knowledge_root"]
+
+
+def get_knowledge_root_strict():
+    """Returns knowledge root only if explicitly provided via --config."""
+    if "knowledge_root_strict" not in _CACHE:
+        _CACHE["knowledge_root_strict"] = resolve_knowledge_root(get_paths(), strict=True)
+    return _CACHE["knowledge_root_strict"]
 
 
 def get_project_root():

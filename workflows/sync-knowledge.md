@@ -45,7 +45,7 @@ Automatically identify and update inter-KI links for changed files.
 
 // turbo
 ```powershell
-.venv\Scripts\python.exe .know/scripts/ki_dependency_analyzer.py --changed
+# Call via MCP: KnowledgeManager.analyze_dependencies(ki_name="all", only_changed=true)
 ```
 
 ## Step 3 — Update DIR_INDEX.md
