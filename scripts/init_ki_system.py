@@ -183,6 +183,53 @@ def find_knowledge_root():
     return current
 
 
+def apply_path_replacements(knowledge_root, old_root, new_root, old_agent, new_agent):
+    """Recursively replaces path strings in doc_config.json and knowledge/*.md files."""
+    files_to_process = []
+    
+    # Add doc_config.json
+    doc_config = Path(knowledge_root) / "doc_config.json"
+    if doc_config.exists():
+        files_to_process.append(doc_config)
+    
+    # Add all .md files in knowledge/
+    know_dir = Path(knowledge_root) / "knowledge"
+    if know_dir.exists():
+        files_to_process.extend(know_dir.glob("*.md"))
+    
+    if not files_to_process:
+        return
+
+    print(f"[*] Applying path replacements in {len(files_to_process)} files...")
+    
+    # Prepare replacement pairs
+    replacements = []
+    if old_root != new_root:
+        replacements.append((old_root, new_root))
+    if old_agent != new_agent:
+        replacements.append((old_agent, new_agent))
+        
+    if not replacements:
+        print("[~] No path changes detected. Skipping replacements.")
+        return
+
+    for file_path in files_to_process:
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            
+            original_content = content
+            for old_str, new_str in replacements:
+                content = content.replace(old_str, new_str)
+            
+            if content != original_content:
+                with open(file_path, "w", encoding="utf-8") as f:
+                    f.write(content)
+                print(f"[+] Updated: {file_path.name}")
+        except Exception as e:
+            print(f"[!] Failed to update {file_path.name}: {e}")
+
+
 def init_ki_system():
     print("[*] Initializing Knowledge Infrastructure...")
 
@@ -282,6 +329,16 @@ def init_ki_system():
 
     # Update .gitignore in project root
     update_gitignore(project_root, knowledge_root_name)
+
+    # Apply dynamic path replacements in doc_config and KIs
+    # Default values to replace from KI_base are usually ".know" and "AGENTS.md"
+    apply_path_replacements(
+        knowledge_root,
+        old_root=".know",
+        new_root=knowledge_root_name,
+        old_agent="AGENTS.md",
+        new_agent=agent_file
+    )
 
     if not (knowledge_root / "doc_config.json").exists():
         print(f"[!] Warning: doc_config.json not found in {knowledge_root}.")

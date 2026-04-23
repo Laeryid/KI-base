@@ -2,55 +2,49 @@
 # KI: Knowledge Management Infrastructure (Core)
 
 ## Overview
-Ядро системы управления знаниями Pocket Team. Обеспечивает техническую инициализацию, расчет хешей, аудит покрытия, генерацию индексов и интеграцию через MCP.
+The core of the Pocket Team knowledge management system. Provides technical initialization, hash calculation, coverage auditing, index generation, and MCP integration.
 
 ## Key Components
 | Component | File | Purpose |
 |---|---|---|
-| **System Init** | `.know/scripts/init_ki_system.py` | Первичная настройка: хард-линки воркфлоу, обновление `.gitignore` и генерация MCP-конфига. |
-| **Knowledge Engine** | `.know/scripts/knowledge_engine.py` | Техническое ядро: расчет SHA-256 хешей, фильтрация по `mtime` и маппинг зависимостей. |
-| **KI Utils** | `.know/scripts/ki_utils.py` | Общие утилиты: разрешение путей проекта и базы знаний, загрузка конфигураций. |
-| **Audit Provider** | `.know/scripts/audit_coverage.py` | Сбор метрик Density (плотность) и Complexity (сложность). |
-| **Dependency Analyzer** | `.know/scripts/ki_dependency_analyzer.py` | Анализ связей между KI на основе импортов в коде. |
-| **Module Analyzer** | `.know/scripts/analyze_module.py` | Глубокий анализ покрытия конкретной директории или модуля. |
-| **Unmapped Finder** | `.know/scripts/find_unmapped_files.py` | Поиск файлов проекта, не привязанных к KI в `doc_config.json`. |
-| **Index Generator** | `.know/scripts/generate_dir_index.py` | Автоматическая сборка `DIR_INDEX.md` на основе структуры проекта. |
-| **Agent Sync** | `.know/scripts/sync_agents_md.py` | Синхронизация правил и контекста в `AGENTS.md`. |
-| **Knowledge MCP** | `.know/scripts/knowledge_mcp.py` | Интерфейс взаимодействия через протокол MCP с поддержкой "песочницы". |
+| **System Init** | `.know/scripts/init_ki_system.py` | Primary setup: workflow hard links, `.gitignore` updates, and MCP config generation. |
+| **Knowledge Engine** | `.know/scripts/knowledge_engine.py` | Technical core: SHA-256 hash calculation, `mtime` filtering, and dependency mapping. |
+| **KI Utils** | `.know/scripts/ki_utils.py` | Common utilities: project and knowledge base path resolution, configuration loading. |
+| **Audit Provider** | `.know/scripts/audit_coverage.py` | Metric collection: Density and Complexity. |
+| **Dependency Analyzer** | `.know/scripts/ki_dependency_analyzer.py` | Analysis of links between KIs based on imports in code. |
+| **Module Analyzer** | `.know/scripts/analyze_module.py` | Deep coverage analysis of a specific directory or module. |
+| **Unmapped Finder** | `.know/scripts/find_unmapped_files.py` | Search for project files not linked to a KI in `doc_config.json`. |
+| **Index Generator** | `.know/scripts/generate_dir_index.py` | Automatic assembly of `DIR_INDEX.md` based on project structure. |
+| **Agent Sync** | `.know/scripts/sync_agents_md.py` | Synchronization of rules and context in `AGENTS.md`. |
+| **Knowledge MCP** | `.know/scripts/knowledge_mcp.py` | Interface for interaction via the MCP protocol with "sandbox" support. |
 
 ## Knowledge MCP Tools
-Система предоставляет следующие инструменты через MCP (KnowledgeManager):
-- **audit_coverage**: Запуск полного аудита.
-- **sync_agents_md**: Обновление инструкций для агентов.
-- **generate_dir_index**: Пересборка индекса файлов.
-- **check_changes**: Проверка изменений в отслеживаемых файлах.
-- **save_state**: Фиксация текущего состояния хешей (commit).
-- **read_know_file / write_know_file**: Безопасные операции с файлами внутри `.know`.
-- **edit_know_file**: Атомарное редактирование (текстовая замена) внутри `.know`.
-- **analyze_dependencies**: Автоматическое связывание KI по коду.
+The system provides the following tools via MCP (KnowledgeManager):
+- **audit_coverage**: Runs a full audit.
+- **sync_agents_md**: Updates instructions for agents.
+- **generate_dir_index**: Rebuilds the file index.
+- **check_changes**: Checks for changes in tracked files.
+- **save_state**: Commits current hash states.
+- **read_know_file / write_know_file**: Safe file operations within `.know`.
+- **edit_know_file**: Atomic editing (text replacement) within `.know`.
+- **analyze_dependencies**: Automated linking of KIs based on code.
 
 ## Technical Details
-- **Path Resolution Logic**: Утилита `ki_utils.py` ищет корень базы знаний (`knowledge_root`) в следующем порядке:
-    1. Аргумент командной строки `--config`.
-    2. Поле `knowledge_root` в `ki_config.json`.
-    3. Родительская директория скрипта (стандарт для `.know/scripts/`).
-    4. Поиск папки `.know` в текущей и родительской директориях.
-- **Security Sandboxing**: MCP-сервер ограничивает доступ только директорией `.know`. Попытки выйти за пределы (`..` или абсолютные пути) блокируются в `validate_path`.
-- **Execution Protection**: Запрещено изменять исполняемые файлы (`.py`, `.exe`, `.bat`, `.sh` и др.) через MCP-инструменты записи.
-- **Config Integrity**: Прямая перезапись `doc_config.json` через `write_know_file` запрещена. Разрешено только частичное редактирование (`edit_know_file`) для предотвращения потери структуры базы знаний.
-- **mtime Optimization**: Для ускорения аудита система сначала проверяет время изменения файла (`mtime`). SHA-256 хеш пересчитывается только если файл физически изменился на диске.
-- **Forced Efficiency Injection**: Скрипт `init_ki_system.py` автоматически вставляет в `AGENTS.md` критические правила: блоки планирования (Affected layers), линтинг перед сохранением и запрет на каскадную асинхронность.
+- **Path Resolution Logic**: The `ki_utils.py` utility searches for the knowledge base root (`knowledge_root`) in the following order:
+    1. Command line argument `--config`.
+    2. `knowledge_root` field in `ki_config.json`.
+    3. Script's parent directory (standard for `.know/scripts/`).
+    4. Search for the `.know` folder in current and parent directories.
+- **Security Sandboxing**: The MCP server restricts access to the `.know` directory only. Attempts to go outside (`..` or absolute paths) are blocked in `validate_path`.
+- **Execution Protection**: Modifying executable files (`.py`, `.exe`, `.bat`, `.sh`, etc.) via MCP write tools is prohibited.
+- **Config Integrity**: Direct overwrite of `doc_config.json` via `write_know_file` is prohibited. Only partial editing (`edit_know_file`) is allowed to prevent loss of knowledge base structure.
+- **mtime Optimization**: To speed up auditing, the system first checks the file modification time (`mtime`). SHA-256 hash is recalculated only if the file has physically changed on disk.
+- **Forced Efficiency Injection**: The `init_ki_system.py` script automatically inserts critical rules into `AGENTS.md`: planning blocks (Affected layers), linting before saving, and prohibition of cascading asynchrony.
 
 ## Common Pitfalls
-- **Stale State**: Если `doc_state.json` поврежден, возможны ложные срабатывания аудита. Решение: `save_state` для принудительной синхронизации хешей.
-- **Critical Config Loss**: Недопустима полная перезапись `doc_config.json` инструментами, не имеющими логики валидации структуры (как `write_know_file`). Это приведет к потере всех метаданных и связей. Используйте только `edit_know_file` или специализированные скрипты.
-- **Python Path**: Скрипты инициализации пытаются автоматически определить `.venv`. Если в системе несколько окружений, убедитесь, что в `ki_config.json` прописан верный `venv_python`.
-- **Encoding Issues**: На Windows скрипты используют принудительную кодировку UTF-8 в `sys.stdin/stdout`, но внешние вызовы (например, `find_unmapped_files`) могут столкнуться с ограничениями системной кодовой страницы при наличии кириллицы в именах файлов.
-
-
-
-
-
+- **Stale State**: If `doc_state.json` is corrupted, false audit positives may occur. Solution: use `save_state` for forced hash synchronization.
+- **Critical Config Loss**: Complete overwrite of `doc_config.json` by tools without structure validation logic (like `write_know_file`) is unacceptable. This will lead to the loss of all metadata and links. Use only `edit_know_file` or specialized scripts.
+- **Python Path**: Initialization scripts attempt to automatically detect `.venv`. If multiple environments exist, ensure the correct `venv_python` is set in `ki_config.json`.
+- **Encoding Issues**: On Windows, scripts use forced UTF-8 encoding in `sys.stdin/stdout`, but external calls (e.g., `find_unmapped_files`) may encounter system code page limitations when non-ASCII characters are present in filenames.
 
 ## Related KIs
-

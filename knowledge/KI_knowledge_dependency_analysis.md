@@ -2,38 +2,33 @@
 # KI: Knowledge Dependency Analysis
 
 ## Overview
-Автоматизированный инструмент для поддержания связей между Knowledge Items (KI) на основе статического анализа импортов в исходном коде проекта. Инструмент сопоставляет импортируемые файлы с соответствующими KI через конфигурацию `doc_config.json` и обновляет секцию "Related KIs".
+An automated tool for maintaining links between Knowledge Items (KI) based on static analysis of imports in the project's source code. The tool matches imported files with corresponding KIs via the `doc_config.json` configuration and updates the "Related KIs" section.
 
 ## Key Components
 | Class / Function | File | Purpose |
 |---|---|---|
-| `KIDependencyAnalyzer` | `.know/scripts/ki_dependency_analyzer.py` | Основной класс, координирующий сбор импортов и обновление Markdown-файлов. |
-| `extract_python_imports` | `.know/scripts/ki_dependency_analyzer.py` | Анализ Python-файлов с использованием AST (Abstract Syntax Tree) для точного извлечения импортов. |
-| `extract_ts_imports` | `.know/scripts/ki_dependency_analyzer.py` | Анализ TypeScript/TSX файлов с использованием регулярных выражений для поиска путей в `import/from`. |
-| `resolve_import` | `.know/scripts/ki_dependency_analyzer.py` | Разрешение путей импортов (абсолютных и относительных) в относительные пути внутри проекта. |
-
-
-
-
-
+| `KIDependencyAnalyzer` | `.know/scripts/ki_dependency_analyzer.py` | Main class coordinating import collection and Markdown file updates. |
+| `extract_python_imports` | `.know/scripts/ki_dependency_analyzer.py` | Python file analysis using AST (Abstract Syntax Tree) for accurate import extraction. |
+| `extract_ts_imports` | `.know/scripts/ki_dependency_analyzer.py` | TypeScript/TSX file analysis using regular expressions to find paths in `import/from`. |
+| `resolve_import` | `.know/scripts/ki_dependency_analyzer.py` | Resolution of import paths (absolute and relative) into relative paths within the project. |
 
 ## Related KIs
 
 ## Non-obvious Details
-- **Методы анализа**: 
-    - Для **Python** используется парсинг в AST, что позволяет игнорировать закомментированный код и корректно обрабатывать `from ... import ...`.
-    - Для **TypeScript** используется Regex-поиск, ориентированный на строковые литералы путей.
-- **Алгоритм разрешения (Resolution)**:
-    - **Абсолютные импорты**: Сверяются со списком `tracked_modules` в `doc_config.json`. Если импорт начинается с имени одного из этих модулей (например, `app`), он считается внутренним.
-    - **Относительные импорты**: Поддерживается разрешение "точек" (`.`, `..`) относительно расположения текущего файла.
-- **Маппинг (Reverse Index)**: Инструмент строит обратный индекс из `doc_config.json`, связывая каждый файл в `depends_on` с именем KI. Если файл импортирован, но не числится ни в одном `depends_on`, связь не будет создана.
-- **Обновление Markdown**:
-    - Инструмент ищет секцию `## Related KIs`. Если она найдена, она **перезаписывается целиком**.
-    - Если секция отсутствует, она вставляется перед разделами "Non-obvious Details" или "Architecture".
-    - Формат записи: `- [[KI_name.md]] (via `path/to/imported/file.py`)`.
+- **Analysis Methods**: 
+    - For **Python**, AST parsing is used, which allows ignoring commented-out code and correctly handling `from ... import ...`.
+    - For **TypeScript**, Regex-based search is used, focusing on string literals of paths.
+- **Resolution Algorithm**:
+    - **Absolute Imports**: Checked against the `tracked_modules` list in `doc_config.json`. If an import starts with the name of one of these modules (e.g., `app`), it is considered internal.
+    - **Relative Imports**: Supports resolution of "dots" (`.`, `..`) relative to the current file's location.
+- **Mapping (Reverse Index)**: The tool builds a reverse index from `doc_config.json`, linking each file in `depends_on` to a KI name. If a file is imported but not listed in any `depends_on`, no link will be created.
+- **Markdown Update**:
+    - The tool searches for the `## Related KIs` section. If found, it is **completely overwritten**.
+    - If the section is missing, it is inserted before the "Non-obvious Details" or "Architecture" sections.
+    - Entry format: `- [[KI_name.md]] (via `path/to/imported/file.py`)`.
 
 ## Common Pitfalls
-- **Manual Edits Loss**: Любые ручные изменения внутри блока `## Related KIs` будут **удалены** при следующем запуске анализатора. 
-- **Missing Extensions**: Если импорт ссылается на файл или директорию, которые не зарегистрированы в `doc_config.json`, анализатор проигнорирует эту связь.
-- **Circular Dependencies**: Анализатор не создает связь KI с самим собой, но корректно отображает циклы между разными KI.
-- **Docker-only Files**: Файлы, находящиеся внутри Docker-контекста и не прописанные в `doc_config.json`, не участвуют в анализе зависимостей.
+- **Manual Edits Loss**: Any manual changes inside the `## Related KIs` block will be **removed** during the next analyzer run. 
+- **Missing Extensions**: If an import refers to a file or directory not registered in `doc_config.json`, the analyzer will ignore this link.
+- **Circular Dependencies**: The analyzer does not create a link from a KI to itself but correctly displays cycles between different KIs.
+- **Docker-only Files**: Files located inside the Docker context and not listed in `doc_config.json` do not participate in dependency analysis.

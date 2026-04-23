@@ -2,27 +2,21 @@
 # KI: Knowledge System Core Testing
 
 ## Overview
-Тестирование низкоуровневых механизмов системы знаний: движка (Engine), безопасности MCP-прокси и базовых утилит.
+Testing of low-level knowledge system mechanisms: the Engine, MCP proxy security, and base utilities.
 
 ## Key Components
 | File | Purpose |
 |---|---|
-| `.know/tests/conftest.py` | Инфраструктура тестов: фикстура `tmp_project` для создания изолированной среды `.know`. |
-| `.know/tests/test_knowledge_engine.py` | Валидация базового цикла: сканирование -> расчет хешей -> обнаружение изменений. |
-| `.know/tests/test_knowledge_engine_extra.py` | Расширенные тесты движка: обработка скрытых файлов, прав доступа и больших объемов данных. |
-| `.know/tests/test_mcp_security.py` | Тестирование защиты от выхода за пределы `.know` (Path Traversal) и прав на запись. |
-| `.know/tests/test_mcp_arguments.py` | Проверка валидации аргументов MCP-инструментов и обработки некорректных типов данных. |
-| `.know/tests/test_edge_cases.py` | Тестирование стабильности при отсутствии `doc_config.json`, пустых директориях и поврежденных индексах. |
-| `.know/tests/test_ki_utils.py` | Тесты вспомогательных функций для парсинга markdown и работы с путями. |
+| `.know/tests/conftest.py` | Test infrastructure: `tmp_project` fixture for creating an isolated `.know` environment. |
+| `.know/tests/test_knowledge_engine.py` | Validation of the base cycle: scanning -> hash calculation -> change detection. |
+| `.know/tests/test_knowledge_engine_extra.py` | Extended engine tests: handling of hidden files, permissions, and large data volumes. |
+| `.know/tests/test_mcp_security.py` | Testing protection against exiting the `.know` boundary (Path Traversal) and write permissions. |
+| `.know/tests/test_mcp_arguments.py` | Validation of MCP tool arguments and handling of incorrect data types. |
+| `.know/tests/test_edge_cases.py` | Stability testing in the absence of `doc_config.json`, empty directories, and corrupted indexes. |
+| `.know/tests/test_ki_utils.py` | Tests for auxiliary functions related to markdown parsing and path operations. |
 
 ## Non-obvious Details
-- **Path Isolation**: Тесты принудительно переопределяют путь к `.know`, чтобы не затронуть реальную базу знаний проекта.
-- **Fixture Lifecycle**: Фикстура `tmp_project` автоматически очищается после каждого теста, предотвращая накопление "грязного" состояния.
-
-
-
-
-
+- **Path Isolation**: Tests explicitly override the `.know` path to avoid affecting the real project knowledge base.
+- **Fixture Lifecycle**: The `tmp_project` fixture is automatically cleaned up after each test, preventing the accumulation of "dirty" state.
 
 ## Related KIs
-

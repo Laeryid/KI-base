@@ -2,30 +2,23 @@
 # KI: Knowledge Management Workflows
 
 ## Overview
-Описание стандартных рабочих процессов (workflows) для поддержания и расширения базы знаний Pocket Team. Эти процессы автоматизируют рутинные задачи и обеспечивают консистентность документации.
+Description of standard workflows for maintaining and expanding the Pocket Team knowledge base. These processes automate routine tasks and ensure documentation consistency.
 
 ## Key Components
 
 | Workflow | File | Purpose |
 |---|---|---|
-| `/expand-knowledge` | `.know/workflows/expand-knowledge.md` | Интеративное расширение базы знаний для покрытия "белых пятен" и уточнения деталей. |
-| `/sync-knowledge` | `.know/workflows/sync-knowledge.md` | Синхронизация индексов, обновление зависимостей и актуализация инструкций агентов. |
+| `/expand-knowledge` | `.know/workflows/expand-knowledge.md` | Iterative expansion of the knowledge base to cover "blind spots" and refine details. |
+| `/sync-knowledge` | `.know/workflows/sync-knowledge.md` | Synchronization of indexes, update of dependencies, and actualization of agent instructions. |
 
 ## Operational Details
-- **Hard Links Architecture**: Шаблоны воркфлоу хранятся в `.know/workflows/`. При инициализации системы скрипт `init_ki_system.py` создает жесткие ссылки (hard links) на эти файлы в директории `.agent/workflows/`. Это позволяет использовать их как исполняемые воркфлоу, сохраняя централизованное управление в базе знаний.
+- **Hard Links Architecture**: Workflow templates are stored in `.know/workflows/`. During system initialization, the `init_ki_system.py` script creates hard links to these files in the `.agent/workflows/` directory. This allows them to be used as executable workflows while maintaining centralized management within the knowledge base.
 - **Workflow Triggers**: 
-    - Используйте `/expand-knowledge` при обнаружении модулей с низкой плотностью знаний (метка ❄️) или отсутствием KI (метка 🔴).
-    - Используйте `/sync-knowledge` после любых изменений в структуре проекта или при добавлении новых инструментов.
+    - Use `/expand-knowledge` when modules with low knowledge density (❄️ icon) or missing KIs (🔴 icon) are detected.
+    - Use `/sync-knowledge` after any changes in project structure or when adding new tools.
 
 ## Common Pitfalls
-- **Broken Links (Windows)**: При перемещении проекта между дисками жесткие ссылки могут превратиться в обычные копии или сломаться. Решение: перезапустить `init_ki_system.py`.
-- **Manual Edits**: Изменения, внесенные напрямую в `.agent/workflows/`, могут быть перезаписаны или не попасть в базу знаний. Всегда редактируйте исходные файлы в `.know/workflows/`.
-
-
-
-
-
-
+- **Broken Links (Windows)**: When moving the project between drives, hard links may turn into regular copies or break. Solution: rerun `init_ki_system.py`.
+- **Manual Edits**: Changes made directly in `.agent/workflows/` may be overwritten or fail to be included in the knowledge base. Always edit the source files in `.know/workflows/`.
 
 ## Related KIs
-
