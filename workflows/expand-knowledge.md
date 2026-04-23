@@ -126,6 +126,22 @@ Automatically identify and link related KIs based on code imports.
 # Call via MCP: KnowledgeManager.sync_agents_md()
 ```
 
+## Step 8 - Final Run Coverage Audit
+
+// turbo
+```powershell
+# Call via MCP: KnowledgeManager.audit_coverage()
+```
+
+Updates file  coverage_matrix.md.
+
+## Step 9 — Git Checkpoint
+
+Finalize the expansion by creating a git snapshot of the knowledge state.
+
+// turbo
+`KnowledgeManager.git_checkpoint(message="Expand knowledge base: new KI registration")`
+
 ---
 
 ## Readiness Criteria (Checklist)

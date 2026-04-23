@@ -5,6 +5,7 @@ import argparse
 import secrets
 import string
 import re
+import subprocess
 from pathlib import Path
 
 # Fixed English sections injected into AGENTS.md during initialization
@@ -204,6 +205,16 @@ def init_ki_system():
     print(f"[+] Project root: {project_root}")
 
     os.chdir(project_root)
+
+    if not (project_root / ".git").exists():
+        print("[+] .git repository not found. Initializing...")
+        try:
+            subprocess.run(["git", "init"], check=True, capture_output=True, text=True)
+            print("[+] Git repository initialized.")
+        except FileNotFoundError:
+            print("[!] 'git' command not found. Please install Git and run 'git init' manually.")
+        except subprocess.CalledProcessError as e:
+            print(f"[!] Failed to initialize git repository: {e.stderr}")
 
     knowledge_root_rel = os.path.relpath(knowledge_root, project_root)
     knowledge_root_name = args.root_name or knowledge_root_rel

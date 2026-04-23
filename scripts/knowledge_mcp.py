@@ -97,6 +97,12 @@ DEFAULT_TOOLS = [
         ]
     },
     {
+        "name": "analyze_all_dependencies",
+        "description": "Analyze all KIs in doc_config.json and update their 'Related KIs'.",
+        "method": "analyze_all_dependencies",
+        "args": []
+    },
+    {
         "name": "find_unmapped_files",
         "description": "Find files in a directory that are not covered by any KI.",
         "method": "find_unmapped_files",
@@ -146,6 +152,23 @@ DEFAULT_TOOLS = [
         "method": "make_dir",
         "args": [
             {"name": "rel_path", "type": "string", "description": "Path relative to .know/"}
+        ]
+    },
+    {
+        "name": "git_checkpoint",
+        "description": "Save current knowledge state (doc_config and KIs) to Git.",
+        "method": "git_checkpoint",
+        "args": [
+            {"name": "message", "type": "string", "description": "Commit message"}
+        ]
+    },
+    {
+        "name": "git_restore",
+        "description": "Restore knowledge files from Git.",
+        "method": "git_restore",
+        "args": [
+            {"name": "target", "type": "string", "description": "Path to restore (e.g. 'doc_config.json' or '.')"},
+            {"name": "revision", "type": "string", "description": "Git revision (e.g. 'HEAD', 'HEAD~1', or commit hash)"}
         ]
     }
 ]
@@ -217,6 +240,10 @@ def tool_analyze_dependencies(args):
         return {"isError": True, "content": [{"type": "text", "text": "Error: Either 'ki_name' or 'only_changed' must be provided."}]}
     
     return run_script("ki_dependency_analyzer.py", cmd_args)
+
+
+def tool_analyze_all_dependencies(args):
+    return run_script("ki_dependency_analyzer.py", ["--all"])
 
 
 def tool_check_changes(args):
@@ -298,6 +325,73 @@ def tool_make_dir(args):
     return {"content": [{"type": "text", "text": f"Directory created: {args.get('rel_path')}"}]}
 
 
+def tool_git_checkpoint(args):
+    user_msg = args.get("message", "Knowledge checkpoint")
+    message = f"[AI] {user_msg}"
+    
+    jail = get_jail_dir()
+    if not jail:
+        return {"isError": True, "content": [{"type": "text", "text": "Error: Knowledge root not found."}]}
+    
+    project_root = get_project_root()
+    know_rel = os.path.relpath(jail, project_root)
+    
+    # We stage allowed files (knowledge, decisions, doc_config.json)
+    # Using relative paths is more reliable for Git across different OS
+    targets = [
+        os.path.join(know_rel, "doc_config.json"),
+        os.path.join(know_rel, "knowledge"),
+        os.path.join(know_rel, "decisions")
+    ]
+    
+    try:
+        # 1. Add files (only if they exist)
+        for t in targets:
+            abs_t = os.path.join(project_root, t)
+            if os.path.exists(abs_t):
+                subprocess.run(["git", "add", t], cwd=project_root, check=True, capture_output=True)
+        
+        # 2. Check if there are changes to commit
+        status = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=project_root)
+        if status.returncode == 0:
+            return {"content": [{"type": "text", "text": "No changes to checkpoint."}]}
+
+        # 3. Commit with specific author metadata
+        result = subprocess.run(
+            ["git", "commit", "-m", message, "--author=Antigravity AI <ai-assistant@ki.base>"], 
+            cwd=project_root, 
+            capture_output=True, text=True, encoding="utf-8"
+        )
+        return {"content": [{"type": "text", "text": f"Checkpoint created: {message}\n{result.stdout}"}]}
+    except subprocess.CalledProcessError as e:
+        stderr = e.stderr if isinstance(e.stderr, str) else str(e.stderr)
+        return {"isError": True, "content": [{"type": "text", "text": f"Git Error: {stderr}"}]}
+
+
+def tool_git_restore(args):
+    target_rel = args.get("target", "doc_config.json")
+    revision = args.get("revision", "HEAD")
+    jail = get_jail_dir()
+    
+    # Validate target is inside .know
+    try:
+        target_abs = validate_path(target_rel)
+    except PermissionError as e:
+        return {"isError": True, "content": [{"type": "text", "text": str(e)}]}
+
+    try:
+        # Use git restore (modern) or git checkout (legacy/compatible)
+        # We use 'git checkout' as it's more universal across git versions
+        result = subprocess.run(
+            ["git", "checkout", revision, "--", target_abs],
+            cwd=get_project_root(),
+            capture_output=True, text=True, encoding="utf-8"
+        )
+        return {"content": [{"type": "text", "text": f"Restored '{target_rel}' from {revision}.\n{result.stdout}"}]}
+    except subprocess.CalledProcessError as e:
+        return {"isError": True, "content": [{"type": "text", "text": f"Git Error: {e.stderr}"}]}
+
+
 def tool_read_file(args):
     path = validate_path(args.get("rel_path"))
     if not os.path.exists(path):
@@ -325,7 +419,10 @@ METHODS = {
     "read_file":         tool_read_file,
     "analyze_module":     tool_analyze_module,
     "analyze_dependencies": tool_analyze_dependencies,
+    "analyze_all_dependencies": tool_analyze_all_dependencies,
     "find_unmapped_files": tool_find_unmapped_files,
+    "git_checkpoint": tool_git_checkpoint,
+    "git_restore": tool_git_restore,
 }
 
 

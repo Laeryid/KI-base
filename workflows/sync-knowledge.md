@@ -39,15 +39,6 @@ After updating an artifact, add the following line to the file header:
 <!-- last_verified: YYYY-MM-DD -->
 ```
 
-## Step 2.1 — Analyze Dependencies
-
-Automatically identify and update inter-KI links for changed files.
-
-// turbo
-```powershell
-# Call via MCP: KnowledgeManager.analyze_dependencies(ki_name="all", only_changed=true)
-```
-
 ## Step 3 — Update DIR_INDEX.md
 
 // turbo
@@ -64,3 +55,17 @@ If the script hasn't been created yet, generate `DIR_INDEX.md` manually: project
 
 // turbo
 `KnowledgeManager.save_state()`
+
+## Step 6 — Global Dependency Update
+
+Final pass to ensure all inter-KI links are consistent across the entire knowledge base.
+
+// turbo
+`KnowledgeManager.analyze_all_dependencies()`
+
+## Step 7 — Git Checkpoint
+
+Finalize the synchronization by creating a git snapshot of the knowledge state.
+
+// turbo
+`KnowledgeManager.git_checkpoint(message="Sync knowledge system state")`

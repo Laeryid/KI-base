@@ -196,6 +196,7 @@ def main():
     parser = argparse.ArgumentParser(description="KI Dependency Analyzer (Internal Tool)")
     parser.add_argument("--ki", help="Analyze a specific KI file (e.g. KI_orchestration.md)")
     parser.add_argument("--changed", action="store_true", help="Analyze KIs affected by current modifications")
+    parser.add_argument("--all", action="store_true", help="Analyze all KIs in doc_config.json")
     args = parser.parse_args()
 
     analyzer = KIDependencyAnalyzer()
@@ -203,6 +204,12 @@ def main():
     if args.ki:
         relations = analyzer.analyze_ki(args.ki)
         analyzer.update_ki(args.ki, relations)
+    elif args.all:
+        ki_items = analyzer.doc_config.get("knowledge_items", {})
+        print(f"Analyzing all {len(ki_items)} KIs...")
+        for ki_name in ki_items.keys():
+            relations = analyzer.analyze_ki(ki_name)
+            analyzer.update_ki(ki_name, relations)
     elif args.changed:
         engine = KnowledgeEngine(analyzer.project_root)
         modified, new, _ = engine.check_for_changes()

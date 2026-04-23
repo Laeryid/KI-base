@@ -1,24 +1,836 @@
 {
-    "coverage_settings": {
-        "tracked_modules": [
-            ["src", "Source Code", 10],
-            ["tests", "Tests", 5],
-            [".know", "Knowledge Infrastructure", 8]
-        ],
-        "thresholds": {
-            "density": 50.0,
-            "complexity": 10
-        }
+  "coverage_settings": {
+    "tracked_modules": [
+      [
+        ".know",
+        "Knowledge Infrastructure",
+        8
+      ]
+    ],
+    "thresholds": {
+      "density": 50.0,
+      "complexity": 10
+    }
+  },
+  "knowledge_items": {
+    "KI_knowledge_testing_scripts.md": {
+      "summary": "Tests for scripts: init, sync, and utils.",
+      "covers": [
+        "Tests"
+      ],
+      "depends_on": [
+        ".know/tests/test_init_ki_system.py",
+        ".know/tests/test_sync_and_add_ki.py",
+        ".know/tests/test_ki_utils.py",
+        ".know/scripts/init_ki_system.py",
+        ".know/scripts/sync_agents_md.py",
+        ".know/scripts/add_ki_to_config.py",
+        ".know/scripts/ki_utils.py"
+      ]
     },
-    "artifacts": {
-        "README.md": {
-            "description": "General documentation and project overview.",
-            "depends_on": ["src/", "tests/"]
-        },
-        "AGENTS.md": {
-            "description": "Instructions and context for AI agents.",
-            "depends_on": [".know/knowledge/", ".know/doc_config.json"]
-        }
+    "KI_knowledge_system.md": {
+      "description": "Knowledge Management Infrastructure (Core): Engine, MCP, and Audit logic.",
+      "covers": [
+        "Knowledge Infrastructure"
+      ],
+      "depends_on": [
+        ".know/scripts/",
+        ".know/scripts/analyze_module.py",
+        ".know/scripts/audit_coverage.py",
+        ".know/scripts/find_unmapped_files.py",
+        ".know/scripts/generate_dir_index.py",
+        ".know/scripts/init_ki_system.py",
+        ".know/scripts/ki_dependency_analyzer.py",
+        ".know/scripts/ki_utils.py",
+        ".know/scripts/knowledge_engine.py",
+        ".know/scripts/knowledge_mcp.py",
+        ".know/scripts/sync_agents_md.py"
+      ]
     },
-    "knowledge_items": {}
+    "KI_knowledge_ops.md": {
+      "description": "Knowledge Operations: Maintenance scripts, indexing, and agent sync.",
+      "covers": [
+        "Knowledge Infrastructure"
+      ],
+      "depends_on": [
+        ".know/scripts/",
+        ".know/scripts/audit_coverage.py",
+        ".know/scripts/sync_agents_md.py",
+        ".know/scripts/generate_dir_index.py",
+        ".know/scripts/ki_dependency_analyzer.py",
+        ".know/scripts/knowledge_mcp.py",
+        ".know/scripts/find_unmapped_files.py",
+        ".know/scripts/init_ki_system.py",
+        ".know/scripts/ki_utils.py"
+      ]
+    },
+    "KI_knowledge_workflows.md": {
+      "description": "Knowledge Management Workflows: Procedures for expanding and syncing documentation.",
+      "covers": [
+        "Knowledge Infrastructure"
+      ],
+      "depends_on": [
+        ".agent/workflows/",
+        ".know/workflows/",
+        ".know/workflows/expand-knowledge.md",
+        ".know/workflows/sync-knowledge.md"
+      ]
+    },
+    "KI_knowledge_dependency_analysis.md": {
+      "description": "Knowledge Dependency Analysis: Automatic linking of KIs based on source code imports.",
+      "covers": [
+        "Knowledge Infrastructure"
+      ],
+      "depends_on": [
+        ".know/scripts/ki_dependency_analyzer.py"
+      ]
+    },
+    "KI_knowledge_architecture.md": {
+      "description": "Architectural Decisions (ADR): Decision process and chrononoly.",
+      "covers": [
+        "Knowledge Infrastructure"
+      ],
+      "depends_on": [
+        ".know/decisions/",
+        ".know/decisions/000_adr_template.md",
+        ".know/workflows/create-adr.md"
+      ]
+    },
+    "KI_knowledge_testing_core.md": {
+      "description": "Knowledge System Core Testing: Infrastructure, fixtures, and engine verification.",
+      "covers": [
+        "Tests"
+      ],
+      "depends_on": [
+        ".know/tests/conftest.py",
+        ".know/tests/test_edge_cases.py",
+        ".know/tests/test_ki_utils.py",
+        ".know/tests/test_knowledge_engine.py",
+        ".know/tests/test_knowledge_engine_extra.py",
+        ".know/tests/test_mcp_arguments.py",
+        ".know/tests/test_mcp_security.py"
+      ]
+    },
+    "KI_knowledge_testing_tools.md": {
+      "description": "Knowledge Management Tools Testing: Audit, analyze, and indexing verification.",
+      "covers": [
+        "Tests"
+      ],
+      "depends_on": [
+        ".know/tests/test_analyze_module.py",
+        ".know/tests/test_audit_coverage.py",
+        ".know/tests/test_generate_dir_index.py",
+        ".know/tests/test_init_ki_system.py",
+        ".know/tests/test_sync_and_add_ki.py",
+        "tests/test_ki_dependency_analyzer.py",
+        "app/tests/test_agent_runner_prompt.py",
+        "app/tests/test_security.py",
+        "app/tests/test_workflow_metadata.py",
+        "app/tests/test_workspaces_create.py"
+      ]
+    },
+    "KI_frontend_core.md": {
+      "description": "Frontend Core: Architecture, API client, and real-time monitoring.",
+      "covers": [
+        "Frontend"
+      ],
+      "depends_on": [
+        "ui/src/main.tsx",
+        "ui/src/App.tsx",
+        "ui/src/api.ts",
+        "ui/src/socket.ts",
+        "ui/src/WorkspaceContext.tsx"
+      ]
+    },
+    "KI_frontend_testing.md": {
+      "description": "Frontend Testing: Vitest, React Testing Library, and UI event system validation.",
+      "covers": [
+        "Frontend"
+      ],
+      "depends_on": [
+        "ui/src/Dashboard.test.tsx",
+        "ui/src/UI_Sync_Stable.test.tsx",
+        "ui/src/components/MentionInput.test.tsx",
+        "ui/src/setupTests.ts",
+        "ui/vite.config.ts"
+      ]
+    },
+    "KI_frontend_workflow_editor.md": {
+      "description": "Frontend Workflow Editor: UI components, React Flow implementation, and custom nodes.",
+      "covers": [
+        "Frontend"
+      ],
+      "depends_on": [
+        "ui/src/CustomEdge.tsx",
+        "ui/src/Sidebar.tsx",
+        "ui/src/WorkflowGraph.tsx",
+        "ui/src/Workflows.tsx",
+        "ui/src/workflowConstants.ts"
+      ]
+    },
+    "KI_frontend_run_view.md": {
+      "description": "Frontend Run View: Execution monitoring, session management, and real-time logs.",
+      "covers": [
+        "Frontend"
+      ],
+      "depends_on": [
+        "ui/src/RunView.tsx",
+        "ui/src/components/FormattedLogMessage.tsx",
+        "ui/src/components/InteractionPanel.tsx",
+        "ui/src/socket.ts"
+      ]
+    },
+    "KI_frontend_resource_management.md": {
+      "description": "Frontend Resource Management: Agents, Tools, and Extensions management UI.",
+      "covers": [
+        "Frontend"
+      ],
+      "depends_on": [
+        "ui/src/Agents.tsx",
+        "ui/src/Extensions.tsx",
+        "ui/src/Tools.tsx"
+      ]
+    },
+    "KI_frontend_workflow_logic.md": {
+      "description": "Frontend Workflow Logic: Artifact propagation, snapshot system, and variables handling.",
+      "covers": [
+        "Frontend"
+      ],
+      "depends_on": [
+        "ui/src/WorkflowGraph.tsx",
+        "ui/src/graphUtils.ts",
+        "ui/src/nodeStatusUtils.ts"
+      ]
+    },
+    "KI_frontend_ai_assistant.md": {
+      "description": "Frontend AI Assistant & Interactive Pointer: Contextual chat and UI control protocol.",
+      "covers": [
+        "Frontend"
+      ],
+      "depends_on": [
+        "ui/src/AIAssistant.tsx",
+        "ui/src/AssistantPointer.tsx"
+      ]
+    },
+    "KI_frontend_pages_and_ui_components.md": {
+      "description": "Frontend Pages and UI Components: Dashboard, Settings, FileExplorer, and specialized UI elements.",
+      "covers": [
+        "Frontend"
+      ],
+      "depends_on": [
+        "ui/src/Dashboard.tsx",
+        "ui/src/Docs.tsx",
+        "ui/src/Settings.tsx",
+        "ui/src/components/FileExplorer.tsx",
+        "ui/src/components/HolographicSelect.tsx",
+        "ui/src/components/MentionInput.tsx",
+        "ui/src/components/NeonToggle.tsx",
+        "ui/src/pages/Onboarding.tsx",
+        "ui/src/pages/Workspaces.tsx"
+      ]
+    },
+    "KI_extensions.md": {
+      "description": "Extensions & External Integrations: Godot, GitHub, and MCP tool policies.",
+      "covers": [
+        "Extensions"
+      ],
+      "depends_on": [
+        "app/api/extensions.py",
+        "app/core/mcp/introspector.py",
+        "app/core/mcp/servers/core_logic.py",
+        "app/core/security/security.py",
+        "extensions/common/roles/",
+        "extensions/godot/tools/",
+        "extensions/mcp-github/",
+        "extensions/mcp-pocket_core/"
+      ]
+    },
+    "KI_security.md": {
+      "description": "Security & Identity Management: API keys, Secret Management, and Path Traversal protection.",
+      "covers": [
+        "App Core"
+      ],
+      "depends_on": [
+        "app/core/security/agent_secrets.py",
+        "app/core/security/security.py"
+      ]
+    },
+    "KI_backend_api_and_services.md": {
+      "description": "Backend API (FastAPI) and Service layer: Routes, workflows, and assistant skills.",
+      "covers": [
+        "App Core"
+      ],
+      "depends_on": [
+        "app/api/",
+        "app/api/docs.py",
+        "app/api/tools.py",
+        "app/core/config/config_loader.py",
+        "app/core/execution/agent_executor.py",
+        "app/core/execution/agents/doc_writer.py",
+        "app/core/knowledge/knowledge_engine.py",
+        "app/core/plugins/skill_linker.py",
+        "app/core/security/security.py",
+        "app/core/workspaces/project_manager.py",
+        "app/core/workspaces/scaffolder.py",
+        "app/models/workflow.py",
+        "app/repositories/task_registry.py",
+        "app/repositories/workflow_repository.py",
+        "app/services/"
+      ]
+    },
+    "KI_run_management.md": {
+      "description": "Run Management and Workspace Operations: In-memory run tracking, execution lifecycle, and explorer services.",
+      "covers": [
+        "App Core"
+      ],
+      "depends_on": [
+        "app/core/orchestration/run_manager.py",
+        "app/services/run_service.py"
+      ]
+    },
+    "KI_agent_and_workflow_ops.md": {
+      "description": "Agent and Workflow Operations: Assistant tools, roles, prompt management, and API endpoints.",
+      "covers": [
+        "App Core"
+      ],
+      "depends_on": [
+        "app/api/assistant_tools.py",
+        "app/api/roles.py",
+        "app/api/run.py",
+        "app/api/tools.py",
+        "app/core/analysis/workflow_linter.py",
+        "app/core/execution/agent_executor.py",
+        "app/core/security/security.py"
+      ]
+    },
+    "KI_core_tools_and_registry.md": {
+      "description": "Core Tools and Registry: Unified tool management, shadowing, and path safety.",
+      "covers": [
+        "App Core"
+      ],
+      "depends_on": [
+        "app/core/security/security.py",
+        "app/core/tools/",
+        "app/core/tools/agent_tools.py",
+        "app/core/tools/registry.py",
+        "app/core/tools/tool_logger.py"
+      ]
+    },
+    "KI_core_knowledge_and_plugins.md": {
+      "description": "Core Knowledge Engine & Plugins: Dynamic loading, skill linking, and change tracking.",
+      "covers": [
+        "App Core"
+      ],
+      "depends_on": [
+        ".agent/skills/",
+        "app/core",
+        "app/core/knowledge/knowledge_engine.py",
+        "app/core/plugins/plugin_manager.py",
+        "app/core/plugins/skill_linker.py"
+      ]
+    },
+    "KI_data_persistence.md": {
+      "description": "Data Persistence & Repositories: Workflow storage, task registry, and SQLite checkpoints.",
+      "covers": [
+        "App Core"
+      ],
+      "depends_on": [
+        "app/core/security/security.py",
+        "app/models/",
+        "app/repositories/"
+      ]
+    },
+    "KI_infrastructure_ops.md": {
+      "description": "Infrastructure Ops: Environment setup, service lifecycle, and Docker.",
+      "covers": [
+        "Tools & Scripts"
+      ],
+      "depends_on": [
+        "scripts/build_agent_image.ps1",
+        "scripts/link_skills.ps1",
+        "scripts/setup_env.ps1",
+        "scripts/start_backend.ps1",
+        "scripts/start_frontend.ps1",
+        "scripts/test_extension_preview.py"
+      ]
+    },
+    "KI_diagnostic_and_verification.md": {
+      "description": "Diagnostic and Verification: Troubleshooting and system health tools.",
+      "covers": [
+        "Tools & Scripts"
+      ],
+      "depends_on": [
+        "app/api/docs.py",
+        "app/api/run.py",
+        "app/core/config/config_manager.py",
+        "app/core/orchestration/langgraph_orchestrator.py",
+        "app/core/security/security.py",
+        "app/core/tools/registry.py",
+        "app/core/utils/update_meta.py",
+        "app/repositories/task_registry.py",
+        "app/repositories/task_repository.py"
+      ]
+    },
+    "KI_project_metadata_and_docs.md": {
+      "description": "Project Metadata and Documentation Infrastructure: Config management, indexing, and meta-updates.",
+      "covers": [
+        "App Core"
+      ],
+      "depends_on": [
+        "app/core/config/config_manager.py",
+        "app/core/security/agent_secrets.py",
+        "app/core/utils/generate_file_index.py",
+        "app/core/utils/llm_parser.py",
+        "app/core/utils/update_meta.py"
+      ]
+    },
+    "KI_app_data_and_localization.md": {
+      "description": "App Core — Data, Configurations & Localization: i18n, pricing, and workspace init templates.",
+      "covers": [
+        "App Core"
+      ],
+      "depends_on": [
+        "app/core/config/prices_config.json",
+        "app/core/workflows/init_workspace.json",
+        "app/locales/base_en.json",
+        "app/locales/base_ru.json",
+        "ui/src/i18n.tsx"
+      ]
+    },
+    "KI_testing_infrastructure.md": {
+      "description": "Testing Infrastructure: conftest.py, state builder, and core logic mocks.",
+      "covers": [
+        "Tests"
+      ],
+      "depends_on": [
+        "app/api/settings.py",
+        "app/core/config/config_loader.py",
+        "app/core/execution/workspace_container.py",
+        "app/core/lifecycle/lifecycle_manager.py",
+        "app/core/mcp/servers/core_logic.py",
+        "app/core/orchestration/state.py",
+        "app/core/security/agent_secrets.py",
+        "app/core/workspaces/project_manager.py",
+        "app/main.py",
+        "app/services/run_service.py"
+      ]
+    },
+    "KI_testing_orchestration.md": {
+      "description": "Testing Orchestration: LangGraph flows, breakpoints, and nested workflows.",
+      "covers": [
+        "Tests"
+      ],
+      "depends_on": []
+    },
+    "KI_testing_agents_and_tools.md": {
+      "description": "Testing Agents and Tools: AgentExecutor, Docker classification, and MCP.",
+      "covers": [
+        "Tests"
+      ],
+      "depends_on": [
+        "tests/test_agent_executor.py",
+        "tests/test_agent_runner.py",
+        "tests/test_mcp_introspector.py"
+      ]
+    },
+    "KI_testing_knowledge_system.md": {
+      "description": "Testing Knowledge and Documentation System: Knowledge Engine, agents, and indexing scripts.",
+      "covers": [
+        "Tests"
+      ],
+      "depends_on": [
+        ".know/scripts",
+        "app/core/execution/agents/doc_writer.py",
+        "app/core/knowledge/knowledge_engine.py",
+        "tests/test_knowledge_engine.py"
+      ]
+    },
+    "KI_testing_services_and_persistence.md": {
+      "description": "Testing Services and Persistence: RunService, TaskRepository, and data layer validation.",
+      "covers": [
+        "Tests"
+      ],
+      "depends_on": [
+        "app/core/execution/workspace_container.py",
+        "app/core/mcp/servers/core_logic.py",
+        "app/core/orchestration/logging_service.py",
+        "app/core/orchestration/run_manager.py",
+        "app/core/tools/agent_tools.py",
+        "app/models/workflow.py",
+        "app/repositories/task_repository.py",
+        "app/repositories/workflow_repository.py",
+        "app/services/extensions_service.py",
+        "app/services/pricing_service.py",
+        "app/services/run_service.py",
+        "app/services/workflow_service.py",
+        "tests/conftest.py",
+        "tests/test_run_service.py",
+        "tests/test_task_repository.py",
+        "tests/test_workflow_repository.py",
+        "tests/test_workflow_service.py",
+        "tests/test_run_new_features.py",
+        "tests/test_status_fix.py",
+        "tests/verify_explorer_backend.py"
+      ]
+    },
+    "KI_agent_roles_and_definitions.md": {
+      "path": "knowledge/KI_agent_roles_and_definitions.md",
+      "summary": "Architecture of agent roles, skills, and prompt assembly including dynamic context and navigation protocols.",
+      "depends_on": [
+        "app/core/",
+        "app/core/orchestration/prompt_builder.py",
+        "app/core/orchestration/prompt_preprocessor.py"
+      ]
+    },
+    "KI_agent_skills_library.md": {
+      "path": "knowledge/KI_agent_skills_library.md",
+      "summary": "Catalog of modular agent skills (navigation, run monitoring, workflow editing) and UI interactive protocols.",
+      "depends_on": [
+        ".agent/skills/"
+      ]
+    },
+    "KI_frontend_components_library.md": {
+      "path": "knowledge/KI_frontend_components_library.md",
+      "summary": "Catalog of reusable UI components (FileExplorer, HolographicSelect, MentionInput) and design tokens.",
+      "depends_on": [
+        "ui/src/components/FileExplorer.tsx",
+        "ui/src/components/FolderPicker.tsx",
+        "ui/src/components/FormattedLogMessage.tsx",
+        "ui/src/components/HolographicSelect.tsx",
+        "ui/src/components/InteractionPanel.tsx",
+        "ui/src/components/MentionInput.tsx",
+        "ui/src/components/NeonToggle.tsx"
+      ]
+    },
+    "KI_frontend_pages.md": {
+      "path": "knowledge/KI_frontend_pages.md",
+      "summary": "Documentation of main UI pages: Dashboard, Workflows, RunView, Agents, Extensions, and Tools.",
+      "depends_on": [
+        "ui/src/Agents.tsx",
+        "ui/src/Dashboard.tsx",
+        "ui/src/Extensions.tsx",
+        "ui/src/RunView.tsx",
+        "ui/src/Settings.tsx",
+        "ui/src/Tools.tsx",
+        "ui/src/pages/Workspaces.tsx"
+      ]
+    },
+    "KI_frontend_styling_and_design_system.md": {
+      "path": "knowledge/KI_frontend_styling_and_design_system.md",
+      "summary": "Visual architecture, CSS design tokens, glassmorphism, and cyberpunk themed animations.",
+      "depends_on": [
+        "ui/src/index.css",
+        "ui/src/App.css",
+        "ui/src/Debug.css"
+      ]
+    },
+    "KI_frontend_workflow_nodes.md": {
+      "path": "knowledge/KI_frontend_workflow_nodes.md",
+      "summary": "Custom React Flow nodes (Agent, Action, Start, End) with status badges and fan-in/cycle logic.",
+      "depends_on": [
+        "ui/src/ActionNode.tsx",
+        "ui/src/AgentNode.tsx",
+        "ui/src/EndNode.tsx",
+        "ui/src/InputNode.tsx",
+        "ui/src/NestedWorkflowNode.tsx",
+        "ui/src/StartNode.tsx"
+      ]
+    },
+    "KI_knowledge_scripts.md": {
+      "path": "knowledge/KI_knowledge_scripts.md",
+      "summary": "Internal automation scripts for knowledge audit, indexing, dependency analysis, and sync.",
+      "depends_on": [
+        ".know/scripts/",
+        "scripts/audit_coverage.py",
+        "scripts/add_ki_to_config.py",
+        "scripts/init_docs.py"
+      ]
+    },
+    "KI_knowledge_testing.md": {
+      "path": "knowledge/KI_knowledge_testing.md",
+      "summary": "Testing infrastructure for Knowledge Engine, audit coverage, and MCP security with FS isolation.",
+      "depends_on": [
+        ".know/tests/conftest.py",
+        ".know/tests/test_audit_coverage.py",
+        ".know/tests/test_edge_cases.py",
+        ".know/tests/test_knowledge_engine.py",
+        ".know/tests/test_mcp_security.py"
+      ]
+    },
+    "KI_template.md": {
+      "path": "knowledge/KI_template.md",
+      "summary": "Standard template for creating new Knowledge Items with required sections.",
+      "depends_on": []
+    },
+    "KI_testing_api_and_extensions.md": {
+      "path": "knowledge/KI_testing_api_and_extensions.md",
+      "summary": "Testing logic for Roles/Tools API, extension installation, and pricing tiers calculation.",
+      "depends_on": [
+        "app/api/roles.py",
+        "app/api/tools.py",
+        "app/services/extensions_service.py",
+        "app/services/pricing_service.py",
+        "tests/test_api_roles.py",
+        "tests/test_api_tools.py",
+        "tests/test_extensions_service.py",
+        "tests/test_pricing_service.py"
+      ]
+    },
+    "KI_testing_langgraph.md": {
+      "path": "knowledge/KI_testing_langgraph.md",
+      "summary": "Low-level mechanics testing for LangGraph execution, parallel branches, and cycle limits.",
+      "depends_on": [
+        "app/core/orchestration/langgraph_orchestrator.py",
+        "app/core/orchestration/state.py",
+        "app/models/workflow.py",
+        "tests/test_cycle_limits.py",
+        "tests/test_langgraph_execution.py",
+        "tests/test_langgraph_mapping.py",
+        "tests/test_langgraph_parallel.py",
+        "tests/test_rollback_manual.py"
+      ]
+    },
+    "KI_testing_lifecycle_and_infrastructure.md": {
+      "path": "knowledge/KI_testing_lifecycle_and_infrastructure.md",
+      "summary": "Testing application lifecycle, workspace isolation, config loading, and logging services.",
+      "depends_on": [
+        "app/api/settings.py",
+        "app/core/config/config_loader.py",
+        "app/core/execution/workspace_container.py",
+        "app/core/lifecycle/lifecycle_manager.py",
+        "app/core/orchestration/logging_service.py",
+        "app/core/orchestration/state.py",
+        "app/core/security/agent_secrets.py",
+        "app/core/workspaces/project_manager.py",
+        "app/main.py",
+        "app/services/run_service.py",
+        "tests/test_lifecycle_manager.py",
+        "tests/test_lifecycle_integration.py",
+        "tests/test_workspace_container.py",
+        "tests/test_workspace_listing.py",
+        "tests/test_config_loader.py",
+        "tests/test_logging_service.py",
+        "tests/test_settings.py",
+        "tests/test_state.py",
+        "tests/test_main.py"
+      ]
+    },
+    "KI_testing_system.md": {
+      "path": "knowledge/KI_testing_system.md",
+      "summary": "Global testing infrastructure overview: core, logic, and knowledge system layers.",
+      "depends_on": [
+        "tests/conftest.py"
+      ]
+    },
+    "KI_testing_workflow_logic.md": {
+      "path": "knowledge/KI_testing_workflow_logic.md",
+      "summary": "Validation of workflow structure, linter rules, node handlers, and nested workflow contracts.",
+      "depends_on": [
+        "app/core/analysis/workflow_linter.py",
+        "app/core/orchestration/langgraph_orchestrator.py",
+        "app/core/orchestration/nodes/action_node.py",
+        "app/core/orchestration/nodes/agent_node.py",
+        "app/core/orchestration/nodes/end_node.py",
+        "app/core/orchestration/nodes/router_node.py",
+        "app/core/orchestration/nodes/start_node.py",
+        "app/core/orchestration/nodes/utils.py",
+        "app/core/orchestration/prompt_builder.py",
+        "app/repositories/workflow_repository.py",
+        "app/services/run_service.py",
+        "app/tests/test_dispatcher.py",
+        "app/tests/test_yaml_validation.py",
+        "tests/test_nested_workflow_contract.py",
+        "tests/test_nodes_handlers.py",
+        "tests/test_workflow_linter.py"
+      ]
+    },
+    "KI_tools_and_scripts.md": {
+      "path": "knowledge/KI_tools_and_scripts.md",
+      "summary": "Helper utilities for environment setup, service launching, and system diagnostics.",
+      "depends_on": [
+        ".know/DIR_INDEX.md",
+        "app/core/tools/registry.py",
+        "scripts/generate_dir_index.py",
+        "scripts/link_skills.ps1",
+        "scripts/setup_env.ps1",
+        "scripts/start_backend.ps1",
+        "scripts/start_frontend.ps1",
+        "scripts/sync_agents_md.py"
+      ]
+    },
+    "KI_frontend_infrastructure.md": {
+      "path": "knowledge/KI_frontend_infrastructure.md",
+      "summary": "Auto-restored KI",
+      "depends_on": [
+        "ui/src/App.tsx",
+        "ui/src/WorkspaceContext.tsx",
+        "ui/src/api.ts",
+        "ui/src/main.tsx"
+      ]
+    },
+    "KI_knowledge_mcp.md": {
+      "path": "knowledge/KI_knowledge_mcp.md",
+      "summary": "Auto-restored KI",
+      "depends_on": [
+        ".know/scripts/"
+      ]
+    },
+    "KI_testing_core_logic_and_agents.md": {
+      "path": "knowledge/KI_testing_core_logic_and_agents.md",
+      "summary": "Auto-restored KI",
+      "depends_on": [
+        "app/core/execution/agents/doc_writer.py",
+        "app/core/mcp/servers/core_logic.py",
+        "app/core/orchestration/prompt_builder.py",
+        "app/core/plugins/skill_linker.py",
+        "app/core/tools/agent_tools.py",
+        "app/core/tools/registry.py",
+        "app/services",
+        "tests/test_core_logic.py",
+        "tests/test_doc_writer.py",
+        "tests/test_architect_tool.py",
+        "tests/test_prompt_logic.py",
+        "tests/test_skill_linker.py",
+        "tests/test_tool_registry.py",
+        "tests/test_extensions.py",
+        "tests/test_generate_file_index.py"
+      ]
+    }
+  },
+  "knowledge_system": {
+    "mcp_server": {
+      "name": "KnowledgeManager",
+      "version": "1.0.0",
+      "jail_dir": ".know"
+    },
+    "tools": [
+      {
+        "name": "audit_coverage",
+        "description": "Run knowledge base coverage audit. Returns coverage matrix and recommendations.",
+        "script": ".know/scripts/audit_coverage.py",
+        "args": []
+      },
+      {
+        "name": "sync_agents_md",
+        "description": "Synchronize AGENTS.md with current KI state.",
+        "script": ".know/scripts/sync_agents_md.py",
+        "args": []
+      },
+      {
+        "name": "generate_dir_index",
+        "description": "Generate or update DIR_INDEX.md.",
+        "script": ".know/scripts/generate_dir_index.py",
+        "args": []
+      },
+      {
+        "name": "check_changes",
+        "description": "Check changes in tracked project files.",
+        "method": "check_changes",
+        "args": []
+      },
+      {
+        "name": "save_state",
+        "description": "Commit current hash state (doc_state.json).",
+        "method": "save_state",
+        "args": []
+      },
+      {
+        "name": "read_know_file",
+        "description": "Read file inside .know.",
+        "method": "read_file",
+        "args": [
+          {
+            "name": "rel_path",
+            "type": "string",
+            "description": "Path relative to .know/"
+          }
+        ]
+      },
+      {
+        "name": "write_know_file",
+        "description": "Safely create or overwrite file inside .know.",
+        "method": "write_file",
+        "args": [
+          {
+            "name": "rel_path",
+            "type": "string",
+            "description": "Path relative to .know/"
+          },
+          {
+            "name": "content",
+            "type": "string",
+            "description": "File content"
+          }
+        ]
+      },
+      {
+        "name": "edit_know_file",
+        "description": "Safely edit file inside .know via text replacement.",
+        "method": "edit_file",
+        "args": [
+          {
+            "name": "rel_path",
+            "type": "string",
+            "description": "Path relative to .know/"
+          },
+          {
+            "name": "old_text",
+            "type": "string",
+            "description": "Text to replace (must be unique)"
+          },
+          {
+            "name": "new_text",
+            "type": "string",
+            "description": "New text"
+          }
+        ]
+      },
+      {
+        "name": "analyze_module",
+        "description": "Analyze directory stats with knowledge coverage context.",
+        "script": ".know/scripts/analyze_module.py",
+        "args": [
+          {
+            "name": "path",
+            "type": "string",
+            "description": "Path to analyze"
+          },
+          {
+            "name": "recursive",
+            "type": "boolean",
+            "description": "Depth of analysis"
+          }
+        ]
+      },
+      {
+        "name": "make_know_dir",
+        "description": "Create new directory inside .know.",
+        "method": "make_dir",
+        "args": [
+          {
+            "name": "rel_path",
+            "type": "string",
+            "description": "Path relative to .know/"
+          }
+        ]
+      },
+      {
+        "name": "analyze_dependencies",
+        "description": "Analyze and update 'Related KIs' sections based on code imports.",
+        "method": "analyze_dependencies",
+        "args": [
+          {
+            "name": "ki_name",
+            "type": "string",
+            "description": "Specific KI file to analyze (optional)"
+          },
+          {
+            "name": "only_changed",
+            "type": "boolean",
+            "description": "Analyze only modified Files/KIs (optional)"
+          }
+        ]
+      }
+    ]
+  }
 }
