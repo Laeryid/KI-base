@@ -1,5 +1,6 @@
 # KI_base — Knowledge Infrastructure for AI-Assisted Projects
 
+
 > A portable, drop-in knowledge management system.  
 > Copy the contents of this repo into your project's `.know/` folder (or any name you prefer) and run the init script.
 
@@ -15,6 +16,7 @@ It provides:
 - **Coverage Audit** — a script that measures how well your KI base covers your actual code
 - **MCP Server** — an isolated JSON-RPC interface that lets AI agents read/write KI safely, without accessing the rest of your project
 - **Workflows** — step-by-step guides that agents follow to keep everything in sync
+- **Git Snapshots** — versioning system for knowledge state (`git_checkpoint`, `git_restore`)
 
 ---
 
