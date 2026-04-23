@@ -16,7 +16,7 @@ def get_project_root(): return ki_utils.get_project_root()
 def get_doc_config(): return ki_utils.get_doc_config()
 
 def get_ms_cfg(): return ki_utils.get_ki_cfg().get("knowledge_system", {}).get("mcp_server", {})
-def get_tools_cfg(): return ki_utils.get_ki_cfg().get("knowledge_system", {}).get("tools", [])
+def get_tools_cfg(): return DEFAULT_TOOLS
 
 
 def validate_path(rel_path: str, is_write: bool = False, forbidden_files: List[str] = None) -> str:
@@ -173,8 +173,6 @@ DEFAULT_TOOLS = [
     }
 ]
 
-def get_ms_cfg(): return ki_utils.get_ki_cfg().get("knowledge_system", {}).get("mcp_server", {})
-def get_tools_cfg(): return DEFAULT_TOOLS
 
 
 # --- Tool Implementations ---
