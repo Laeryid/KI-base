@@ -2,7 +2,7 @@
 
 
 > A portable, drop-in knowledge management system.  
-> Copy the contents of this repo into your project's `.know/` folder (or any name you prefer) and run the init script.
+> Copy the contents of this repo into your project's `.know/` folder and run the init script.
 
 ---
 
@@ -23,11 +23,11 @@ It provides:
 ## Repository Structure
 
 ```
-KI_base/  ←  copy this INTO your .know/ folder
-├── README.md               ← this file (replace with your project README after copying)
+.know/                      ←  copy KI_base contents here
+├── README.md               ← this file
 ├── doc_config.json         ← manifest: tracked modules + KI registry
 ├── knowledge/
-│   └── KI_template.md      ← blank KI template to copy when creating new KIs
+│   └── KI_template.md      ← blank KI template
 ├── decisions/
 │   └── 000_adr_template.md ← blank ADR template
 ├── workflows/
@@ -36,21 +36,12 @@ KI_base/  ←  copy this INTO your .know/ folder
 │   └── create-adr.md       ← /create-adr workflow
 ├── scripts/
 │   ├── init_ki_system.py   ← run once after copying to initialize
-│   ├── ki_utils.py         ← shared config loader (used by all scripts)
-│   ├── knowledge_engine.py ← file hashing & change detection core
-│   ├── knowledge_mcp.py    ← MCP JSON-RPC server
-│   ├── audit_coverage.py   ← coverage matrix generator
-│   ├── generate_dir_index.py ← DIR_INDEX.md builder
-│   ├── sync_agents_md.py   ← AGENTS.md synchronizer
-│   └── add_ki_to_config.py ← CLI helper to register new KIs
-└── tests/
-    ├── conftest.py
-    ├── test_knowledge_engine.py
-    ├── test_ki_utils.py
-    ├── test_mcp_security.py
-    ├── test_audit_coverage.py
-    ├── test_generate_dir_index.py
-    └── test_sync_and_add_ki.py
+│   ├── ki_utils.py         ← shared utility module
+│   ├── knowledge_engine.py ← file hashing core
+│   ├── knowledge_mcp.py    ← MCP server
+│   ├── audit_coverage.py   ← coverage generator
+│   └── ...
+└── tests/                  ← core infrastructure tests
 ```
 
 ---
@@ -60,127 +51,74 @@ KI_base/  ←  copy this INTO your .know/ folder
 ### 1. Copy into your project
 
 ```powershell
-# Windows — copy all contents of KI_base into your project's .know folder
+# Windows — copy all contents into your project's .know folder
 Copy-Item -Recurse "path\to\KI_base\*" "your-project\.know\"
-
-# Linux / macOS
-cp -r path/to/KI_base/* your-project/.know/
 ```
 
 ### 2. Initialize
 
 ```powershell
-# Windows
+# Run the init script (automatically detects .venv)
 .venv\Scripts\python.exe .know\scripts\init_ki_system.py
-
-# Linux / macOS
-.venv/bin/python .know/scripts/init_ki_system.py
-```
-
-Options:
-```
---root     .know              # name of the knowledge folder (default: .know)
---agents   AGENTS.md          # path to AI agent instructions file
---workflows .agent/workflows  # where to look for/copy workflow files
 ```
 
 The script will:
-- Detect your virtual environment automatically
-- Write `.know/ki_config.json` with resolved paths
-- Add required sections to `AGENTS.md` (or your custom instructions file)
-- Add selective `.gitignore` rules (keeps KI data, ignores service files)
-- **Automatically setup Hard Links** for workflow files in `.agent/workflows/` (with collision handling and automatic suffixes)
+- Detect your virtual environment automatically.
+- Write `.know/ki_config.json` with resolved paths.
+- Setup **Hard Links** for workflows in `.agent/workflows/`.
+- Generate a selective **.gitignore** (keeps your data, ignores the engine).
 
-### 3. Pre-configuration (Optional)
-
-If you need specific paths (e.g., using `CLAUDE.md` instead of `AGENTS.md`), you can create `.know/ki_config.json` **before** running the init script:
-
-```json
-{
-    "paths": {
-        "knowledge_root": ".know",
-        "project_root": "..",
-        "agent_instructions": "CLAUDE.md",
-        "workflows_dir": ".agent/workflows",
-        "venv_python": ".venv/Scripts/python.exe"
-    },
-    "auto_resolve": true
-}
-```
-
-### 4. Connect the MCP Server
+### 3. Connect the MCP Server
  
-Add to your IDE's MCP config (e.g., `mcp_config.json`):
+Add to your IDE's MCP config:
 ```json
 {
   "mcpServers": {
-    "knowledge-manager-project-name": {
+    "knowledge-manager": {
       "command": ".venv/Scripts/python.exe",
-      "args": [
-        "project-path\\.know\\scripts\\knowledge_mcp.py",
-        "--config",
-        "project-path\\.know\\ki_config.json"
-      ],
-      "cwd": "project-path"
+      "args": [".know/scripts/knowledge_mcp.py", "--config", ".know/ki_config.json"],
+      "cwd": "."
     }
   }
 }
 ```
  
-> [!IMPORTANT]
-> **Restart your IDE** after this step to enable the MCP server and refresh the hard-linked workflows.
+### 4. Start using Workflows
  
-### 5. Start using Workflows
- 
-Workflows are now linked to your IDE's workflows directory (default: `.agent/workflows/`).
- 
-**To begin your work, use the command:**  
-`/expand-knowledge` (from `.agent/workflows/expand-knowledge.md`)  
-This will run a coverage audit and help you identify the first module to document.
+Use slash commands from your IDE (currently supported in **Antigravity**):
+- `/expand-knowledge` — identify and fill documentation gaps.
+- `/sync-knowledge` — keep documentation in sync with code changes.
+- `/create-adr` — record architectural decisions.
 
----
-
-## Workflows (slash commands)
-
-| Command | What it does |
-|---|---|
-| `/sync-knowledge` | Detect changed files → update KIs → regenerate DIR_INDEX → sync AGENTS.md → save state |
-| `/expand-knowledge` | Run coverage audit → pick the worst gap → write or improve a KI |
-| `/create-adr` | Discover recent decisions from git log → write a new ADR |
+> [!NOTE]
+> **Slash commands** are a feature of the Antigravity agent. In other IDEs (like Windsurf or Cursor), you should trigger these workflows by **dragging the workflow file** (e.g., `.know/workflows/sync-knowledge.md`) into the chat or mentioning it as a context file.
 
 ---
 
 ## What Gets Committed to Git?
 
-| Path | Git | Notes |
+The initialization script sets up `.know/.gitignore` to ensure your repository stays clean:
+
+| Path | Git | Description |
 |---|:---:|---|
-| `knowledge/*.md` | ✅ | Your intellectual data |
+| `knowledge/*.md` | ✅ | Project-specific knowledge |
 | `decisions/*.md` | ✅ | Architecture history |
 | `doc_config.json` | ✅ | Module manifest |
-| `scripts/*.py` | ❌ | Service scripts (restored from repo) |
-| `workflows/*.md" | ❌ | Workflow guides (restored from repo) |
-| `tests/` | ❌ | Service tests |
-| `README.md` | ❌ | Service description |
-| `ki_config.json` | ❌ | Local paths (machine-specific) |
-| `doc_state.json` | ❌ | File hashes (regenerated) |
-| `coverage_matrix.md` | ❌ | Auto-generated report |
-| `__pycache__/` | ❌ | Python cache |
-
-*(`.gitignore` rules are added automatically by `init_ki_system.py`)*
-
----
-
-## Running Tests
-
-```powershell
-.venv\Scripts\python.exe -m pytest .know\tests\ -v
-```
+| `scripts/` | ❌ | Engine scripts (ignored) |
+| `tests/` | ❌ | Engine tests (ignored) |
+| `DIR_INDEX.md` | ❌ | **Auto-generated index (ignored)** |
+| `ki_config.json` | ❌ | Local machine-specific paths |
+| `doc_state.json` | ❌ | File hash cache |
+| `README.md` | ❌ | Infrastructure description |
 
 ---
 
 ## Security
 
-The MCP server operates in a **sandbox (jail)**: all file access is restricted to the `.know/` folder. Attempts to escape via `../` paths or write to `.py` / `.ps1` / `.bat` files are blocked with `PermissionError`.
+The MCP server operates in a **sandbox**:
+- File access is restricted to the `.know/` folder.
+- Executable files (`.py`, `.exe`, etc.) are protected from modification.
+- Critical files like `doc_config.json` can only be modified via specific tools.
 
 ---
 

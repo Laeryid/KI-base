@@ -689,7 +689,7 @@ def main():
             jail = get_jail_dir()
             resources = []
             if jail:
-                # Add doc_config.json and DIR_INDEX.md as resources
+                # Add core files
                 for f in ["doc_config.json", "DIR_INDEX.md"]:
                     if os.path.exists(os.path.join(jail, f)):
                         resources.append({
@@ -697,19 +697,33 @@ def main():
                             "name": f,
                             "mimeType": "application/json" if f.endswith(".json") else "text/markdown"
                         })
+                
+                # Add workflows dynamically
+                wf_dir = os.path.join(jail, "workflows")
+                if os.path.exists(wf_dir):
+                    for f in os.listdir(wf_dir):
+                        if f.endswith(".md"):
+                            resources.append({
+                                "uri": f"ki://workflows/{f}",
+                                "name": f"Workflow: {f[:-3]}",
+                                "mimeType": "text/markdown"
+                            })
             send_response(req_id, {"resources": resources})
 
         elif method == "resources/read":
             uri = params.get("uri", "")
             jail = get_jail_dir()
             if uri.startswith("ki://") and jail:
-                filename = uri.replace("ki://", "")
-                path = os.path.join(jail, filename)
+                rel_path = uri.replace("ki://", "")
+                # Security: prevent path traversal if any
+                rel_path = os.path.normpath(rel_path).replace("..", "")
+                path = os.path.join(jail, rel_path)
+                
                 if os.path.exists(path) and os.path.isfile(path):
                     with open(path, "r", encoding="utf-8") as f:
                         send_response(req_id, {"contents": [{
                             "uri": uri,
-                            "mimeType": "text/plain",
+                            "mimeType": "text/markdown" if path.endswith(".md") else "text/plain",
                             "text": f.read()
                         }]})
                     continue

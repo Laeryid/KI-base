@@ -19,7 +19,8 @@
 - **`DIR_INDEX.md`** (`.know/DIR_INDEX.md`) — project directory tree.
 - **`doc_config.json`** (`.know/doc_config.json`) — manifest of tracked artifacts and their dependencies on code.
 
-## Knowledge Sandbox (Security)
+## Workflow-driven Execution
 
-1. **Mandatory Tooling**: For any changes inside the `.know` directory (including KIs, `doc_config.json`, and `DIR_INDEX.md`), you **MUST** use the `KnowledgeManager` MCP tools (`write_know_file`, `edit_know_file`, `make_know_dir`).
-2. **Isolation**: Using general filesystem tools (`filesystem.edit_file`) for knowledge base files is **STRICTLY PROHIBITED**. This ensures the documentation process is isolated from the production code.
+1. **Strict Adherence**: When a user mentions a command (e.g., `/sync`, `/expand`) or asks for a complex documentation task, check `ki://workflows/` resources first. 
+2. **Step-by-Step**: These workflows are your "operating system". You **MUST** follow their steps exactly as written.
+3. **Execution Mode**: If you identify that a task matches a known workflow, inform the user: *"Task identified as [Workflow Name]. Starting execution according to the protocol."*
