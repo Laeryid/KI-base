@@ -28,7 +28,9 @@ def validate_path(rel_path: str, is_write: bool = False, forbidden_files: List[s
         raise PermissionError(f"Access Denied: Path '{rel_path}' is outside sandbox.")
 
     target = os.path.abspath(os.path.join(jail, normalized))
-    if not target.startswith(jail):
+    
+    # Windows/macOS case-insensitive filesystem check
+    if not os.path.normcase(target).startswith(os.path.normcase(jail)):
         raise PermissionError(f"Access Denied: Jail breach detected for '{rel_path}'.")
 
     if is_write:
@@ -170,6 +172,18 @@ DEFAULT_TOOLS = [
             {"name": "target", "type": "string", "description": "Path to restore (e.g. 'doc_config.json' or '.')"},
             {"name": "revision", "type": "string", "description": "Git revision (e.g. 'HEAD', 'HEAD~1', or commit hash)"}
         ]
+    },
+    {
+        "name": "git_diff_secured",
+        "description": "Get git diff for core project files with path safety and git tracking checks (Safe-to-run).",
+        "method": "git_diff_secured",
+        "args": []
+    },
+    {
+        "name": "update_last_verified",
+        "description": "Update last_verified date in KIs affected by code changes.",
+        "method": "update_last_verified",
+        "args": []
     }
 ]
 
@@ -288,7 +302,9 @@ def tool_save_state(args):
 def tool_write_file(args):
     path = validate_path(args.get("rel_path"), is_write=True, forbidden_files=["doc_config.json"])
     content = args.get("content", "")
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+    parent = os.path.dirname(path)
+    if parent and not os.path.exists(parent):
+        os.makedirs(parent, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)
     return {"content": [{"type": "text", "text": f"File created/updated: {args.get('rel_path')}"}]}
@@ -358,11 +374,12 @@ def tool_git_checkpoint(args):
         result = subprocess.run(
             ["git", "commit", "-m", message, "--author=Antigravity AI <ai-assistant@ki.base>"], 
             cwd=project_root, 
-            capture_output=True, text=True, encoding="utf-8"
+            capture_output=True, text=True, encoding="utf-8",
+            check=True
         )
         return {"content": [{"type": "text", "text": f"Checkpoint created: {message}\n{result.stdout}"}]}
     except subprocess.CalledProcessError as e:
-        stderr = e.stderr if isinstance(e.stderr, str) else str(e.stderr)
+        stderr = e.stderr if e.stderr else str(e)
         return {"isError": True, "content": [{"type": "text", "text": f"Git Error: {stderr}"}]}
 
 
@@ -371,23 +388,138 @@ def tool_git_restore(args):
     revision = args.get("revision", "HEAD")
     jail = get_jail_dir()
     
-    # Validate target is inside .know
+    # 1. Security: Basic revision validation (prevent flag injection)
+    if revision.startswith("-") or ";" in revision or "|" in revision:
+        return {"isError": True, "content": [{"type": "text", "text": "Error: Invalid or suspicious revision string."}]}
+
+    # 2. Validate target is inside .know
     try:
         target_abs = validate_path(target_rel)
     except PermissionError as e:
         return {"isError": True, "content": [{"type": "text", "text": str(e)}]}
 
     try:
-        # Use git restore (modern) or git checkout (legacy/compatible)
-        # We use 'git checkout' as it's more universal across git versions
+        # 3. Use git checkout (stable across versions)
         result = subprocess.run(
             ["git", "checkout", revision, "--", target_abs],
             cwd=get_project_root(),
-            capture_output=True, text=True, encoding="utf-8"
+            capture_output=True, text=True, encoding="utf-8",
+            check=True
         )
         return {"content": [{"type": "text", "text": f"Restored '{target_rel}' from {revision}.\n{result.stdout}"}]}
     except subprocess.CalledProcessError as e:
-        return {"isError": True, "content": [{"type": "text", "text": f"Git Error: {e.stderr}"}]}
+        stderr = e.stderr if e.stderr else str(e)
+        return {"isError": True, "content": [{"type": "text", "text": f"Git Error: {stderr}"}]}
+
+
+def tool_git_diff_secured(args):
+    project_root = get_project_root()
+    # Fixed paths for security and specificity
+    targets = [
+        "app/core/orchestration/nodes/agent_node.py",
+        "app/core/orchestration/nodes/router_node.py"
+    ]
+    
+    results = []
+    for t in targets:
+        # Use project_root to ensure we stay within the workspace
+        abs_t = os.path.normpath(os.path.join(project_root, t))
+        
+        # Security: ensure the path is actually inside project_root
+        if not os.path.abspath(abs_t).startswith(os.path.abspath(project_root)):
+            results.append(f"Error: Path safety violation for '{t}'.")
+            continue
+
+        # Check 1: File exists on disk
+        if not os.path.exists(abs_t):
+            results.append(f"Error: File '{t}' not found on disk.")
+            continue
+            
+        # Check 2: File is tracked by Git
+        git_check = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", t],
+            cwd=project_root, capture_output=True, text=True
+        )
+        if git_check.returncode != 0:
+            results.append(f"Error: File '{t}' is not tracked by Git or not in this repository.")
+            continue
+        
+        # Get diff
+        diff_res = subprocess.run(
+            ["git", "diff", t],
+            cwd=project_root, capture_output=True, text=True, encoding="utf-8"
+        )
+        
+        if diff_res.returncode != 0:
+            results.append(f"Error: Failed to get diff for '{t}'. {diff_res.stderr}")
+        elif diff_res.stdout:
+            results.append(f"--- Diff for {t} ---\n{diff_res.stdout}")
+        else:
+            results.append(f"No changes in {t}.")
+            
+    return {"content": [{"type": "text", "text": "\n\n".join(results)}]}
+
+
+def tool_update_last_verified(args):
+    jail = get_jail_dir()
+    if not jail:
+        return {"isError": True, "content": [{"type": "text", "text": "Error: Knowledge system not active."}]}
+    
+    sys.path.insert(0, os.path.join(jail, "scripts"))
+    from knowledge_engine import KnowledgeEngine
+    import re
+    from datetime import datetime
+    
+    project_root = get_project_root()
+    knowledge_root_name = os.path.basename(jail)
+    ke = KnowledgeEngine(project_root, knowledge_root_name)
+    
+    # 1. Identify changed code files
+    modified, new, deleted = ke.check_for_changes()
+    changed_code = [f for f in (modified + new) if not f.startswith((".know", ".git"))]
+    
+    if not changed_code:
+        return {"content": [{"type": "text", "text": "No code changes detected. No KIs updated."}]}
+    
+    # 2. Map code changes to KIs
+    affected_ki_map = ke.get_affected_ki_map(changed_code)
+    
+    if not affected_ki_map:
+        return {"content": [{"type": "text", "text": "No KIs depend on the changed code files."}]}
+    
+    today = datetime.now().strftime("%Y-%m-%d")
+    updated_kis = []
+    
+    # 3. Update each affected KI
+    for ki_rel_path in affected_ki_map.keys():
+        # ki_rel_path is something like "knowledge/KI_name.md" relative to .know/
+        abs_ki_path = os.path.join(jail, ki_rel_path)
+        
+        if not os.path.exists(abs_ki_path):
+            continue
+            
+        with open(abs_ki_path, "r", encoding="utf-8") as f:
+            content = f.read()
+            
+        # Regex to find and replace last_verified: YYYY-MM-DD
+        new_content = re.sub(
+            r'last_verified: \d{4}-\d{2}-\d{2}',
+            f'last_verified: {today}',
+            content
+        )
+        
+        # If the tag is missing, we could add it, but for now we follow the rule
+        # of updating existing ones.
+        if new_content != content:
+            with open(abs_ki_path, "w", encoding="utf-8") as f:
+                f.write(new_content)
+            updated_kis.append(ki_rel_path)
+            
+    if not updated_kis:
+        return {"content": [{"type": "text", "text": "No KIs contained the 'last_verified' tag to update."}]}
+        
+    res = f"Updated 'last_verified' to {today} for {len(updated_kis)} KI files:\n" + "\n".join(updated_kis)
+    return {"content": [{"type": "text", "text": res}]}
 
 
 def tool_read_file(args):
@@ -421,6 +553,8 @@ METHODS = {
     "find_unmapped_files": tool_find_unmapped_files,
     "git_checkpoint": tool_git_checkpoint,
     "git_restore": tool_git_restore,
+    "git_diff_secured": tool_git_diff_secured,
+    "update_last_verified": tool_update_last_verified,
 }
 
 
@@ -461,10 +595,15 @@ def main():
             jail = get_jail_dir()
             send_response(req_id, {
                 "protocolVersion": "2024-11-05",
-                "capabilities": {"tools": {}},
+                "capabilities": {
+                    "tools": {},
+                    "prompts": {},
+                    "resources": {"subscribe": True},
+                    "roots": {"listChanged": True}
+                },
                 "serverInfo": {
                     "name":    get_ms_cfg().get("name",    "KnowledgeManager"),
-                    "version": get_ms_cfg().get("version", "1.0.0"),
+                    "version": get_ms_cfg().get("version", "1.1.0"),
                     "description": f"Serving knowledge from: {jail}"
                 }
             })
@@ -513,6 +652,79 @@ def main():
             else:
                 send_response(req_id, error={"code": -32601,
                               "message": f"Internal method {internal_method} not implemented"})
+
+        elif method == "prompts/list":
+            send_response(req_id, {
+                "prompts": [
+                    {
+                        "name": "knowledge-instructions",
+                        "description": "Static instructions for AI agents (Forced Efficiency, Navigation, Security)."
+                    },
+                    {
+                        "name": "knowledge-items",
+                        "description": "Dynamic table of all available Knowledge Items (KI)."
+                    }
+                ]
+            })
+
+        elif method == "prompts/get":
+            prompt_name = params.get("name")
+            if prompt_name == "knowledge-instructions":
+                content = ki_utils.get_instructions()
+                send_response(req_id, {
+                    "description": "AI Agent Core Instructions",
+                    "messages": [{"role": "user", "content": {"type": "text", "text": content}}]
+                })
+            elif prompt_name == "knowledge-items":
+                content = "Before starting work — **be sure to read** the relevant KIs in `.know/knowledge/`:\n\n"
+                content += ki_utils.get_ki_list_table()
+                send_response(req_id, {
+                    "description": "Available Knowledge Items",
+                    "messages": [{"role": "user", "content": {"type": "text", "text": content}}]
+                })
+            else:
+                send_response(req_id, error={"code": -32601, "message": f"Prompt {prompt_name} not found"})
+
+        elif method == "resources/list":
+            jail = get_jail_dir()
+            resources = []
+            if jail:
+                # Add doc_config.json and DIR_INDEX.md as resources
+                for f in ["doc_config.json", "DIR_INDEX.md"]:
+                    if os.path.exists(os.path.join(jail, f)):
+                        resources.append({
+                            "uri": f"ki://{f}",
+                            "name": f,
+                            "mimeType": "application/json" if f.endswith(".json") else "text/markdown"
+                        })
+            send_response(req_id, {"resources": resources})
+
+        elif method == "resources/read":
+            uri = params.get("uri", "")
+            jail = get_jail_dir()
+            if uri.startswith("ki://") and jail:
+                filename = uri.replace("ki://", "")
+                path = os.path.join(jail, filename)
+                if os.path.exists(path) and os.path.isfile(path):
+                    with open(path, "r", encoding="utf-8") as f:
+                        send_response(req_id, {"contents": [{
+                            "uri": uri,
+                            "mimeType": "text/plain",
+                            "text": f.read()
+                        }]})
+                    continue
+            send_response(req_id, error={"code": -32602, "message": f"Resource {uri} not found"})
+
+        elif method == "roots/list":
+            jail = get_jail_dir()
+            roots = []
+            if jail:
+                # Add the knowledge folder as a root
+                roots.append({
+                    "uri": f"file:///{jail.replace('\\', '/')}",
+                    "name": "Knowledge Base"
+                })
+            send_response(req_id, {"roots": roots})
 
         elif method == "notifications/initialized":
             pass

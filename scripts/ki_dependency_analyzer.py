@@ -188,8 +188,16 @@ class KIDependencyAnalyzer:
                     break
             lines.insert(insert_pos, "".join(new_section))
 
+        new_full_content = "".join(lines)
+        with open(ki_path, "r", encoding="utf-8") as f:
+            old_full_content = f.read()
+
+        if new_full_content == old_full_content:
+            # No changes needed
+            return
+
         with open(ki_path, "w", encoding="utf-8") as f:
-            f.writelines(lines)
+            f.write(new_full_content)
         print(f"Updated {ki_name} with {len(relations)} relations.")
 
 def main():

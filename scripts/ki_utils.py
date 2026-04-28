@@ -183,6 +183,39 @@ def get_doc_config():
     return {}
 
 
+def get_ki_list_table() -> str:
+    """Generates a markdown table of all Knowledge Items."""
+    doc_config = get_doc_config()
+    items = doc_config.get("artifacts", {})
+    if not items:
+        return "No Knowledge Items found."
+
+    header = "| File | Topic |\n|------|-------|\n"
+    rows = []
+    # Sort by filename for consistency
+    for ki_rel_path in sorted(items.keys()):
+        if ki_rel_path.startswith("knowledge/"):
+            filename = os.path.basename(ki_rel_path)
+            # Remove extension for a cleaner look if desired, but here we keep it as per AGENTS.md style
+            summary = items[ki_rel_path].get("summary", "No summary available.")
+            rows.append(f"| `{filename}` | {summary} |")
+    
+    if not rows:
+        return "No Knowledge Items found in 'knowledge/' directory."
+        
+    return header + "\n".join(rows)
+
+
+def get_instructions() -> str:
+    """Reads the fixed instructions from instructions.md."""
+    root = get_knowledge_root()
+    path = os.path.join(root, "scripts", "instructions.md")
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    return "Instructions file not found."
+
+
 # Legacy compatibility layer (keep for short-term compatibility)
 KNOWLEDGE_ROOT = get_knowledge_root()
 PROJECT_ROOT = get_project_root()

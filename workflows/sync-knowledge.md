@@ -28,16 +28,16 @@ Record the result. If there are no changes, terminate; everything is up to date.
 
 ## Step 2 — Update Affected Documentation Artifacts
 
-For each artifact in `AFFECTED ARTIFACTS`:
+1. **Smart Date Update**:
+   Run the following tool to update `last_verified` tags ONLY in KIs affected by code changes:
+   // turbo
+   `KnowledgeManager.update_last_verified()`
 
-- If it's `architecture.md` → read dependencies, update the section reflecting the changes.
-- If it's `KI_*.md` → read the KI file and update only the outdated parts (preserve structure).
-- If it's `SKILL.md` → update the description according to the new code behavior.
-
-After updating an artifact, add the following line to the file header:
-```
-<!-- last_verified: YYYY-MM-DD -->
-```
+2. **Manual Updates**:
+   For each artifact in `AFFECTED ARTIFACTS` that requires content changes (not just date):
+   - If it's `architecture.md` → read dependencies, update the section reflecting the changes.
+   - If it's `KI_*.md` → update only the outdated parts, maintaining the `KI_template.md` structure.
+   - If it's `SKILL.md` → update description according to the new code behavior.
 
 ## Step 3 — Update DIR_INDEX.md
 
@@ -56,12 +56,15 @@ If the script hasn't been created yet, generate `DIR_INDEX.md` manually: project
 // turbo
 `KnowledgeManager.save_state()`
 
-## Step 6 — Global Dependency Update
+## Step 6 — Incremental Dependency Update
 
-Final pass to ensure all inter-KI links are consistent across the entire knowledge base.
+Update inter-KI links ONLY for modified KIs to minimize Git noise.
 
 // turbo
-`KnowledgeManager.analyze_all_dependencies()`
+`KnowledgeManager.analyze_dependencies(only_changed=True)`
+
+> [!NOTE]
+> Use `KnowledgeManager.analyze_all_dependencies()` only if there were global structural changes in the project.
 
 ## Step 7 — Git Checkpoint
 

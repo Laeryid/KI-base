@@ -253,7 +253,7 @@ def format_markdown(data: dict, generated_at: str) -> str:
         p = priority_label(r["importance"])
         warn = ""
         if r["complex_kis"]:
-            warn += " 🔥"
+            warn += " 🔥"  # Back to fire icon
         if r["has_ki"] and r["density"] < DENSITY_THRESHOLD and r["size_kb"] > 5:
             warn += " ❄️"
         lines.append(
@@ -279,6 +279,21 @@ def format_markdown(data: dict, generated_at: str) -> str:
         f"| 📊 Full Progress | **{progress}%** |",
         "",
     ]
+
+    complex_list = [r for r in rows if r["complex_kis"]]
+    if complex_list:
+        lines += [
+            "## 🚀 Refactoring Opportunities (High Complexity)",
+            "",
+            "The following Knowledge Items are covering too many files (>10). ",
+            "This is a **key area for improvement**: splitting these KIs into smaller, ",
+            "more focused ones will improve documentation maintainability and search precision.",
+            "",
+        ]
+        for r in complex_list:
+            kis = ", ".join(f"🔥 `{k}`" for k in r["complex_kis"])
+            lines.append(f"- **{r['label']}**: {kis} — *Consider splitting by sub-modules*")
+        lines.append("")
 
     if untracked:
         lines += [
@@ -311,19 +326,6 @@ def format_markdown(data: dict, generated_at: str) -> str:
             "",
         ]
 
-    complex_list = [r for r in rows if r["complex_kis"]]
-    if complex_list:
-        lines += [
-            "## Complexity Warnings",
-            "",
-            "KIs that cover too many files (>10) — consider splitting:",
-            "",
-        ]
-        for r in complex_list:
-            kis = ", ".join(f"`{k}`" for k in r["complex_kis"])
-            lines.append(f"- **{r['label']}**: {kis}")
-        lines.append("")
-
     return "\n".join(lines)
 
 
@@ -354,10 +356,33 @@ def main():
     print("-" * 70)
     for r in data["rows"]:
         ki = "✅" if r["has_ki"] else "❌"
-        print(f"{r['label']:<32} {ki:^3} {r['coverage_pct']:>5}% | {r['density']:>6.1f} B/KB")
+        warn = ""
+        if r["complex_kis"]:
+            warn += " 🔥"
+        if r["has_ki"] and r["density"] < DENSITY_THRESHOLD and r["size_kb"] > 5:
+            warn += " ❄️"
+        
+        module_display = f"{r['label']}{warn}"
+        print(f"{module_display:<32} {ki:^3} {r['coverage_pct']:>5}% | {r['density']:>6.1f} B/KB")
+
+    # Detailed Warnings
+    complex_list = [r for r in data["rows"] if r["complex_kis"]]
+    if complex_list:
+        print("\n🔥 COMPLEXITY WARNING (Consider splitting):")
+        for r in complex_list:
+            kis = ", ".join(r["complex_kis"])
+            print(f"  - {r['label']}: {kis}")
+
+    low_density = [r for r in data["rows"] if r["has_ki"] and r["density"] < DENSITY_THRESHOLD and r["size_kb"] > 5]
+    if low_density:
+        print("\n❄️ LOW DENSITY (Documentation too brief):")
+        for r in low_density:
+            print(f"  - {r['label']} ({r['density']:.1f} B/KB)")
 
     if data["untracked"]:
-        print("\n[!] Untracked directories:", ", ".join(data["untracked"]))
+        print("\n⚠️ UNTRACKED AREAS (Blind Spots):")
+        for u in data["untracked"]:
+            print(f"  - {u}")
 
     # Save Markdown
     if not args.no_save:
