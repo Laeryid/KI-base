@@ -119,14 +119,8 @@ Automatically identify and link related KIs based on code imports.
 # Call via MCP: KnowledgeManager.save_state()
 ```
 
-## Step 7 — Synchronizing AGENTS.md
 
-// turbo
-```powershell
-# Call via MCP: KnowledgeManager.sync_agents_md()
-```
-
-## Step 8 - Final Run Coverage Audit
+## Step 7 - Final Run Coverage Audit
 
 // turbo
 ```powershell
@@ -135,7 +129,7 @@ Automatically identify and link related KIs based on code imports.
 
 Updates file  coverage_matrix.md.
 
-## Step 9 — Git Checkpoint
+## Step 8 — Git Checkpoint
 
 Finalize the expansion by creating a git snapshot of the knowledge state.
 
@@ -149,4 +143,3 @@ Finalize the expansion by creating a git snapshot of the knowledge state.
 - [ ] `KI_*.md` created or updated in the `knowledge/` directory.
 - [ ] KI registered in `doc_config.json` under the `knowledge_items` section.
 - [ ] `last_verified` in the KI contains the current date.
-- [ ] Script `sync_agents_md.py` executed without errors.
