@@ -94,8 +94,8 @@ DEFAULT_TOOLS = [
         "description": "Analyze Python/TS imports to update 'Related KIs'.",
         "method": "analyze_dependencies",
         "args": [
-            {"name": "ki_name", "type": "string", "description": "Specific KI file to analyze"},
-            {"name": "only_changed", "type": "boolean", "description": "Analyze only modified Files/KIs"}
+            {"name": "ki_name", "type": "string", "description": "Specific KI file to analyze", "required": False},
+            {"name": "only_changed", "type": "boolean", "description": "Analyze only modified Files/KIs", "required": False}
         ]
     },
     {
@@ -109,7 +109,7 @@ DEFAULT_TOOLS = [
         "description": "Find files in a directory that are not covered by any KI.",
         "method": "find_unmapped_files",
         "args": [
-            {"name": "path", "type": "string", "description": "Relative path from project root to scan"}
+            {"name": "path", "type": "string", "description": "Relative path from project root to scan", "required": False}
         ]
     },
     {
@@ -117,8 +117,8 @@ DEFAULT_TOOLS = [
         "description": "Analyze directory stats with knowledge coverage context.",
         "method": "analyze_module",
         "args": [
-            {"name": "path", "type": "string", "description": "Path to analyze"},
-            {"name": "recursive", "type": "boolean", "description": "Depth of analysis"}
+            {"name": "path", "type": "string", "description": "Path to analyze", "required": False},
+            {"name": "recursive", "type": "boolean", "description": "Depth of analysis", "required": False}
         ]
     },
     {
@@ -126,7 +126,7 @@ DEFAULT_TOOLS = [
         "description": "Read file inside .know.",
         "method": "read_file",
         "args": [
-            {"name": "rel_path", "type": "string", "description": "Path relative to .know/"}
+            {"name": "rel_path", "type": "string", "description": "Path relative to .know/", "required": True}
         ]
     },
     {
@@ -134,8 +134,8 @@ DEFAULT_TOOLS = [
         "description": "Safely create or overwrite file inside .know.",
         "method": "write_file",
         "args": [
-            {"name": "rel_path", "type": "string", "description": "Path relative to .know/"},
-            {"name": "content", "type": "string", "description": "File content"}
+            {"name": "rel_path", "type": "string", "description": "Path relative to .know/", "required": True},
+            {"name": "content", "type": "string", "description": "File content", "required": True}
         ]
     },
     {
@@ -143,9 +143,9 @@ DEFAULT_TOOLS = [
         "description": "Safely edit file inside .know via text replacement.",
         "method": "edit_file",
         "args": [
-            {"name": "rel_path", "type": "string", "description": "Path relative to .know/"},
-            {"name": "old_text", "type": "string", "description": "Text to replace"},
-            {"name": "new_text", "type": "string", "description": "New text"}
+            {"name": "rel_path", "type": "string", "description": "Path relative to .know/", "required": True},
+            {"name": "old_text", "type": "string", "description": "Text to replace", "required": True},
+            {"name": "new_text", "type": "string", "description": "New text", "required": True}
         ]
     },
     {
@@ -153,7 +153,7 @@ DEFAULT_TOOLS = [
         "description": "Create new directory inside .know.",
         "method": "make_dir",
         "args": [
-            {"name": "rel_path", "type": "string", "description": "Path relative to .know/"}
+            {"name": "rel_path", "type": "string", "description": "Path relative to .know/", "required": True}
         ]
     },
     {
@@ -161,7 +161,7 @@ DEFAULT_TOOLS = [
         "description": "Save current knowledge state (doc_config and KIs) to Git.",
         "method": "git_checkpoint",
         "args": [
-            {"name": "message", "type": "string", "description": "Commit message"}
+            {"name": "message", "type": "string", "description": "Commit message", "required": False}
         ]
     },
     {
@@ -169,15 +169,17 @@ DEFAULT_TOOLS = [
         "description": "Restore knowledge files from Git.",
         "method": "git_restore",
         "args": [
-            {"name": "target", "type": "string", "description": "Path to restore (e.g. 'doc_config.json' or '.')"},
-            {"name": "revision", "type": "string", "description": "Git revision (e.g. 'HEAD', 'HEAD~1', or commit hash)"}
+            {"name": "target", "type": "string", "description": "Path to restore (e.g. 'doc_config.json' or '.')", "required": False},
+            {"name": "revision", "type": "string", "description": "Git revision (e.g. 'HEAD', 'HEAD~1', or commit hash)", "required": False}
         ]
     },
     {
         "name": "git_diff_secured",
-        "description": "Get git diff for core project files with path safety and git tracking checks (Safe-to-run).",
+        "description": "Get git diff for project files with path safety and git tracking checks.",
         "method": "git_diff_secured",
-        "args": []
+        "args": [
+            {"name": "paths", "type": "string", "description": "Comma-separated list of relative file paths to diff", "required": False}
+        ]
     },
     {
         "name": "update_last_verified",
@@ -414,14 +416,31 @@ def tool_git_restore(args):
 
 def tool_git_diff_secured(args):
     project_root = get_project_root()
-    # Fixed paths for security and specificity
-    targets = [
-        "app/core/orchestration/nodes/agent_node.py",
-        "app/core/orchestration/nodes/router_node.py"
-    ]
+    paths_str = args.get("paths", "")
     
+    if paths_str:
+        targets = [p.strip() for p in paths_str.split(",") if p.strip()]
+    else:
+        # Если пути не переданы, получаем список измененных отслеживаемых файлов через git
+        try:
+            git_status = subprocess.run(
+                ["git", "diff", "--name-only"],
+                cwd=project_root, capture_output=True, text=True, encoding="utf-8", check=True
+            )
+            targets = [line.strip() for line in git_status.stdout.splitlines() if line.strip()]
+        except Exception as e:
+            return {"isError": True, "content": [{"type": "text", "text": f"Git Error: {str(e)}"}]}
+            
+    if not targets:
+        return {"content": [{"type": "text", "text": "No files to diff."}]}
+        
     results = []
     for t in targets:
+        # Security check: prevent flag injection or path traversal
+        if t.startswith("-") or ".." in t:
+            results.append(f"Error: Path safety violation or invalid path '{t}'.")
+            continue
+            
         # Use project_root to ensure we stay within the workspace
         abs_t = os.path.normpath(os.path.join(project_root, t))
         
@@ -625,7 +644,8 @@ def main():
                         "type": arg["type"],
                         "description": arg["description"]
                     }
-                    tool_def["inputSchema"]["required"].append(arg["name"])
+                    if arg.get("required", False):
+                        tool_def["inputSchema"]["required"].append(arg["name"])
                 tools.append(tool_def)
             send_response(req_id, {"tools": tools})
 

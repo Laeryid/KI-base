@@ -91,7 +91,7 @@ def setup_gitignore(knowledge_root):
     # Standard project: ignore engine, keep only knowledge data
     content = (
         "# KI_base: Project mode (ignore engine scripts/tests)\n"
-        "*\n"
+        "/*\n"
         "!knowledge/\n"
         "!decisions/\n"
         "!doc_config.json\n"
