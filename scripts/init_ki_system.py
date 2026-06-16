@@ -6,6 +6,10 @@ import secrets
 import string
 from pathlib import Path
 
+# Add scripts dir to path to import ki_utils
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import ki_utils
+
 def detect_venv(root_dir):
     """Tries to find venv and returns the path to python.exe / python."""
     common_names = [".venv", "venv", "env"]
@@ -34,7 +38,6 @@ def setup_workflow_links(knowledge_root, project_root, workflows_rel_path):
         print(f"[+] Creating target workflows directory: {target_dir}")
         target_dir.mkdir(parents=True, exist_ok=True)
 
-    # Automatically find all .md files in the source workflows directory
     files_to_link = [f.name for f in know_workflows.glob("*.md")]
     
     if not files_to_link:
@@ -47,9 +50,7 @@ def setup_workflow_links(knowledge_root, project_root, workflows_rel_path):
         src_file = know_workflows / filename
         dst_file = target_dir / filename
         
-        # Collision handling
         if dst_file.exists():
-            # If it's already a link (or file) to the correct place, skip
             try:
                 if dst_file.stat().st_ino == src_file.stat().st_ino and dst_file.stat().st_dev == src_file.stat().st_dev:
                     print(f"[~] Hard link for {filename} already exists and is correct.")
@@ -57,7 +58,6 @@ def setup_workflow_links(knowledge_root, project_root, workflows_rel_path):
             except OSError:
                 pass 
             
-            # Generate new name with random suffix
             suffix = "".join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(4))
             name_parts = filename.rsplit(".", 1)
             new_filename = f"{name_parts[0]}_{suffix}.{name_parts[1]}" if len(name_parts) > 1 else f"{filename}_{suffix}"
@@ -73,6 +73,13 @@ def setup_workflow_links(knowledge_root, project_root, workflows_rel_path):
 
 def find_knowledge_root():
     """Determines the knowledge root (where doc_config.json lives)."""
+    # 1. Check current directory
+    if (Path.cwd() / "doc_config.json").exists():
+        return Path.cwd()
+    if (Path.cwd() / ".know" / "doc_config.json").exists():
+        return Path.cwd() / ".know"
+        
+    # 2. Existing logic
     current = Path(__file__).resolve().parent.parent
     if (current / "doc_config.json").exists():
         return current
@@ -88,7 +95,6 @@ def setup_gitignore(knowledge_root):
     """Generates .gitignore file inside .know directory."""
     gitignore_path = Path(knowledge_root) / ".gitignore"
     
-    # Standard project: ignore engine, keep only knowledge data
     content = (
         "# KI_base: Project mode (ignore engine scripts/tests)\n"
         "/*\n"
@@ -126,42 +132,64 @@ def init_ki_system():
     parser.add_argument("--workflows", default=None, help="Path to workflows directory")
     args = parser.parse_known_args()[0]
 
+    # Rule: PROJECT_ROOT is always 1 level above BASE_FOLDER (knowledge_root)
     project_root = Path(args.project_root).resolve() if args.project_root else knowledge_root.parent
     print(f"[+] Project root: {project_root}")
 
-    # Write ki_config.json 
     venv_py = detect_venv(project_root)
     workflows_dir = args.workflows or ".agent/workflows"
     
-    config = {
-        "paths": {
-            "knowledge_root": knowledge_root.name,
-            "project_root": "..",
-            "agent_instructions": "AGENTS.md",
-            "workflows_dir": workflows_dir,
-            "venv_python": venv_py
-        },
-        "auto_resolve": True,
-        "knowledge_system": {
-            "mcp_server": {
-                "name": "KnowledgeManager",
-                "version": "1.1.0"
-            }
-        }
+    config_path = knowledge_root / "ki_config.json"
+    existing_config = {}
+    if config_path.exists():
+        print(f"[~] Existing configuration found at {config_path}. Preserving settings.")
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                existing_config = json.load(f)
+        except Exception as e:
+            print(f"[!] Error reading existing config: {e}")
+
+    # Build updated config
+    config = existing_config.copy()
+    if "paths" not in config: config["paths"] = {}
+    
+    config["paths"].update({
+        "knowledge_root": knowledge_root.name,
+        "project_root": "..", # Always ".." because BASE_FOLDER is inside PROJECT_ROOT
+        "agent_instructions": config["paths"].get("agent_instructions", "AGENTS.md"),
+        "workflows_dir": workflows_dir,
+        "venv_python": venv_py
+    })
+    
+    config["auto_resolve"] = config.get("auto_resolve", True)
+    
+    if "knowledge_system" not in config:
+        config["knowledge_system"] = {}
+    
+    config["knowledge_system"]["mcp_server"] = {
+        "name": "KnowledgeManager",
+        "version": "1.2.0"
     }
 
-    config_path = knowledge_root / "ki_config.json"
     with open(config_path, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=4, ensure_ascii=False)
-    print(f"[+] {config_path} created.")
+    print(f"[+] {config_path} updated.")
 
-    # Setup gitignore
+    # 1. Setup gitignore
     setup_gitignore(knowledge_root)
 
-    # Setup individual workflow links
+    # 2. Setup individual workflow links
     setup_workflow_links(knowledge_root, project_root, workflows_dir)
 
-    print("\n[*] Initialization complete. Instructions and KI list are now delivered via MCP Prompts.")
+    # 3. Register in Global Registry
+    print("[*] Registering project in global KI registry...")
+    success, msg = ki_utils.register_project(str(config_path))
+    if success:
+        print(f"[+] {msg}")
+    else:
+        print(f"[!] Registration failed: {msg}")
+
+    print("\n[*] Initialization complete. You can now use a single global MCP server for all your projects.")
 
 
 if __name__ == "__main__":

@@ -1,223 +1,169 @@
-"""
-ki_utils.py
-
-Shared utility module for KI_base scripts.
-Handles loading ki_config.json and resolving key paths.
-"""
-
 import os
 import sys
 import json
 import argparse
 from pathlib import Path
 
+# --- Registry Management ---
 
-def load_ki_config(config_default="ki_config.json"):
+def get_registry_path():
+    """Returns the path to the global KI registry file."""
+    base_dir = Path.home() / ".ki_base"
+    base_dir.mkdir(parents=True, exist_ok=True)
+    return base_dir / "registry.json"
+
+def load_registry():
+    path = get_registry_path()
+    if path.exists():
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if "projects" not in data: data["projects"] = {}
+                return data
+        except Exception:
+            pass
+    return {"projects": {}}
+
+def save_registry(registry):
+    with open(get_registry_path(), "w", encoding="utf-8") as f:
+        json.dump(registry, f, indent=4, ensure_ascii=False)
+
+def register_project(config_path):
+    """Adds a project to the global registry."""
+    config_path = os.path.abspath(config_path)
+    if not os.path.exists(config_path):
+        return False, f"Config not found: {config_path}"
+    
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+    except Exception as e:
+        return False, f"Invalid JSON in config: {str(e)}"
+    
+    # Logic: PROJECT_ROOT / BASE_FOLDER / ki_config.json
+    # 1. BASE_FOLDER
+    know_root = os.path.dirname(config_path) 
+    # 2. PROJECT_ROOT (always 1 level above BASE_FOLDER)
+    proj_root = os.path.dirname(know_root)
+    
+    registry = load_registry()
+    proj_root = os.path.normpath(proj_root)
+    
+    registry["projects"][proj_root] = {
+        "config_path": config_path,
+        "know_root": know_root,
+        "name": os.path.basename(proj_root),
+        "last_registered": os.path.getmtime(config_path)
+    }
+    save_registry(registry)
+    return True, f"Project '{os.path.basename(proj_root)}' registered at {proj_root}"
+
+def find_project_by_cwd(cwd=None):
+    """Finds the registered project that contains the given CWD."""
+    if not cwd:
+        cwd = os.getcwd()
+    cwd = os.path.abspath(cwd)
+    
+    registry = load_registry()
+    best_match = None
+    max_len = -1
+    
+    for proj_root, data in registry["projects"].items():
+        # Case-insensitive check for Windows paths
+        if os.path.normcase(cwd).startswith(os.path.normcase(proj_root)):
+            if len(proj_root) > max_len:
+                max_len = len(proj_root)
+                best_match = data
+                
+    return best_match
+
+# --- Configuration Loading ---
+
+def load_ki_config():
     """
-    Loads configuration from ki_config.json.
-    Tries to find the path in the --config argument, then in .know/, then in current dir.
+    Loads configuration based on context.
+    1. Check --config argument.
+    2. Check Registry based on CWD.
+    3. Fallback to local search.
     """
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--config", type=str)
     args, _ = parser.parse_known_args()
 
-    # Priority 1: --config argument
+    config_path = None
+
     if args.config and os.path.exists(args.config):
         config_path = args.config
         if os.path.isdir(config_path):
-            config_path = os.path.join(config_path, config_default)
+            config_path = os.path.join(config_path, "ki_config.json")
     else:
-        # Priority 2: In .know/ directory relative to project root
-        # We try to find project root first
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        possible_locations = [
-            os.path.join(os.path.dirname(script_dir), config_default), # .know/ki_config.json
-            os.path.join(os.getcwd(), ".know", config_default),
-            os.path.join(os.getcwd(), config_default),
-            config_default
-        ]
-        
-        config_path = None
-        for loc in possible_locations:
-            if os.path.exists(loc):
-                config_path = loc
-                break
+        # Try Registry based on current CWD
+        match = find_project_by_cwd()
+        if match:
+            config_path = match["config_path"]
+        else:
+            # Fallback recursive search
+            current = Path.cwd()
+            for parent in [current] + list(current.parents):
+                check_path = parent / ".know" / "ki_config.json"
+                if check_path.exists():
+                    config_path = str(check_path)
+                    break
+                check_path = parent / "ki_config.json"
+                if check_path.exists():
+                    config_path = str(check_path)
+                    break
 
     if config_path and os.path.exists(config_path):
-        with open(config_path, "r", encoding="utf-8") as f:
-            try:
-                return json.load(f)
-            except json.JSONDecodeError:
-                pass
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+                cfg["_loaded_from"] = config_path 
+                return cfg
+        except Exception:
+            pass
     return {}
 
-
-def resolve_knowledge_root(config_paths=None, strict=False) -> str:
-    """
-    Determines the knowledge root folder (knowledge_root).
-    Priority:
-    1. CLI Argument --config (Mandatory if strict=True)
-    2. CWD (for MCP Isolation, ignored if strict=True)
-    3. Auto-detection based on the location of the ki_utils module itself
-    """
-    config_paths = config_paths or {}
-    
-    # 1. From CLI --config (explicit path is always priority)
-    parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("--config", type=str)
-    args, _ = parser.parse_known_args()
-    if args.config:
-        cfg_path = os.path.abspath(args.config)
-        if os.path.isfile(cfg_path):
-            parent = os.path.dirname(cfg_path)
-            if os.path.exists(os.path.join(parent, "doc_config.json")):
-                return parent
-        if os.path.isdir(cfg_path) and os.path.exists(os.path.join(cfg_path, "doc_config.json")):
-            return cfg_path
-
-    # If strict mode is on, we ONLY allow --config
-    if strict:
-        return ""
-
-    # 2. From CWD (MCP Isolation)
-    cwd = os.getcwd()
-    target_know = os.path.join(cwd, ".know")
-    if os.path.isdir(target_know) and os.path.exists(os.path.join(target_know, "doc_config.json")):
-        return target_know
-    if os.path.exists(os.path.join(cwd, "doc_config.json")):
-        return cwd
-
-    # 3. From config_paths (passed from ki_config.json)
-    root = config_paths.get("knowledge_root")
-    if root:
-        abs_root = os.path.abspath(root)
-        if os.path.exists(os.path.join(abs_root, "doc_config.json")):
-            return abs_root
-
-    # 4. Fallback: Parent folder of scripts/ (relative to script location)
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    parent_dir = os.path.dirname(script_dir)
-    if os.path.exists(os.path.join(parent_dir, "doc_config.json")):
-        return parent_dir
-
-    # 5. Fallback: Same folder as this script
-    if os.path.exists(os.path.join(script_dir, "doc_config.json")):
-        return script_dir
-
-    return ""
-
-
-def resolve_project_root(config_paths, knowledge_root) -> str:
-    """
-    Determines the project root.
-    Priority:
-    1. From config (relative to knowledge_root or absolute).
-    2. Default: parent of knowledge_root.
-    """
-    root = config_paths.get("project_root")
-    if root:
-        if os.path.isabs(root):
-            return root
-        return os.path.abspath(os.path.join(knowledge_root, root))
-    
-    if knowledge_root:
-        return os.path.dirname(knowledge_root)
-    
-    return os.getcwd()
-
-
-# Internal cache
-_CACHE = {}
-
+# --- Path Resolution (Context-Aware) ---
 
 def get_ki_cfg():
-    if "ki_cfg" not in _CACHE:
-        _CACHE["ki_cfg"] = load_ki_config()
-    return _CACHE["ki_cfg"]
-
-
-def get_paths():
-    return get_ki_cfg().get("paths", {})
-
+    return load_ki_config()
 
 def get_knowledge_root():
-    if "knowledge_root" not in _CACHE:
-        _CACHE["knowledge_root"] = resolve_knowledge_root(get_paths())
-    return _CACHE["knowledge_root"]
-
-
-def get_knowledge_root_strict():
-    """Returns knowledge root only if explicitly provided via --config."""
-    if "knowledge_root_strict" not in _CACHE:
-        _CACHE["knowledge_root_strict"] = resolve_knowledge_root(get_paths(), strict=True)
-    return _CACHE["knowledge_root_strict"]
-
+    cfg = get_ki_cfg()
+    loaded_from = cfg.get("_loaded_from")
+    if loaded_from:
+        return os.path.dirname(loaded_from)
+    return ""
 
 def get_project_root():
-    if "project_root" not in _CACHE:
-        _CACHE["project_root"] = resolve_project_root(get_paths(), get_knowledge_root())
-    return _CACHE["project_root"]
-
-
-def get_doc_config_path():
-    # doc_config.json is always located in the knowledge root
-    root = get_knowledge_root()
-    return os.path.join(root, "doc_config.json") if root else ""
-
-
-def get_python_exe():
-    return get_paths().get("venv_python") or sys.executable
-
+    cfg = get_ki_cfg()
+    know_root = get_knowledge_root()
+    if not know_root:
+        return os.getcwd()
+    # In the new logic, PROJECT_ROOT is always parent of BASE_FOLDER (know_root)
+    return os.path.dirname(know_root)
 
 def get_doc_config():
-    """Loads doc_config.json (knowledge system manifest)."""
-    path = get_doc_config_path()
-    if path:
-        abs_path = os.path.abspath(path)
-        if os.path.exists(abs_path):
-            try:
-                with open(abs_path, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception:
-                pass
+    root = get_knowledge_root()
+    if not root: return {}
+    path = os.path.join(root, "doc_config.json")
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
     return {}
 
+def get_python_exe():
+    return get_ki_cfg().get("paths", {}).get("venv_python") or sys.executable
 
-def get_ki_list_table() -> str:
-    """Generates a markdown table of all Knowledge Items."""
-    doc_config = get_doc_config()
-    items = doc_config.get("artifacts", {})
-    if not items:
-        return "No Knowledge Items found."
-
-    header = "| File | Topic |\n|------|-------|\n"
-    rows = []
-    # Sort by filename for consistency
-    for ki_rel_path in sorted(items.keys()):
-        if ki_rel_path.startswith("knowledge/"):
-            filename = os.path.basename(ki_rel_path)
-            # Remove extension for a cleaner look if desired, but here we keep it as per AGENTS.md style
-            summary = items[ki_rel_path].get("summary", "No summary available.")
-            rows.append(f"| `{filename}` | {summary} |")
-    
-    if not rows:
-        return "No Knowledge Items found in 'knowledge/' directory."
-        
-    return header + "\n".join(rows)
-
-
-def get_instructions() -> str:
-    """Reads the fixed instructions from instructions.md."""
+def get_instructions():
     root = get_knowledge_root()
+    if not root: return "No context."
     path = os.path.join(root, "scripts", "instructions.md")
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
     return "Instructions file not found."
-
-
-# Legacy compatibility layer (keep for short-term compatibility)
-KNOWLEDGE_ROOT = get_knowledge_root()
-PROJECT_ROOT = get_project_root()
-DOC_CONFIG_PATH = get_doc_config_path()
-PYTHON_EXE = get_python_exe()

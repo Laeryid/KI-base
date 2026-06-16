@@ -1,0 +1,18 @@
+# KI_base: Project mode (ignore engine scripts/tests)
+/*
+!knowledge/
+!decisions/
+!doc_config.json
+!.gitignore
+
+# Ignore technical engine parts
+scripts/
+tests/
+workflows/
+ki_config.json
+
+# Ignore caches and temporary files
+__pycache__/
+*.py[cod]
+*$py.class
+doc_state.json
