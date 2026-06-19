@@ -4,6 +4,44 @@ import json
 import argparse
 from pathlib import Path
 
+# Global state for MCP integration to hold the active workspace rootURI
+ACTIVE_WORKSPACE_PATH = None
+
+def normalize_path(path_str: str, make_absolute: bool = True) -> str:
+    """Normalizes paths, decoding file:// URIs and standardizing slashes."""
+    if not path_str:
+        return ""
+        
+    is_uri = False
+    if path_str.startswith("file:"):
+        is_uri = True
+        from urllib.parse import urlparse, unquote
+        try:
+            parsed = urlparse(path_str)
+            decoded_path = unquote(parsed.path)
+            # On Windows, urlparse("/C:/foo") returns "/C:/foo". Strip leading slash.
+            if os.name == 'nt' and decoded_path.startswith('/') and len(decoded_path) > 2 and decoded_path[1].isalpha() and decoded_path[2] == ':':
+                decoded_path = decoded_path[1:]
+            path_str = decoded_path
+        except Exception:
+            # Fallback if urlparse fails
+            path_str = path_str.replace("file:///", "").replace("file://", "").replace("file:", "")
+            from urllib.parse import unquote
+            path_str = unquote(path_str)
+            
+    # Normalize slashes for the current OS
+    path_str = os.path.normpath(path_str)
+    
+    if make_absolute:
+        path_str = os.path.abspath(path_str)
+    else:
+        # If it was a URI, it represents an absolute path, so enforce it.
+        # Otherwise, keep it relative if it was relative.
+        if is_uri or os.path.isabs(path_str) or (os.name == 'nt' and len(path_str) > 1 and path_str[1] == ':'):
+            path_str = os.path.abspath(path_str)
+            
+    return path_str
+
 # --- Registry Management ---
 
 def get_registry_path():
@@ -30,7 +68,7 @@ def save_registry(registry):
 
 def register_project(config_path):
     """Adds a project to the global registry."""
-    config_path = os.path.abspath(config_path)
+    config_path = normalize_path(config_path)
     if not os.path.exists(config_path):
         return False, f"Config not found: {config_path}"
     
@@ -61,18 +99,22 @@ def register_project(config_path):
 def find_project_by_cwd(cwd=None):
     """Finds the registered project that contains the given CWD."""
     if not cwd:
-        cwd = os.getcwd()
-    cwd = os.path.abspath(cwd)
+        if ACTIVE_WORKSPACE_PATH:
+            cwd = ACTIVE_WORKSPACE_PATH
+        else:
+            cwd = os.getcwd()
+    cwd = normalize_path(cwd)
     
     registry = load_registry()
     best_match = None
     max_len = -1
     
     for proj_root, data in registry["projects"].items():
-        # Case-insensitive check for Windows paths
-        if os.path.normcase(cwd).startswith(os.path.normcase(proj_root)):
-            if len(proj_root) > max_len:
-                max_len = len(proj_root)
+        # Case-insensitive check for Windows paths. Normalize registry key just in case.
+        norm_proj = normalize_path(proj_root)
+        if os.path.normcase(cwd).startswith(os.path.normcase(norm_proj)):
+            if len(norm_proj) > max_len:
+                max_len = len(norm_proj)
                 best_match = data
                 
     return best_match
@@ -92,11 +134,14 @@ def load_ki_config():
 
     config_path = None
 
-    if args.config and os.path.exists(args.config):
-        config_path = args.config
-        if os.path.isdir(config_path):
-            config_path = os.path.join(config_path, "ki_config.json")
-    else:
+    if args.config:
+        norm_arg = normalize_path(args.config)
+        if os.path.exists(norm_arg):
+            config_path = norm_arg
+            if os.path.isdir(config_path):
+                config_path = os.path.join(config_path, "ki_config.json")
+                
+    if not config_path:
         # Try Registry based on current CWD
         match = find_project_by_cwd()
         if match:

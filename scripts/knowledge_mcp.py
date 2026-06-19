@@ -18,10 +18,13 @@ def validate_path(rel_path: str, is_write: bool = False, forbidden_files: List[s
     jail = get_jail_dir()
     if not jail:
         raise PermissionError("Knowledge root not detected. Is this project registered?")
-    normalized = os.path.normpath(rel_path)
-    if normalized.startswith("..") or os.path.isabs(normalized):
-        raise PermissionError(f"Access Denied: Path '{rel_path}' is outside sandbox.")
-    target = os.path.abspath(os.path.join(jail, normalized))
+    normalized = ki_utils.normalize_path(rel_path, make_absolute=False)
+    if not os.path.isabs(normalized):
+        if normalized.startswith(".."):
+            raise PermissionError(f"Access Denied: Path '{rel_path}' is outside sandbox.")
+        target = os.path.abspath(os.path.join(jail, normalized))
+    else:
+        target = os.path.abspath(normalized)
     if not os.path.normcase(target).startswith(os.path.normcase(jail)):
         raise PermissionError(f"Access Denied: Jail breach detected.")
     if is_write:
@@ -113,9 +116,12 @@ def handle_tool_call(name, args):
             if args.get("ki_name"): a.extend(["--ki", args["ki_name"]])
             if args.get("only_changed"): a.append("--changed")
             return run_script("ki_dependency_analyzer.py", a)
-        if name == "find_unmapped_files": return run_script("find_unmapped_files.py", [args.get("path", ".")])
+        if name == "find_unmapped_files":
+            p = ki_utils.normalize_path(args.get("path", "."))
+            return run_script("find_unmapped_files.py", [p])
         if name == "analyze_module":
-            a = [args.get("path", ".")]
+            p = ki_utils.normalize_path(args.get("path", "."))
+            a = [p]
             if args.get("recursive"): a.append("--recursive")
             return run_script("analyze_module.py", a)
 
@@ -168,6 +174,15 @@ def main():
             rid, method, params = req.get("id"), req.get("method"), req.get("params", {})
             
             if method == "initialize":
+                root_uri = params.get("rootUri")
+                if not root_uri and params.get("workspaceFolders"):
+                    folders = params.get("workspaceFolders")
+                    if folders and isinstance(folders, list) and len(folders) > 0:
+                        root_uri = folders[0].get("uri")
+                
+                if root_uri:
+                    ki_utils.ACTIVE_WORKSPACE_PATH = ki_utils.normalize_path(root_uri)
+
                 res = {
                     "protocolVersion": "2024-11-05",
                     "capabilities": {"tools": {}, "prompts": {}, "resources": {}},
