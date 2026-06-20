@@ -98,7 +98,7 @@ def handle_tool_call(name, args):
             reg = ki_utils.load_registry()
             return "\n".join([f"- {v['name']}: {k}" for k,v in reg['projects'].items()]) if reg['projects'] else "Empty."
         if name == "ki_status":
-            match = ki_utils.find_project_by_cwd()
+            match = ki_utils.find_project_by_cwd(args.get("path"))
             return f"Active: {match['name']} at {match['know_root']}" if match else "Not registered."
         if name == "ki_prune_registry":
             reg = ki_utils.load_registry()
@@ -166,39 +166,90 @@ def handle_tool_call(name, args):
 # --- Main Loop ---
 
 def main():
+    log_file = "C:\\Experiments\\ki-global-server\\mcp_debug.log"
     while True:
         line = sys.stdin.readline()
         if not line: break
         try:
+            with open(log_file, "a", encoding="utf-8") as lf:
+                lf.write(f"REQ: {line.strip()}\n")
+            
             req = json.loads(line)
+            
+            # Перехватываем ответ на наш запрос get_roots
+            if req.get("id") == "get_roots":
+                result = req.get("result", {})
+                roots = result.get("roots", [])
+                if roots and isinstance(roots, list) and len(roots) > 0:
+                    root_uri = roots[0].get("uri")
+                    if root_uri:
+                        ki_utils.ACTIVE_WORKSPACE_PATH = ki_utils.normalize_path(root_uri)
+                        with open(log_file, "a", encoding="utf-8") as lf:
+                            lf.write(f"SET ACTIVE_WORKSPACE_PATH via get_roots to: {ki_utils.ACTIVE_WORKSPACE_PATH}\n")
+                continue
+
             rid, method, params = req.get("id"), req.get("method"), req.get("params", {})
             
+            def send_res(result_data):
+                resp = {"jsonrpc": "2.0", "id": rid, "result": result_data}
+                resp_str = json.dumps(resp)
+                with open(log_file, "a", encoding="utf-8") as lf:
+                    lf.write(f"RESP: {resp_str}\n")
+                sys.stdout.write(resp_str + "\n")
+                sys.stdout.flush()
+
             if method == "initialize":
                 root_uri = params.get("rootUri")
                 if not root_uri and params.get("workspaceFolders"):
                     folders = params.get("workspaceFolders")
                     if folders and isinstance(folders, list) and len(folders) > 0:
                         root_uri = folders[0].get("uri")
-                
+                if not root_uri:
+                    # Recursive search for any file:/// uri in params
+                    def find_uri(d):
+                        if isinstance(d, dict):
+                            for v in d.values():
+                                res = find_uri(v)
+                                if res: return res
+                        elif isinstance(d, list):
+                            for v in d:
+                                res = find_uri(v)
+                                if res: return res
+                        elif isinstance(d, str) and (d.startswith("file://") or (len(d) > 2 and d[1] == ':' and '\\' in d)):
+                            return d
+                        return None
+                    root_uri = find_uri(params)
+
                 if root_uri:
                     ki_utils.ACTIVE_WORKSPACE_PATH = ki_utils.normalize_path(root_uri)
+                    with open(log_file, "a", encoding="utf-8") as lf:
+                        lf.write(f"SET ACTIVE_WORKSPACE_PATH to: {ki_utils.ACTIVE_WORKSPACE_PATH}\n")
 
                 res = {
                     "protocolVersion": "2024-11-05",
                     "capabilities": {"tools": {}, "prompts": {}, "resources": {}},
                     "serverInfo": {"name": "ki-universal", "version": "1.2.0"}
                 }
-                sys.stdout.write(json.dumps({"jsonrpc": "2.0", "id": rid, "result": res}) + "\n")
+                send_res(res)
+            
+            elif method == "notifications/initialized":
+                # Отправляем запрос roots/list клиенту
+                req_roots = {"jsonrpc": "2.0", "id": "get_roots", "method": "roots/list", "params": {}}
+                req_str = json.dumps(req_roots)
+                with open(log_file, "a", encoding="utf-8") as lf:
+                    lf.write(f"SEND_REQ: {req_str}\n")
+                sys.stdout.write(req_str + "\n")
+                sys.stdout.flush()
             
             elif method == "tools/list":
-                sys.stdout.write(json.dumps({"jsonrpc": "2.0", "id": rid, "result": {"tools": MCP_TOOLS}}) + "\n")
+                send_res({"tools": MCP_TOOLS})
             
             elif method == "tools/call":
                 txt = handle_tool_call(params["name"], params.get("arguments", {}))
-                sys.stdout.write(json.dumps({"jsonrpc": "2.0", "id": rid, "result": {"content": [{"type": "text", "text": str(txt)}]}}) + "\n")
+                send_res({"content": [{"type": "text", "text": str(txt)}]})
             
             elif method == "prompts/list":
-                sys.stdout.write(json.dumps({"jsonrpc": "2.0", "id": rid, "result": {"prompts": MCP_PROMPTS}}) + "\n")
+                send_res({"prompts": MCP_PROMPTS})
             
             elif method == "prompts/get":
                 name = params.get("name")
@@ -208,7 +259,7 @@ def main():
                     if name == "knowledge-instructions": content = ki_utils.get_instructions()
                     elif name == "knowledge-items": content = f"Review KIs before work:\n\n{ki_utils.get_ki_list_table()}"
                     else: content = "Unknown prompt."
-                sys.stdout.write(json.dumps({"jsonrpc": "2.0", "id": rid, "result": {"messages": [{"role": "user", "content": {"type": "text", "text": content}}]}}) + "\n")
+                send_res({"messages": [{"role": "user", "content": {"type": "text", "text": content}}]})
             
             elif method == "resources/list":
                 jail = get_jail_dir()
@@ -217,9 +268,12 @@ def main():
                     for f in ["doc_config.json", "DIR_INDEX.md"]:
                         if os.path.exists(os.path.join(jail, f)):
                             res.append({"uri": f"ki://{f}", "name": f, "mimeType": "text/plain"})
-                sys.stdout.write(json.dumps({"jsonrpc": "2.0", "id": rid, "result": {"resources": res}}) + "\n")
+                send_res({"resources": res})
 
-            sys.stdout.flush()
-        except Exception: pass
+        except Exception as e:
+            try:
+                with open(log_file, "a", encoding="utf-8") as lf:
+                    lf.write(f"ERROR: {str(e)}\n")
+            except Exception: pass
 
 if __name__ == "__main__": main()
