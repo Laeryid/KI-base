@@ -91,30 +91,52 @@ def find_knowledge_root():
     return current
 
 
-def setup_gitignore(knowledge_root):
+def setup_gitignore(knowledge_root, is_master=False):
     """Generates .gitignore file inside .know directory."""
     gitignore_path = Path(knowledge_root) / ".gitignore"
     
-    content = (
-        "# KI_base: Project mode (ignore engine scripts/tests)\n"
-        "/*\n"
-        "!knowledge/\n"
-        "!decisions/\n"
-        "!doc_config.json\n"
-        "!.gitignore\n"
-        "\n"
-        "# Ignore technical engine parts\n"
-        "scripts/\n"
-        "tests/\n"
-        "workflows/\n"
-        "ki_config.json\n"
-        "\n"
-        "# Ignore caches and temporary files\n"
-        "__pycache__/\n"
-        "*.py[cod]\n"
-        "*$py.class\n"
-        "doc_state.json\n"
-    )
+    if is_master:
+        content = (
+            "# KI_base: Master repository mode (commit everything including engine scripts/tests)\n"
+            "/*\n"
+            "!knowledge/\n"
+            "!decisions/\n"
+            "!doc_config.json\n"
+            "!.gitignore\n"
+            "\n"
+            "# Allow technical engine parts in master mode\n"
+            "!scripts/\n"
+            "!tests/\n"
+            "!workflows/\n"
+            "!ki_config.json\n"
+            "\n"
+            "# Ignore caches and temporary files\n"
+            "__pycache__/\n"
+            "*.py[cod]\n"
+            "*$py.class\n"
+            "doc_state.json\n"
+        )
+    else:
+        content = (
+            "# KI_base: Project mode (ignore engine scripts/tests)\n"
+            "/*\n"
+            "!knowledge/\n"
+            "!decisions/\n"
+            "!doc_config.json\n"
+            "!.gitignore\n"
+            "\n"
+            "# Ignore technical engine parts\n"
+            "scripts/\n"
+            "tests/\n"
+            "workflows/\n"
+            "ki_config.json\n"
+            "\n"
+            "# Ignore caches and temporary files\n"
+            "__pycache__/\n"
+            "*.py[cod]\n"
+            "*$py.class\n"
+            "doc_state.json\n"
+        )
     
     with open(gitignore_path, "w", encoding="utf-8") as f:
         f.write(content)
@@ -130,6 +152,7 @@ def init_ki_system():
     parser = argparse.ArgumentParser(description="Knowledge system initialization.")
     parser.add_argument("--project-root", default=None, help="Path to the project root")
     parser.add_argument("--workflows", default=None, help="Path to workflows directory")
+    parser.add_argument("--master", action="store_true", help="Initialize in master mode")
     args = parser.parse_known_args()[0]
 
     # Rule: PROJECT_ROOT is always 1 level above BASE_FOLDER (knowledge_root)
@@ -176,7 +199,7 @@ def init_ki_system():
     print(f"[+] {config_path} updated.")
 
     # 1. Setup gitignore
-    setup_gitignore(knowledge_root)
+    setup_gitignore(knowledge_root, is_master=args.master)
 
     # 2. Setup individual workflow links
     setup_workflow_links(knowledge_root, project_root, workflows_dir)

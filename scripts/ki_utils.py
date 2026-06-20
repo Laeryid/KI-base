@@ -6,6 +6,8 @@ from pathlib import Path
 
 # Global state for MCP integration to hold the active workspace rootURI
 ACTIVE_WORKSPACE_PATH = None
+_CACHE = {}
+
 
 def normalize_path(path_str: str, make_absolute: bool = True) -> str:
     """Normalizes paths, decoding file:// URIs and standardizing slashes."""
@@ -188,6 +190,11 @@ def get_project_root():
         return os.getcwd()
     # In the new logic, PROJECT_ROOT is always parent of BASE_FOLDER (know_root)
     return os.path.dirname(know_root)
+
+def get_doc_config_path():
+    # doc_config.json is always located in the knowledge root
+    root = get_knowledge_root()
+    return os.path.join(root, "doc_config.json") if root else ""
 
 def get_doc_config():
     root = get_knowledge_root()

@@ -17,7 +17,7 @@ def get_doc_config(): return ki_utils.get_doc_config()
 def validate_path(rel_path: str, is_write: bool = False, forbidden_files: List[str] = None) -> str:
     jail = get_jail_dir()
     if not jail:
-        raise PermissionError("Knowledge root not detected. Is this project registered?")
+        raise PermissionError("Knowledge root not initialized.")
     normalized = ki_utils.normalize_path(rel_path, make_absolute=False)
     if not os.path.isabs(normalized):
         if normalized.startswith(".."):
@@ -41,13 +41,16 @@ def validate_path(rel_path: str, is_write: bool = False, forbidden_files: List[s
 
 def run_script(script_name: str, args: List[str] = None):
     jail = get_jail_dir()
-    if not jail: return "Error: Knowledge system not active for this path."
+    if not jail:
+        return {"isError": True, "content": [{"type": "text", "text": "Error: Knowledge system not active for this path."}]}
     script_path = os.path.join(jail, "scripts", script_name)
-    if not os.path.exists(script_path): return f"Error: Script {script_name} not found."
+    if not os.path.exists(script_path):
+        return {"isError": True, "content": [{"type": "text", "text": f"Error: Script {script_name} not found."}]}
     cmd = [get_python_exe(), script_path]
     if args: cmd.extend(args)
     result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", cwd=get_project_root())
-    return result.stdout + (result.stderr if result.stderr else "")
+    output = result.stdout + (result.stderr if result.stderr else "")
+    return {"content": [{"type": "text", "text": output}]}
 
 # --- MCP Definitions ---
 
@@ -89,6 +92,103 @@ MCP_PROMPTS = [
     {"name": "knowledge-items", "description": "Dynamic table of all available Knowledge Items (KI)."}
 ]
 
+# --- Tool Wrappers for Tests and MCP ---
+
+def tool_audit_coverage(args: dict = None):
+    return run_script("audit_coverage.py")
+
+def tool_sync_agents_md(args: dict = None):
+    return run_script("sync_agents_md.py")
+
+def tool_generate_dir_index(args: dict = None):
+    return run_script("generate_dir_index.py")
+
+def tool_analyze_module(args: dict):
+    p = args.get("path", ".")
+    a = [p]
+    if args.get("recursive"): a.append("--recursive")
+    return run_script("analyze_module.py", a)
+
+def tool_find_unmapped_files(args: dict):
+    p = args.get("path", ".")
+    return run_script("find_unmapped_files.py", [p])
+
+def tool_analyze_dependencies(args: dict):
+    ki_name = args.get("ki_name")
+    only_changed = args.get("only_changed", False)
+    cmd_args = []
+    if ki_name:
+        cmd_args.extend(["--ki", ki_name])
+    if only_changed:
+        cmd_args.append("--changed")
+    if not cmd_args:
+        return {"isError": True, "content": [{"type": "text", "text": "Error: Either 'ki_name' or 'only_changed' must be provided."}]}
+    return run_script("ki_dependency_analyzer.py", cmd_args)
+
+def tool_analyze_all_dependencies(args: dict = None):
+    return run_script("ki_dependency_analyzer.py", ["--all"])
+
+def tool_update_last_verified(args: dict = None):
+    return run_script("update_last_verified.py")
+
+def tool_git_checkpoint(args: dict):
+    jail = get_jail_dir()
+    if not jail:
+        return {"isError": True, "content": [{"type": "text", "text": "Error: Knowledge root not found."}]}
+    project_root = get_project_root()
+    know_rel = os.path.relpath(jail, project_root)
+    targets = [
+        os.path.join(know_rel, "doc_config.json"),
+        os.path.join(know_rel, "knowledge"),
+        os.path.join(know_rel, "decisions")
+    ]
+    try:
+        for t in targets:
+            abs_t = os.path.join(project_root, t)
+            if os.path.exists(abs_t):
+                subprocess.run(["git", "add", t], cwd=project_root, check=True, capture_output=True)
+        status = subprocess.run(["git", "diff", "--quiet", "--cached"], cwd=project_root)
+        if status.returncode == 0:
+            return {"content": [{"type": "text", "text": "No changes to checkpoint."}]}
+        user_msg = args.get("message", "Checkpoint")
+        message = f"[AI] {user_msg}"
+        result = subprocess.run(
+            ["git", "commit", "-m", message, "--author=Antigravity AI <ai-assistant@ki.base>"], 
+            cwd=project_root, 
+            capture_output=True, text=True, encoding="utf-8",
+            check=True
+        )
+        return {"content": [{"type": "text", "text": f"Checkpoint created: {message}\n{result.stdout}"}]}
+    except subprocess.CalledProcessError as e:
+        stderr = e.stderr if e.stderr else str(e)
+        return {"isError": True, "content": [{"type": "text", "text": f"Git Error: {stderr}"}]}
+
+def tool_git_restore(args: dict):
+    target_rel = args.get("target", "doc_config.json")
+    revision = args.get("revision", "HEAD")
+    jail = get_jail_dir()
+    if revision.startswith("-") or ";" in revision or "|" in revision:
+        return {"isError": True, "content": [{"type": "text", "text": "Error: Invalid or suspicious revision string."}]}
+    try:
+        target_abs = validate_path(target_rel)
+    except PermissionError as e:
+        return {"isError": True, "content": [{"type": "text", "text": str(e)}]}
+    try:
+        result = subprocess.run(
+            ["git", "checkout", revision, "--", target_abs],
+            cwd=get_project_root(),
+            capture_output=True, text=True, encoding="utf-8",
+            check=True
+        )
+        return {"content": [{"type": "text", "text": f"Restored '{target_rel}' from {revision}.\n{result.stdout}"}]}
+    except subprocess.CalledProcessError as e:
+        stderr = e.stderr if e.stderr else str(e)
+        return {"isError": True, "content": [{"type": "text", "text": f"Git Error: {stderr}"}]}
+
+def tool_git_diff_secured(args: dict):
+    p = args.get("paths", "").split(",") if args.get("paths") else []
+    return run_script("git_diff_secured.py", p)
+
 # --- Handlers ---
 
 def handle_tool_call(name, args):
@@ -108,22 +208,14 @@ def handle_tool_call(name, args):
             return f"Pruned {initial - len(reg['projects'])} projects."
 
         # Engine-based scripts
-        if name in ["audit_coverage", "sync_agents_md", "generate_dir_index", "update_last_verified"]:
-            return run_script(f"{name}.py")
-        if name == "analyze_all_dependencies": return run_script("ki_dependency_analyzer.py", ["--all"])
-        if name == "analyze_dependencies":
-            a = []
-            if args.get("ki_name"): a.extend(["--ki", args["ki_name"]])
-            if args.get("only_changed"): a.append("--changed")
-            return run_script("ki_dependency_analyzer.py", a)
-        if name == "find_unmapped_files":
-            p = ki_utils.normalize_path(args.get("path", "."))
-            return run_script("find_unmapped_files.py", [p])
-        if name == "analyze_module":
-            p = ki_utils.normalize_path(args.get("path", "."))
-            a = [p]
-            if args.get("recursive"): a.append("--recursive")
-            return run_script("analyze_module.py", a)
+        if name == "audit_coverage": return tool_audit_coverage(args)
+        if name == "sync_agents_md": return tool_sync_agents_md(args)
+        if name == "generate_dir_index": return tool_generate_dir_index(args)
+        if name == "update_last_verified": return tool_update_last_verified(args)
+        if name == "analyze_all_dependencies": return tool_analyze_all_dependencies(args)
+        if name == "analyze_dependencies": return tool_analyze_dependencies(args)
+        if name == "find_unmapped_files": return tool_find_unmapped_files(args)
+        if name == "analyze_module": return tool_analyze_module(args)
 
         # File Ops
         if name == "read_know_file":
@@ -142,15 +234,9 @@ def handle_tool_call(name, args):
             return "Dir created."
 
         # Git
-        if name == "git_checkpoint":
-            jail, proj = get_jail_dir(), get_project_root()
-            subprocess.run(["git", "add", os.path.relpath(jail, proj)], cwd=proj)
-            return subprocess.run(["git", "commit", "-m", f"[AI] {args.get('message', 'Checkpoint')}"], cwd=proj, capture_output=True, text=True).stdout
-        if name == "git_restore":
-            return subprocess.run(["git", "checkout", args.get("revision", "HEAD"), "--", validate_path(args["target"])], cwd=get_project_root(), capture_output=True, text=True).stdout
-        if name == "git_diff_secured":
-            p = args.get("paths", "").split(",") if args.get("paths") else []
-            return run_script("git_diff_secured.py", p) # Assuming specific script or engine call
+        if name == "git_checkpoint": return tool_git_checkpoint(args)
+        if name == "git_restore": return tool_git_restore(args)
+        if name == "git_diff_secured": return tool_git_diff_secured(args)
 
         # State
         if name in ["save_state", "restore_mapping"]:
@@ -245,8 +331,11 @@ def main():
                 send_res({"tools": MCP_TOOLS})
             
             elif method == "tools/call":
-                txt = handle_tool_call(params["name"], params.get("arguments", {}))
-                send_res({"content": [{"type": "text", "text": str(txt)}]})
+                res_val = handle_tool_call(params["name"], params.get("arguments", {}))
+                if isinstance(res_val, dict) and "content" in res_val:
+                    send_res(res_val)
+                else:
+                    send_res({"content": [{"type": "text", "text": str(res_val)}]})
             
             elif method == "prompts/list":
                 send_res({"prompts": MCP_PROMPTS})
