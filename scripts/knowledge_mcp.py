@@ -251,16 +251,26 @@ def handle_tool_call(name, args):
 
 # --- Main Loop ---
 
+def safe_log(msg: str):
+    try:
+        log_file = f"C:\\Experiments\\ki-global-server\\mcp_debug_{os.getpid()}.log"
+        with open(log_file, "a", encoding="utf-8") as lf:
+            lf.write(msg + "\n")
+    except Exception:
+        pass
+
 def main():
-    log_file = "C:\\Experiments\\ki-global-server\\mcp_debug.log"
+    safe_log(f"MCP Server started (PID: {os.getpid()})")
     while True:
         line = sys.stdin.readline()
         if not line: break
+        
+        safe_log(f"REQ: {line.strip()}")
+        
+        rid = None
         try:
-            with open(log_file, "a", encoding="utf-8") as lf:
-                lf.write(f"REQ: {line.strip()}\n")
-            
             req = json.loads(line)
+            rid = req.get("id")
             
             # Перехватываем ответ на наш запрос get_roots
             if req.get("id") == "get_roots":
@@ -270,8 +280,7 @@ def main():
                     root_uri = roots[0].get("uri")
                     if root_uri:
                         ki_utils.ACTIVE_WORKSPACE_PATH = ki_utils.normalize_path(root_uri)
-                        with open(log_file, "a", encoding="utf-8") as lf:
-                            lf.write(f"SET ACTIVE_WORKSPACE_PATH via get_roots to: {ki_utils.ACTIVE_WORKSPACE_PATH}\n")
+                        safe_log(f"SET ACTIVE_WORKSPACE_PATH via get_roots to: {ki_utils.ACTIVE_WORKSPACE_PATH}")
                 continue
 
             rid, method, params = req.get("id"), req.get("method"), req.get("params", {})
@@ -279,8 +288,7 @@ def main():
             def send_res(result_data):
                 resp = {"jsonrpc": "2.0", "id": rid, "result": result_data}
                 resp_str = json.dumps(resp)
-                with open(log_file, "a", encoding="utf-8") as lf:
-                    lf.write(f"RESP: {resp_str}\n")
+                safe_log(f"RESP: {resp_str}")
                 sys.stdout.write(resp_str + "\n")
                 sys.stdout.flush()
 
@@ -308,8 +316,7 @@ def main():
 
                 if root_uri:
                     ki_utils.ACTIVE_WORKSPACE_PATH = ki_utils.normalize_path(root_uri)
-                    with open(log_file, "a", encoding="utf-8") as lf:
-                        lf.write(f"SET ACTIVE_WORKSPACE_PATH to: {ki_utils.ACTIVE_WORKSPACE_PATH}\n")
+                    safe_log(f"SET ACTIVE_WORKSPACE_PATH to: {ki_utils.ACTIVE_WORKSPACE_PATH}")
 
                 res = {
                     "protocolVersion": "2024-11-05",
@@ -322,8 +329,7 @@ def main():
                 # Отправляем запрос roots/list клиенту
                 req_roots = {"jsonrpc": "2.0", "id": "get_roots", "method": "roots/list", "params": {}}
                 req_str = json.dumps(req_roots)
-                with open(log_file, "a", encoding="utf-8") as lf:
-                    lf.write(f"SEND_REQ: {req_str}\n")
+                safe_log(f"SEND_REQ: {req_str}")
                 sys.stdout.write(req_str + "\n")
                 sys.stdout.flush()
             
@@ -360,9 +366,21 @@ def main():
                 send_res({"resources": res})
 
         except Exception as e:
+            safe_log(f"ERROR: {str(e)}")
             try:
-                with open(log_file, "a", encoding="utf-8") as lf:
-                    lf.write(f"ERROR: {str(e)}\n")
-            except Exception: pass
+                resp = {
+                    "jsonrpc": "2.0",
+                    "id": rid,
+                    "error": {
+                        "code": -32603,
+                        "message": str(e)
+                    }
+                }
+                resp_str = json.dumps(resp)
+                sys.stdout.write(resp_str + "\n")
+                sys.stdout.flush()
+            except Exception as internal_err:
+                safe_log(f"CRITICAL ERROR sending error response: {str(internal_err)}")
 
-if __name__ == "__main__": main()
+if __name__ == "__main__":
+    main()
