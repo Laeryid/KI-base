@@ -62,7 +62,7 @@ MCP_TOOLS = [
     {"name": "ki_prune_registry", "description": "Remove dead projects from registry.", "inputSchema": {"type": "object"}},
     
     # Core Knowledge Tools
-    {"name": "audit_coverage", "description": "Run knowledge base coverage audit.", "inputSchema": {"type": "object"}},
+    {"name": "audit_coverage", "description": "Run knowledge base coverage audit. Note: All project folders, including utility or empty ones, must be documented via KIs.", "inputSchema": {"type": "object"}},
     {"name": "sync_agents_md", "description": "Sync AGENTS.md with current KI state.", "inputSchema": {"type": "object"}},
     {"name": "generate_dir_index", "description": "Generate or update DIR_INDEX.md.", "inputSchema": {"type": "object"}},
     {"name": "analyze_dependencies", "description": "Analyze Python/TS imports to update 'Related KIs'.", "inputSchema": {"type": "object", "properties": {"ki_name": {"type": "string"}, "only_changed": {"type": "boolean"}}}},

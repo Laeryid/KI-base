@@ -1,124 +1,146 @@
-# KI_base — Knowledge Infrastructure for AI-Assisted Projects
+# ki-manager — Knowledge Item MCP Server
 
-
-> A portable, drop-in knowledge management system.  
-> Copy the contents of this repo into your project's `.know/` folder and run the init script.
+> AI-powered knowledge management for software projects.  
+> Install once, use across all your projects.
 
 ---
 
-## What is KI_base?
+## What is ki-manager?
 
-**KI_base** is a lightweight infrastructure layer that turns your project into a **self-documenting codebase** for AI agents (Claude, Windsurf, Cursor, etc.).
+**ki-manager** is an MCP (Model Context Protocol) server that turns any project into a **self-documenting codebase** for AI agents (Claude, Antigravity, Cursor, Windsurf, etc.).
 
 It provides:
-- **Knowledge Items (KI)** — structured Markdown snapshots of each module's purpose, key components, and pitfalls, stored in `knowledge/`
-- **Architectural Decision Records (ADR)** — an immutable log of key design decisions in `decisions/`
-- **Coverage Audit** — a script that measures how well your KI base covers your actual code
-- **MCP Server** — an isolated JSON-RPC interface that lets AI agents read/write KI safely, without accessing the rest of your project
-- **Workflows** — step-by-step guides that agents follow to keep everything in sync
-- **Git Snapshots** — versioning system for knowledge state (`git_checkpoint`, `git_restore`)
+- **Knowledge Items (KI)** — structured Markdown snapshots of each module, stored in `.ki-base/knowledge/`
+- **Coverage Audit** — measures how well your KI base covers your actual code
+- **Dependency Analysis** — auto-updates "Related KIs" by analyzing imports
+- **Git Snapshots** — versioned knowledge state (`git_checkpoint`, `git_restore`)
+- **Scaffolding** — one command creates the complete `.ki-base/` structure in any project
 
 ---
 
-## Repository Structure
+## Installation
 
+### Option A: uvx (recommended — no install needed)
+
+```json
+{
+  "mcpServers": {
+    "ki-manager": {
+      "command": "uvx",
+      "args": ["ki-manager"]
+    }
+  }
+}
 ```
-.know/                      ←  copy KI_base contents here
-├── README.md               ← this file
-├── doc_config.json         ← manifest: tracked modules + KI registry
-├── knowledge/
-│   └── KI_template.md      ← blank KI template
-├── decisions/
-│   └── 000_adr_template.md ← blank ADR template
-├── workflows/
-│   ├── sync-knowledge.md   ← /sync-knowledge workflow
-│   ├── expand-knowledge.md ← /expand-knowledge workflow
-│   └── create-adr.md       ← /create-adr workflow
-├── scripts/
-│   ├── init_ki_system.py   ← run once after copying to initialize
-│   ├── ki_utils.py         ← shared utility module
-│   ├── knowledge_engine.py ← file hashing core
-│   ├── knowledge_mcp.py    ← MCP server
-│   ├── audit_coverage.py   ← coverage generator
-│   └── ...
-└── tests/                  ← core infrastructure tests
+
+> Requires [uv](https://docs.astral.sh/uv/) — install with: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+
+### Option B: Smithery (Claude Desktop / Cursor / Windsurf GUI)
+
+Search for **ki-manager** in your IDE's MCP marketplace and click Install.
+
+### Option C: pip
+
+```bash
+pip install ki-manager
+ki-manager  # starts the MCP server
+```
+
+### Option D: Docker
+
+```bash
+docker run -i --rm -v "$(pwd):/workspace" ghcr.io/laeryid/ki-manager
 ```
 
 ---
 
 ## Quickstart
 
-### 1. Copy into your project
+### 1. Add the MCP server to your IDE
 
-```powershell
-# Windows — copy all contents into your project's .know folder
-Copy-Item -Recurse "path\to\KI_base\*" "your-project\.know\"
+Pick one of the options above and add it to your MCP config.
+
+### 2. Initialize a project
+
+In your IDE chat, call the `ki_init_project` tool:
+
+```
+ki_init_project(project_path="/absolute/path/to/your-project")
 ```
 
-### 2. Initialize
+This creates:
 
-```powershell
-# Run the init script (automatically detects .venv)
-.venv\Scripts\python.exe .know\scripts\init_ki_system.py
+```
+your-project/
+└── .ki-base/
+    ├── config.json          ← machine-specific (auto-added to .gitignore)
+    ├── ki_config.json       ← project settings (commit to git)
+    ├── doc_config.json      ← file→KI map (commit to git)
+    ├── AGENTS.md            ← agent instructions (commit to git)
+    ├── DIR_INDEX.md         ← directory index (commit to git)
+    └── knowledge/
+        └── _OVERVIEW.ki.md  ← starter Knowledge Item
 ```
 
-The script will:
-- Detect your virtual environment automatically.
-- Write `.know/ki_config.json` with resolved paths.
-- Setup **Hard Links** for workflows in `.agent/workflows/`.
-- Generate a selective **.gitignore** (keeps your data, ignores the engine).
+### 3. Start documenting
 
-### 3. Connect the MCP Server
- 
-Add to your IDE's MCP config:
-```json
-{
-  "mcpServers": {
-    "knowledge-manager": {
-      "command": ".venv/Scripts/python.exe",
-      "args": [".know/scripts/knowledge_mcp.py", "--config", ".know/ki_config.json"],
-      "cwd": "."
-    }
-  }
-}
-```
- 
-### 4. Start using Workflows
- 
-Use slash commands from your IDE (currently supported in **Antigravity**):
-- `/expand-knowledge` — identify and fill documentation gaps.
-- `/sync-knowledge` — keep documentation in sync with code changes.
-- `/create-adr` — record architectural decisions.
+Use the available tools or slash commands:
 
-> [!NOTE]
-> **Slash commands** are a feature of the Antigravity agent. In other IDEs (like Windsurf or Cursor), you should trigger these workflows by **dragging the workflow file** (e.g., `.know/workflows/sync-knowledge.md`) into the chat or mentioning it as a context file.
+| Tool / Command | Action |
+|----------------|--------|
+| `audit_coverage` | Find documentation gaps |
+| `generate_dir_index` | Build directory index |
+| `sync_agents_md` | Sync KI table in AGENTS.md |
+| `git_checkpoint` | Save knowledge snapshot to git |
+| `/expand-knowledge` | Iteratively fill gaps (Antigravity) |
+| `/sync-knowledge` | Full sync workflow (Antigravity) |
+| `/create-adr` | Record architectural decision |
 
 ---
 
-## What Gets Committed to Git?
+## What Goes Into Git?
 
-The initialization script sets up `.know/.gitignore` to ensure your repository stays clean:
-
-| Path | Git | Description |
-|---|:---:|---|
-| `knowledge/*.md` | ✅ | Project-specific knowledge |
-| `decisions/*.md` | ✅ | Architecture history |
-| `doc_config.json` | ✅ | Module manifest |
-| `scripts/` | ❌ | Engine scripts (ignored) |
-| `tests/` | ❌ | Engine tests (ignored) |
-| `DIR_INDEX.md` | ❌ | **Auto-generated index (ignored)** |
-| `ki_config.json` | ❌ | Local machine-specific paths |
-| `doc_state.json` | ❌ | File hash cache |
-| `README.md` | ❌ | Infrastructure description |
+| Path | Git | Notes |
+|------|:---:|-------|
+| `.ki-base/knowledge/*.ki.md` | ✅ | Project knowledge |
+| `.ki-base/doc_config.json` | ✅ | Module manifest |
+| `.ki-base/ki_config.json` | ✅ | Project settings |
+| `.ki-base/AGENTS.md` | ✅ | Agent instructions |
+| `.ki-base/DIR_INDEX.md` | ✅ | Directory index |
+| `.ki-base/config.json` | ❌ | Machine-specific paths |
+| `.ki-base/doc_state.json` | ❌ | Hash cache |
 
 ---
 
 ## Security
 
 The MCP server operates in a **sandbox**:
-- File access is restricted to the `.know/` folder.
-- Executable files (`.py`, `.exe`, etc.) are protected from modification.
-- Critical files like `doc_config.json` can only be modified via specific tools.
+- All file access is restricted to the `.ki-base/` directory
+- Executable files (`.py`, `.exe`, `.sh`, etc.) cannot be modified via MCP
+- Critical config files are protected from direct overwrite
+
+---
+
+## Project Structure (this repo)
+
+```
+ki-manager/
+├── pyproject.toml            ← pip / uvx package config
+├── smithery.yaml             ← Smithery MCP marketplace config
+├── src/ki_manager/
+│   ├── server.py             ← MCP server entry point
+│   ├── tools/
+│   │   └── scaffold.py       ← ki_init_project implementation
+│   └── scripts/              ← bundled analysis scripts
+│       ├── ki_utils.py       ← shared utilities
+│       ├── audit_coverage.py
+│       ├── sync_agents_md.py
+│       ├── generate_dir_index.py
+│       ├── ki_dependency_analyzer.py
+│       └── ...
+├── knowledge/                ← KI documentation of this repo itself
+└── decisions/                ← Architecture Decision Records
+```
 
 ---
 
