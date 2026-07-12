@@ -698,7 +698,10 @@ def main():
                     send({"content": [{"type": "text", "text": str(result)}]})
 
             elif method == "prompts/list":
-                send({"prompts": get_mcp_prompts()})
+                if server_mode == "lazy":
+                    send({"prompts": []})
+                else:
+                    send({"prompts": get_mcp_prompts()})
 
             elif method == "prompts/get":
                 prompt_name = params.get("name")
@@ -720,18 +723,21 @@ def main():
                 send({"messages": [{"role": "user", "content": {"type": "text", "text": content}}]})
 
             elif method == "resources/list":
-                jail = get_jail_dir()
-                resources = [
-                    {"uri": "ki://instructions.md", "name": "instructions.md (Global AI Rules)", "mimeType": "text/markdown"},
-                    {"uri": "ki://knowledge-items.md", "name": "knowledge-items.md (Dynamic KI List)", "mimeType": "text/markdown"},
-                    {"uri": "ki://adr-list.md", "name": "adr-list.md (Dynamic ADR List)", "mimeType": "text/markdown"},
-                ]
-                if jail:
-                    for fname in ("doc_config.json", "DIR_INDEX.md"):
-                        fpath = os.path.join(jail, fname)
-                        if os.path.exists(fpath):
-                            resources.append({"uri": f"ki://{fname}", "name": fname, "mimeType": "text/plain"})
-                send({"resources": resources})
+                if server_mode == "lazy":
+                    send({"resources": []})
+                else:
+                    jail = get_jail_dir()
+                    resources = [
+                        {"uri": "ki://instructions.md", "name": "instructions.md (Global AI Rules)", "mimeType": "text/markdown"},
+                        {"uri": "ki://knowledge-items.md", "name": "knowledge-items.md (Dynamic KI List)", "mimeType": "text/markdown"},
+                        {"uri": "ki://adr-list.md", "name": "adr-list.md (Dynamic ADR List)", "mimeType": "text/markdown"},
+                    ]
+                    if jail:
+                        for fname in ("doc_config.json", "DIR_INDEX.md"):
+                            fpath = os.path.join(jail, fname)
+                            if os.path.exists(fpath):
+                                resources.append({"uri": f"ki://{fname}", "name": fname, "mimeType": "text/plain"})
+                    send({"resources": resources})
 
             elif method == "resources/read":
                 uri = params.get("uri", "")
