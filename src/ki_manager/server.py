@@ -192,6 +192,11 @@ MCP_TOOLS = [
     },
     # ── Registry ──
     {
+        "name": "ki_migrate_project",
+        "description": "Migrate a legacy .know/ project to the modern .ki-base/ architecture. Renames directories, updates config, and ensures _OVERVIEW.ki.md exists.",
+        "inputSchema": {"type": "object"},
+    },
+    {
         "name": "ki_register_project",
         "description": "Register an existing project (with .ki-base/ki_config.json) in the global registry.",
         "inputSchema": {
@@ -454,6 +459,8 @@ def handle_tool_call(name: str, args: dict) -> Any:
             return init_project(args)
 
         # ── Registry ──
+        if name == "ki_migrate_project":
+            return scaffold.migrate_project(str(get_project_root()))
         if name == "ki_register_project":
             config_path = args.get("config_path", "")
             # Accept directory too
