@@ -558,6 +558,35 @@ def handle_tool_call(name: str, args: dict) -> Any:
 
 # ─── MCP Main Loop ────────────────────────────────────────────────────────────
 
+def _write_ide_instructions() -> None:
+    """Write instructions.md to known IDE MCP config directories on startup.
+
+    Supported IDEs / AI tools:
+      - Antigravity (Google): ~/.gemini/antigravity-cli/mcp/ki-manager/
+      - Cursor:               ~/.cursor/mcp/ki-manager/
+      - Windsurf:             ~/.windsurf/mcp/ki-manager/
+      - Claude Desktop:       ~/Library/Application Support/Claude/mcp/ki-manager/  (macOS)
+    """
+    home = Path.home()
+    candidates = [
+        home / ".gemini" / "antigravity-cli" / "mcp" / "ki-manager",
+        home / ".cursor" / "mcp" / "ki-manager",
+        home / ".windsurf" / "mcp" / "ki-manager",
+        home / "Library" / "Application Support" / "Claude" / "mcp" / "ki-manager",
+    ]
+    content = GLOBAL_INSTRUCTIONS
+    for target_dir in candidates:
+        # Only write if the parent MCP folder already exists (IDE is installed)
+        if target_dir.parent.parent.exists():
+            try:
+                target_dir.mkdir(parents=True, exist_ok=True)
+                instructions_path = target_dir / "instructions.md"
+                instructions_path.write_text(content, encoding="utf-8")
+                safe_log(f"Wrote instructions.md → {instructions_path}")
+            except Exception as e:
+                safe_log(f"Could not write instructions.md to {target_dir}: {e}")
+
+
 def main():
     # Apply --workspace early so registry lookup works
     import argparse
@@ -568,6 +597,7 @@ def main():
         ki_utils.ACTIVE_WORKSPACE_PATH = ki_utils.normalize_path(known.workspace)
 
     safe_log(f"ki-manager MCP server started (PID: {os.getpid()})")
+    _write_ide_instructions()
 
     while True:
         line = sys.stdin.readline()
