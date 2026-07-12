@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ki-manager"
-version = "2.0.2"
+version = "2.0.4"
 description = "Knowledge Item (KI) management MCP server for AI-assisted development"
 readme = "README.md"
 license = { file = "LICENSE" }
