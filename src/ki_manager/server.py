@@ -599,11 +599,14 @@ def main():
     import argparse
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--workspace", type=str)
+    parser.add_argument("--mode", type=str, choices=["eager", "lazy"], default=None)
     known, _ = parser.parse_known_args()
     if known.workspace:
         ki_utils.ACTIVE_WORKSPACE_PATH = ki_utils.normalize_path(known.workspace)
+        
+    server_mode = known.mode
 
-    safe_log(f"ki-manager MCP server started (PID: {os.getpid()})")
+    safe_log(f"ki-manager MCP server started (PID: {os.getpid()}, mode: {server_mode})")
     _write_ide_instructions()
 
     while True:
@@ -679,7 +682,13 @@ def main():
                 sys.stdout.flush()
 
             elif method == "tools/list":
-                send({"tools": MCP_TOOLS})
+                eager_tool_names = {"ki_status", "read_know_file"}
+                filtered_tools = MCP_TOOLS
+                if server_mode == "eager":
+                    filtered_tools = [t for t in MCP_TOOLS if t["name"] in eager_tool_names]
+                elif server_mode == "lazy":
+                    filtered_tools = [t for t in MCP_TOOLS if t["name"] not in eager_tool_names]
+                send({"tools": filtered_tools})
 
             elif method == "tools/call":
                 result = handle_tool_call(params["name"], params.get("arguments", {}))

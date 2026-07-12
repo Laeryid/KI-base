@@ -35,6 +35,26 @@ It provides:
 
 > Requires [uv](https://docs.astral.sh/uv/) — install with: `curl -LsSf https://astral.sh/uv/install.sh | sh`
 
+#### Eager vs Lazy Loading (Advanced)
+
+Because `ki-manager` provides a large number of tools, AI IDEs may downgrade it to "lazy" loading to save context window. For maximum performance, you can split the server into two instances using the `--mode` flag. This allows lightweight tools (status, read_know_file) to load natively (`eager`), while heavy operations remain `lazy`:
+
+```json
+{
+  "mcpServers": {
+    "ki-manager-eager": {
+      "command": "uvx",
+      "args": ["ki-manager", "--mode", "eager"],
+      "lifecycle": "eager"
+    },
+    "ki-manager-lazy": {
+      "command": "uvx",
+      "args": ["ki-manager", "--mode", "lazy"]
+    }
+  }
+}
+```
+
 ### Option B: Smithery (Claude Desktop / Cursor / Windsurf GUI)
 
 Search for **ki-manager** in your IDE's MCP marketplace and click Install.
