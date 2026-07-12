@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional
 # ─── Package paths ────────────────────────────────────────────────────────────
 _PACKAGE_DIR = Path(__file__).parent
 _SCRIPTS_DIR = _PACKAGE_DIR / "scripts"
+_WORKFLOWS_DIR = _PACKAGE_DIR / "workflows"
 
 # Make ki_utils importable for server.py itself
 sys.path.insert(0, str(_SCRIPTS_DIR))
@@ -51,6 +52,57 @@ def get_project_root() -> str:
 
 def get_doc_config() -> dict:
     return ki_utils.get_doc_config()
+
+
+# ─── Global Virtual Content ───────────────────────────────────────────────────
+
+GLOBAL_INSTRUCTIONS = """\
+# Global AI Instructions for ki-manager
+
+## 1. Project Navigation
+- **`DIR_INDEX.md`** (`.ki-base/DIR_INDEX.md`) — project directory tree.
+- **`doc_config.json`** (`.ki-base/doc_config.json`) — manifest of tracked artifacts.
+- All Knowledge Items (KI) live in `.ki-base/knowledge/`.
+- Architecture Decision Records (ADR) live in `.ki-base/decisions/` or `decisions/`.
+- Start here: `.ki-base/knowledge/_OVERVIEW.ki.md`
+
+## 2. Forced Efficiency (Anti-Hallucinations)
+1. **Mandatory Planning Template**:
+   Before making code changes, your initial plan (Implementation Plan) **MUST** include:
+   - **Affected layers**: [which subsystems are affected]
+   - **Read KIs**: [LIST of files from `.ki-base/knowledge/` which you read for this task]. *If the list is empty — read KIs before writing code!*
+   - **KIs Constraints**: [which approaches are prohibited by current architecture]
+
+2. **Strict Adherence**:
+   - Always read relevant KIs before modifying a module.
+   - After significant changes, run `audit_coverage` via MCP.
+   - Use `git_checkpoint` to save knowledge snapshots.
+   
+## 3. Workflow-driven Execution
+1. Check `ki://workflows/` resources or MCP Prompts if the user asks for a complex documentation task.
+2. These workflows are your "operating system". You **MUST** follow their steps exactly as written.
+"""
+
+def get_adr_list(project_root: str, jail: str) -> str:
+    """Dynamically scan for ADR files in decisions/ or .ki-base/decisions/."""
+    candidates = [
+        os.path.join(project_root, "decisions"),
+        os.path.join(jail, "decisions")
+    ]
+    lines = ["# Architecture Decision Records (ADRs)\n"]
+    found = False
+    for c in candidates:
+        if os.path.exists(c) and os.path.isdir(c):
+            lines.append(f"Found in: {os.path.relpath(c, project_root)}")
+            for f in sorted(os.listdir(c)):
+                if f.endswith(".md"):
+                    lines.append(f"- {f}")
+                    found = True
+            lines.append("")
+    
+    if not found:
+        lines.append("No ADRs found in this project.")
+    return "\n".join(lines)
 
 
 # ─── Security ─────────────────────────────────────────────────────────────────
@@ -173,15 +225,13 @@ MCP_TOOLS = [
         "description": (
             "Run a knowledge base coverage audit. Compares tracked modules against "
             "registered KIs. Returns a coverage matrix with priority gaps. "
-            "NOTE: every project folder, including utility/empty ones, must have a KI."
+            "NOTE: every project folder, including utility/empty ones, must have a KI. "
+            "CRITICAL AGENT RULE: After making significant architectural changes or creating "
+            "new modules, you MUST run this tool to ensure documentation remains in sync."
         ),
         "inputSchema": {"type": "object"},
     },
-    {
-        "name": "sync_agents_md",
-        "description": "Synchronize the KI table in .ki-base/AGENTS.md with the current doc_config.json.",
-        "inputSchema": {"type": "object"},
-    },
+
     {
         "name": "generate_dir_index",
         "description": "Generate or update .ki-base/DIR_INDEX.md with directory structure.",
@@ -230,7 +280,13 @@ MCP_TOOLS = [
     # ── File Operations ──
     {
         "name": "read_know_file",
-        "description": "Read a file inside the .ki-base/ directory.",
+        "description": (
+            "Read a Knowledge Item (KI) file inside the .ki-base/ directory. "
+            "CRITICAL AGENT RULE: In this project, code is documented using ki-manager. "
+            "Before planning implementation or modifying any code, you MUST use this tool "
+            "to read .ki-base/knowledge/_OVERVIEW.ki.md and any other relevant KIs to "
+            "understand the architecture, rules, and constraints."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {"rel_path": {"type": "string", "description": "Path relative to .ki-base/"}},
@@ -312,16 +368,24 @@ MCP_TOOLS = [
     },
 ]
 
-MCP_PROMPTS = [
-    {
-        "name": "knowledge-instructions",
-        "description": "Agent instructions from .ki-base/AGENTS.md for the active project.",
-    },
-    {
-        "name": "knowledge-items",
-        "description": "Dynamic table of all registered Knowledge Items.",
-    },
-]
+def get_mcp_prompts() -> list:
+    prompts = [
+        {
+            "name": "knowledge-instructions",
+            "description": "Agent instructions from .ki-base/AGENTS.md for the active project.",
+        },
+        {
+            "name": "knowledge-items",
+            "description": "Dynamic table of all registered Knowledge Items.",
+        },
+    ]
+    if _WORKFLOWS_DIR.exists():
+        for f in _WORKFLOWS_DIR.glob("*.md"):
+            prompts.append({
+                "name": f.stem,
+                "description": f"KI workflow: {f.stem.replace('-', ' ').title()}",
+            })
+    return prompts
 
 
 # ─── Tool Implementations ─────────────────────────────────────────────────────
@@ -417,8 +481,7 @@ def handle_tool_call(name: str, args: dict) -> Any:
         # ── Coverage / Analysis ──
         if name == "audit_coverage":
             return run_script("audit_coverage.py")
-        if name == "sync_agents_md":
-            return run_script("sync_agents_md.py")
+
         if name == "generate_dir_index":
             return run_script("generate_dir_index.py")
         if name == "update_last_verified":
@@ -589,30 +652,66 @@ def main():
                     send({"content": [{"type": "text", "text": str(result)}]})
 
             elif method == "prompts/list":
-                send({"prompts": MCP_PROMPTS})
+                send({"prompts": get_mcp_prompts()})
 
             elif method == "prompts/get":
                 prompt_name = params.get("name")
                 match = ki_utils.find_project_by_cwd()
+                content = None
                 if not match:
                     content = "No registered project. Run ki_init_project first."
                 elif prompt_name == "knowledge-instructions":
-                    content = ki_utils.get_instructions()
+                    content = GLOBAL_INSTRUCTIONS
                 elif prompt_name == "knowledge-items":
                     content = f"Knowledge Items for this project:\n\n{ki_utils.get_ki_list_table()}"
                 else:
-                    content = f"Unknown prompt: {prompt_name}"
+                    wf_path = _WORKFLOWS_DIR / f"{prompt_name}.md"
+                    if wf_path.exists():
+                        with open(wf_path, "r", encoding="utf-8") as f:
+                            content = f.read()
+                    else:
+                        content = f"Unknown prompt: {prompt_name}"
                 send({"messages": [{"role": "user", "content": {"type": "text", "text": content}}]})
 
             elif method == "resources/list":
                 jail = get_jail_dir()
-                resources = []
+                resources = [
+                    {"uri": "ki://instructions.md", "name": "instructions.md (Global AI Rules)", "mimeType": "text/markdown"},
+                    {"uri": "ki://knowledge-items.md", "name": "knowledge-items.md (Dynamic KI List)", "mimeType": "text/markdown"},
+                    {"uri": "ki://adr-list.md", "name": "adr-list.md (Dynamic ADR List)", "mimeType": "text/markdown"},
+                ]
                 if jail:
-                    for fname in ("doc_config.json", "DIR_INDEX.md", "AGENTS.md"):
+                    for fname in ("doc_config.json", "DIR_INDEX.md"):
                         fpath = os.path.join(jail, fname)
                         if os.path.exists(fpath):
                             resources.append({"uri": f"ki://{fname}", "name": fname, "mimeType": "text/plain"})
                 send({"resources": resources})
+
+            elif method == "resources/read":
+                uri = params.get("uri", "")
+                jail = get_jail_dir()
+                content = None
+                
+                # Virtual resources
+                if uri == "ki://instructions.md":
+                    content = GLOBAL_INSTRUCTIONS
+                elif uri == "ki://knowledge-items.md":
+                    content = f"Knowledge Items for this project:\n\n{ki_utils.get_ki_list_table()}"
+                elif uri == "ki://adr-list.md":
+                    content = get_adr_list(get_project_root(), jail) if jail else "No active project."
+                
+                # Physical resources in jail
+                elif jail and uri.startswith("ki://"):
+                    fname = uri.replace("ki://", "")
+                    fpath = os.path.join(jail, fname)
+                    if os.path.exists(fpath):
+                        with open(fpath, "r", encoding="utf-8") as f:
+                            content = f.read()
+                
+                if content is not None:
+                    send({"contents": [{"uri": uri, "mimeType": "text/plain", "text": content}]})
+                else:
+                    send({"isError": True, "error": {"code": -32602, "message": f"Resource not found: {uri}"}})
 
         except Exception as e:
             safe_log(f"ERROR: {e}")

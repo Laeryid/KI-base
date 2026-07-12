@@ -1,5 +1,5 @@
 name: ki-manager
-description: "Knowledge Item (KI) management MCP server for AI-assisted development. Keeps your codebase self-documenting for AI agents."
+description: "Knowledge Item (KI) management MCP server for AI-assisted development. Keeps your codebase self-documenting for AI agents. CRITICAL AGENT RULE: For effective use of the KI base, always consider the hints and guidelines from the resource file instructions.md during your work."
 version: "2.0.0"
 
 startCommand:
