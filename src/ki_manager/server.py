@@ -14,8 +14,16 @@ import sys
 import json
 import os
 import subprocess
+import importlib.metadata
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+if sys.platform == "win32":
+    import codecs
+    if hasattr(sys.stdout, 'buffer'):
+        sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
+    if hasattr(sys.stdin, 'buffer'):
+        sys.stdin = codecs.getreader('utf-8')(sys.stdin.buffer, 'strict')
 
 # ─── Package paths ────────────────────────────────────────────────────────────
 _PACKAGE_DIR = Path(__file__).parent
@@ -640,7 +648,7 @@ def main():
                 sys.stdout.write(resp + "\n")
                 sys.stdout.flush()
 
-            if method == "initialize":
+            if method in ("initialize", "server/discover"):
                 # Extract workspace URI from any location in params
                 root_uri = params.get("rootUri")
                 if not root_uri:
@@ -668,10 +676,15 @@ def main():
                     ki_utils.ACTIVE_WORKSPACE_PATH = ki_utils.normalize_path(root_uri)
                     safe_log(f"SET workspace via initialize: {ki_utils.ACTIVE_WORKSPACE_PATH}")
 
+                try:
+                    server_version = importlib.metadata.version("ki-manager")
+                except importlib.metadata.PackageNotFoundError:
+                    server_version = "2.0.9"
+
                 send({
                     "protocolVersion": "2024-11-05",
                     "capabilities": {"tools": {}, "prompts": {}, "resources": {}},
-                    "serverInfo": {"name": "ki-manager", "version": "2.0.0"},
+                    "serverInfo": {"name": "ki-manager", "version": server_version},
                 })
 
             elif method == "notifications/initialized":
@@ -801,6 +814,11 @@ def main():
                     send({"contents": [{"uri": uri, "mimeType": "text/plain", "text": content}]})
                 else:
                     send({"isError": True, "error": {"code": -32602, "message": f"Resource not found: {uri}"}})
+
+            else:
+                # Fallback for unknown methods to prevent hangs
+                if rid is not None:
+                    send({"isError": True, "error": {"code": -32601, "message": f"Method not found: {method}"}})
 
         except Exception as e:
             safe_log(f"ERROR: {e}")
