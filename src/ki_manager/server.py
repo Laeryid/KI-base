@@ -682,16 +682,53 @@ def main():
                 sys.stdout.flush()
 
             elif method == "tools/list":
-                eager_tool_names = {"ki_status", "read_know_file"}
-                filtered_tools = MCP_TOOLS
-                if server_mode == "eager":
-                    filtered_tools = [t for t in MCP_TOOLS if t["name"] in eager_tool_names]
-                elif server_mode == "lazy":
-                    filtered_tools = [t for t in MCP_TOOLS if t["name"] not in eager_tool_names]
-                send({"tools": filtered_tools})
+                eager_tool_names = {"ki_status", "read_know_file", "write_know_file", "edit_know_file"}
+                eager_tools = [t for t in MCP_TOOLS if t["name"] in eager_tool_names]
+                lazy_tools = [t for t in MCP_TOOLS if t["name"] not in eager_tool_names]
+                
+                ki_call_tool = {
+                    "name": "ki_call",
+                    "description": "Universal dispatcher for advanced KI tools. Call with action='help' to see all available actions and their schemas.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "action": {
+                                "type": "string",
+                                "enum": ["help"] + [t["name"] for t in lazy_tools],
+                                "description": "The specific KI tool action to execute"
+                            },
+                            "args": {
+                                "type": "object",
+                                "description": "Arguments for the selected action (see 'help')"
+                            }
+                        },
+                        "required": ["action"]
+                    }
+                }
+                send({"tools": eager_tools + [ki_call_tool]})
 
             elif method == "tools/call":
-                result = handle_tool_call(params["name"], params.get("arguments", {}))
+                tool_name = params["name"]
+                tool_args = params.get("arguments", {})
+                
+                if tool_name == "ki_call":
+                    action = tool_args.get("action")
+                    if action == "help":
+                        eager_tool_names = {"ki_status", "read_know_file", "write_know_file", "edit_know_file"}
+                        lazy_tools = [t for t in MCP_TOOLS if t["name"] not in eager_tool_names]
+                        help_text = "### Available actions for `ki_call`\n\n"
+                        for t in lazy_tools:
+                            schema_str = json.dumps(t.get("inputSchema", {}), indent=2)
+                            help_text += f"**Action:** `{t['name']}`\n{t['description']}\n**Schema:**\n```json\n{schema_str}\n```\n---\n"
+                        result = help_text
+                    else:
+                        sub_args = tool_args.get("args", {})
+                        if sub_args is None:
+                            sub_args = {}
+                        result = handle_tool_call(action, sub_args)
+                else:
+                    result = handle_tool_call(tool_name, tool_args)
+
                 if isinstance(result, dict) and "content" in result:
                     send(result)
                 else:
