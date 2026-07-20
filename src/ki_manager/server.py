@@ -19,11 +19,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 if sys.platform == "win32":
-    import codecs
-    if hasattr(sys.stdout, 'buffer'):
-        sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
-    if hasattr(sys.stdin, 'buffer'):
-        sys.stdin = codecs.getreader('utf-8')(sys.stdin.buffer, 'strict')
+    # Removed codecs.getwriter because it causes OSError [Errno 22] Invalid argument on flush() with Windows pipes.
+    # Python 3 handles stdout encodings natively well enough for JSON-RPC over pipes.
+    pass
 
 # ─── Package paths ────────────────────────────────────────────────────────────
 _PACKAGE_DIR = Path(__file__).parent
@@ -644,11 +642,15 @@ def main():
 
             def send(result_data):
                 resp = json.dumps({"jsonrpc": "2.0", "id": rid, "result": result_data})
+                safe_log(f"DEBUG: Before write RESP")
                 safe_log(f"RESP: {resp}")
                 sys.stdout.write(resp + "\n")
+                safe_log(f"DEBUG: Before flush RESP")
                 sys.stdout.flush()
+                safe_log(f"DEBUG: After flush RESP")
 
             if method in ("initialize", "server/discover"):
+                safe_log(f"DEBUG: Inside method {method}")
                 # Extract workspace URI from any location in params
                 root_uri = params.get("rootUri")
                 if not root_uri:
@@ -672,20 +674,27 @@ def main():
                             return d
                     root_uri = _find_uri(params)
 
+                safe_log(f"DEBUG: After _find_uri. root_uri={root_uri}")
                 if root_uri:
                     ki_utils.ACTIVE_WORKSPACE_PATH = ki_utils.normalize_path(root_uri)
                     safe_log(f"SET workspace via initialize: {ki_utils.ACTIVE_WORKSPACE_PATH}")
 
+                safe_log(f"DEBUG: Before importlib")
                 try:
                     server_version = importlib.metadata.version("ki-manager")
                 except importlib.metadata.PackageNotFoundError:
-                    server_version = "2.0.9"
+                    server_version = "2.0.11"
+                except Exception as ex:
+                    safe_log(f"DEBUG: importlib EXCEPTION: {ex}")
+                    server_version = "2.0.11"
+                safe_log(f"DEBUG: After importlib. version={server_version}")
 
                 send({
                     "protocolVersion": "2024-11-05",
                     "capabilities": {"tools": {}, "prompts": {}, "resources": {}},
                     "serverInfo": {"name": "ki-manager", "version": server_version},
                 })
+                safe_log(f"DEBUG: After send() for {method}")
 
             elif method == "notifications/initialized":
                 # Request roots from client for workspace detection
