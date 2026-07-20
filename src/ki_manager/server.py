@@ -284,6 +284,38 @@ MCP_TOOLS = [
         },
     },
     {
+        "name": "ki_scaffold",
+        "description": (
+            "Generate scaffold KI files for all uncovered modules in one pass (no AI required). "
+            "Extracts class/function names via regex for Python, TypeScript, JavaScript, Go; "
+            "falls back to file listing for other languages. "
+            "Marks generated KIs with <!-- scaffold: true --> for subsequent flash enrichment. "
+            "Run this as Phase 2 of the /scaffold-knowledge workflow."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "modules": {
+                    "type": "string",
+                    "description": "Comma-separated module paths or labels to scaffold (default: all uncovered)",
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "If true, show what would be created without writing files (default: false)",
+                },
+                "force": {
+                    "type": "boolean",
+                    "description": "Overwrite existing KI files that have the scaffold marker (default: false)",
+                },
+            },
+        },
+    },
+    {
+        "name": "ki_scaffold_status",
+        "description": "Print a concise status table of all scaffold KIs (pending vs enriched) by reading their headers.",
+        "inputSchema": {"type": "object"},
+    },
+    {
         "name": "update_last_verified",
         "description": "Update the last_verified date in all KI files to today.",
         "inputSchema": {"type": "object"},
@@ -520,6 +552,17 @@ def handle_tool_call(name: str, args: dict) -> Any:
             if args.get("recursive"):
                 cmd_args.append("--recursive")
             return run_script("analyze_module.py", cmd_args)
+        if name == "ki_scaffold":
+            cmd_args = []
+            if args.get("dry_run"):
+                cmd_args.append("--dry-run")
+            if args.get("modules"):
+                cmd_args += ["--modules", args["modules"]]
+            if args.get("force"):
+                cmd_args.append("--force")
+            return run_script("generate_ki_scaffolds.py", cmd_args)
+        if name == "ki_scaffold_status":
+            return run_script("generate_ki_scaffolds.py", ["--status"])
 
         # ── File Ops ──
         if name == "read_know_file":
