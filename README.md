@@ -27,33 +27,14 @@ It provides:
   "mcpServers": {
     "ki-manager": {
       "command": "uvx",
-      "args": ["ki-manager"]
+      "args": ["--quiet", "ki-manager"]
     }
   }
 }
 ```
 
-> Requires [uv](https://docs.astral.sh/uv/) — install with: `curl -LsSf https://astral.sh/uv/install.sh | sh`
-
-#### Eager vs Lazy Loading (Advanced)
-
-Because `ki-manager` provides a large number of tools, AI IDEs may downgrade it to "lazy" loading to save context window. For maximum performance, you can split the server into two instances using the `--mode` flag. This allows lightweight tools (status, read_know_file) to load natively (`eager`), while heavy operations remain `lazy`:
-
-```json
-{
-  "mcpServers": {
-    "ki-manager-eager": {
-      "command": "uvx",
-      "args": ["ki-manager", "--mode", "eager"],
-      "lifecycle": "eager"
-    },
-    "ki-manager-lazy": {
-      "command": "uvx",
-      "args": ["ki-manager", "--mode", "lazy"]
-    }
-  }
-}
-```
+> Requires [uv](https://docs.astral.sh/uv/) — install with: `curl -LsSf https://astral.sh/uv/install.sh | sh`  
+> **First run:** `uvx` downloads and caches the package automatically. Subsequent launches are instant.
 
 ### Option B: Smithery (Claude Desktop / Cursor / Windsurf GUI)
 
@@ -66,10 +47,31 @@ pip install ki-manager
 ki-manager  # starts the MCP server
 ```
 
-### Option D: Docker
+### Option D: Local development
 
-```bash
-docker run -i --rm -v "$(pwd):/workspace" ghcr.io/laeryid/ki-manager
+If you cloned the repository and are developing locally, point your IDE to the `.venv` Python directly:
+
+```json
+{
+  "mcpServers": {
+    "ki-manager": {
+      "command": "/absolute/path/to/repo/.venv/bin/python",
+      "args": ["-m", "ki_manager.server"]
+    }
+  }
+}
+```
+
+On Windows:
+```json
+{
+  "mcpServers": {
+    "ki-manager": {
+      "command": "C:\\path\\to\\repo\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "ki_manager.server"]
+    }
+  }
+}
 ```
 
 ---
@@ -160,6 +162,48 @@ ki-manager/
 │       └── ...
 ├── knowledge/                ← KI documentation of this repo itself
 └── decisions/                ← Architecture Decision Records
+```
+
+---
+
+## Troubleshooting
+
+### MCP server hangs on initialization (never connects)
+
+This is the most common issue on Windows and affects both `uvx` and direct `python` launches.
+
+**Step 1 — Check logs:**  
+Server logs are written to `~/.ki_base/logs/`. Open the latest file and look for `REQ:` lines. If there are no `REQ:` lines at all, stdin is not being piped correctly by the IDE.
+
+**Step 2 — Try the local Python fallback:**  
+Replace `uvx` with the absolute path to `.venv/Scripts/python.exe` (Windows) or `.venv/bin/python` (Linux/macOS) to rule out `uvx` as the cause:
+```json
+{
+  "mcpServers": {
+    "ki-manager": {
+      "command": "C:\\path\\to\\repo\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "ki_manager.server"]
+    }
+  }
+}
+```
+
+**Step 3 — Refresh the `uvx` cache:**  
+If a new version was published to PyPI, `uvx` may be running a stale cached version. Force a refresh by running this once in a terminal:
+```bash
+uvx --refresh ki-manager
+```
+(Press `Ctrl+C` after it starts — you just need it to update the cache, not keep running.)
+
+### Server is running but no tools appear
+
+Check that `ki_status` is visible in the IDE. If it shows `No project active for current workspace`, the server is working correctly — it just needs a project to be initialized (`ki_init_project`) or the IDE is not passing `rootUri` in the MCP handshake.
+
+### `[Errno 22] Invalid argument` in logs
+
+This error was present in versions `< 2.0.11` on Windows when wrapping `sys.stdout` with a `codecs` encoder. **Upgrade to `>= 2.0.11`** to fix it:
+```bash
+uvx --refresh ki-manager
 ```
 
 ---
