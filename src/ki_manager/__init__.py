@@ -1,3 +1,3 @@
 
 """ki-manager — Knowledge Item MCP server for AI-assisted development."""
-__version__ = "2.0.17"
+__version__ = "2.0.18"

@@ -10,8 +10,44 @@ import pytest
 from pathlib import Path
 
 # Make scripts importable
-SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
+ROOT_DIR = Path(__file__).resolve().parent.parent
+SCRIPTS_DIR = ROOT_DIR / "src" / "ki_manager" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
+sys.path.insert(0, str(ROOT_DIR / "src" / "ki_manager"))
+sys.path.insert(0, str(ROOT_DIR / "tests"))
+
+# Compatibility shim for legacy knowledge_mcp imports in tests
+import types
+knowledge_mcp = types.ModuleType("knowledge_mcp")
+
+import server
+
+# Save originals
+orig_run_script = server.run_script
+orig_get_jail_dir = server.get_jail_dir
+
+# Assign to shim (defaults)
+knowledge_mcp.run_script = orig_run_script
+knowledge_mcp.get_jail_dir = orig_get_jail_dir
+knowledge_mcp.validate_path = server.validate_path
+knowledge_mcp.tool_git_checkpoint = server.tool_git_checkpoint
+knowledge_mcp.tool_git_restore = server.tool_git_restore
+
+def tool_analyze_module(args: dict) -> dict:
+    return server.handle_tool_call("analyze_module", args)
+knowledge_mcp.tool_analyze_module = tool_analyze_module
+
+sys.modules["knowledge_mcp"] = knowledge_mcp
+
+# Monkeypatch server.py to call shim versions, enabling unittest.mock.patch
+def run_script_wrapper(*args, **kwargs):
+    return sys.modules["knowledge_mcp"].run_script(*args, **kwargs)
+
+def get_jail_dir_wrapper(*args, **kwargs):
+    return sys.modules["knowledge_mcp"].get_jail_dir(*args, **kwargs)
+
+server.run_script = run_script_wrapper
+server.get_jail_dir = get_jail_dir_wrapper
 
 
 @pytest.fixture

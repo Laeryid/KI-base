@@ -6,7 +6,7 @@ from knowledge_mcp import run_script, tool_analyze_module
 def test_run_script_with_args():
     # Мокаем геттеры, чтобы пройти проверку безопасности
     with patch("knowledge_mcp.get_jail_dir", return_value="/fake/jail"), \
-         patch("os.path.exists", return_value=True), \
+         patch("pathlib.Path.exists", return_value=True), \
          patch("ki_utils.get_python_exe", return_value="python"), \
          patch("ki_utils.get_project_root", return_value="/fake/root"), \
          patch("subprocess.run") as mock_run:

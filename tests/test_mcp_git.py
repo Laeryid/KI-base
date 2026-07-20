@@ -53,7 +53,7 @@ def test_git_checkpoint_success(tmp_project, setup_git_mcp):
     ).stdout
     
     assert "[AI] Test checkpoint" in log
-    assert "Antigravity AI<ai-assistant@ki.base>" in log
+    assert "ki-manager<ki-manager@bot>" in log
 
 
 @pytest.mark.positive
@@ -96,4 +96,4 @@ def test_git_restore_outside_jail(setup_git_mcp):
     # Attempt to restore something outside .know
     res = mcp.tool_git_restore({"target": "../README.md", "revision": "HEAD"})
     assert res.get("isError") is True
-    assert "outside sandbox" in res["content"][0]["text"]
+    assert "escapes sandbox" in res["content"][0]["text"]
