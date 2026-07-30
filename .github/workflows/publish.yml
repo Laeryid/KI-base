@@ -45,7 +45,7 @@ jobs:
           node-version: "20"
 
       - name: Create MCP Bundle for Smithery
-        run: zip -r server.mcpb smithery.yaml .well-known README.md pyproject.toml src
+        run: zip -r server.mcpb manifest.json smithery.yaml .well-known README.md pyproject.toml src
 
       - name: Publish to Smithery Registry
         if: env.SMITHERY_API_KEY != ''
