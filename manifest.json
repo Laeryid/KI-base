@@ -1,7 +1,7 @@
 {
   "manifestVersion": "1.0",
   "name": "ki-manager",
-  "version": "2.0.30",
+  "version": "2.0.31",
   "description": "Knowledge Item (KI) management MCP server for AI-assisted development. Keeps your codebase self-documenting for AI agents.",
   "publisher": "bulyakovbr",
   "repository": "https://github.com/Laeryid/KI-base",
@@ -21,23 +21,28 @@
   "tools": [
     {
       "name": "ki_status",
-      "description": "Check which project is active for the current workspace."
+      "description": "Check which project is active for the current workspace.",
+      "inputSchema": { "type": "object", "properties": {} }
     },
     {
       "name": "read_know_file",
-      "description": "Read a Knowledge Item (KI) file inside .ki-base/."
+      "description": "Read a Knowledge Item (KI) file inside .ki-base/.",
+      "inputSchema": { "type": "object", "properties": {} }
     },
     {
       "name": "write_know_file",
-      "description": "Create or overwrite a file inside .ki-base/."
+      "description": "Create or overwrite a file inside .ki-base/.",
+      "inputSchema": { "type": "object", "properties": {} }
     },
     {
       "name": "edit_know_file",
-      "description": "Edit a file inside .ki-base/ by replacing text."
+      "description": "Edit a file inside .ki-base/ by replacing text.",
+      "inputSchema": { "type": "object", "properties": {} }
     },
     {
       "name": "ki_call",
-      "description": "Universal dispatcher for advanced KI tools (audit_coverage, ki_init_project, generate_dir_index, git_checkpoint, etc.)."
+      "description": "Universal dispatcher for advanced KI tools (audit_coverage, ki_init_project, generate_dir_index, git_checkpoint, etc.).",
+      "inputSchema": { "type": "object", "properties": {} }
     }
   ]
 }
