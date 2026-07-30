@@ -1,23 +1,16 @@
 {
   "manifestVersion": "1.0",
   "name": "ki-manager",
-  "version": "2.0.26",
+  "version": "2.0.27",
   "description": "Knowledge Item (KI) management MCP server for AI-assisted development. Keeps your codebase self-documenting for AI agents.",
   "publisher": "bulyakovbr",
   "repository": "https://github.com/Laeryid/KI-base",
   "license": "MIT",
+  "runtime": "python",
+  "entrypoint": "src/ki_manager/server.py",
   "startCommand": {
     "type": "stdio",
-    "configSchema": {
-      "type": "object",
-      "properties": {
-        "workspace": {
-          "type": "string",
-          "description": "Absolute path to the project workspace root (optional — auto-detected from IDE context)"
-        }
-      },
-      "required": []
-    },
-    "commandFunction": "(config) => ({ command: 'ki-manager', args: config.workspace ? ['--workspace', config.workspace] : [] })"
+    "command": "ki-manager",
+    "args": []
   }
 }
