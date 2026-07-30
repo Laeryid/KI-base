@@ -44,8 +44,11 @@ jobs:
         with:
           node-version: "20"
 
+      - name: Create MCP Bundle for Smithery
+        run: zip -r server.mcpb smithery.yaml .well-known README.md pyproject.toml src
+
       - name: Publish to Smithery Registry
         if: env.SMITHERY_API_KEY != ''
         env:
           SMITHERY_API_KEY: ${{ secrets.SMITHERY_API_KEY }}
-        run: npx -y @smithery/cli@latest mcp publish . -n bulyakovbr/ki-manager
+        run: npx -y @smithery/cli@latest mcp publish ./server.mcpb -n bulyakovbr/ki-manager
