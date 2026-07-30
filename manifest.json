@@ -1,7 +1,7 @@
 {
   "manifestVersion": "1.0",
   "name": "ki-manager",
-  "version": "2.0.29",
+  "version": "2.0.30",
   "description": "Knowledge Item (KI) management MCP server for AI-assisted development. Keeps your codebase self-documenting for AI agents.",
   "publisher": "bulyakovbr",
   "repository": "https://github.com/Laeryid/KI-base",
@@ -10,5 +10,34 @@
   "entrypoint": "src/ki_manager/server.py",
   "server": {
     "type": "python"
-  }
+  },
+  "user_config": {
+    "workspace": {
+      "type": "string",
+      "description": "Absolute path to the project workspace root (optional — auto-detected from IDE context)",
+      "required": false
+    }
+  },
+  "tools": [
+    {
+      "name": "ki_status",
+      "description": "Check which project is active for the current workspace."
+    },
+    {
+      "name": "read_know_file",
+      "description": "Read a Knowledge Item (KI) file inside .ki-base/."
+    },
+    {
+      "name": "write_know_file",
+      "description": "Create or overwrite a file inside .ki-base/."
+    },
+    {
+      "name": "edit_know_file",
+      "description": "Edit a file inside .ki-base/ by replacing text."
+    },
+    {
+      "name": "ki_call",
+      "description": "Universal dispatcher for advanced KI tools (audit_coverage, ki_init_project, generate_dir_index, git_checkpoint, etc.)."
+    }
+  ]
 }
