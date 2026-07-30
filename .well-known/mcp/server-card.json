@@ -2,7 +2,7 @@
   "$schema": "https://smithery.ai/schemas/server-card.json",
   "name": "ki-manager",
   "description": "Knowledge Item (KI) management MCP server for AI-assisted development. Keeps your codebase self-documenting for AI agents.",
-  "version": "2.0.33",
+  "version": "2.0.34",
   "publisher": "bulyakovbr",
   "repository": "https://github.com/Laeryid/KI-base",
   "license": "MIT",
@@ -12,31 +12,81 @@
       "name": "ki_status",
       "description": "Check which project is active for the current workspace.",
       "inputSchema": { "type": "object", "properties": {} },
-      "outputSchema": { "type": "object", "properties": {} }
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": { "type": "string", "description": "Active workspace project information" }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      }
     },
     {
       "name": "read_know_file",
       "description": "Read a Knowledge Item (KI) file inside .ki-base/.",
       "inputSchema": { "type": "object", "properties": {} },
-      "outputSchema": { "type": "object", "properties": {} }
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": { "type": "string", "description": "Contents of the specified Knowledge Item file" }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      }
     },
     {
       "name": "write_know_file",
       "description": "Create or overwrite a file inside .ki-base/.",
       "inputSchema": { "type": "object", "properties": {} },
-      "outputSchema": { "type": "object", "properties": {} }
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": { "type": "string", "description": "Confirmation message of created or overwritten file" }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      }
     },
     {
       "name": "edit_know_file",
       "description": "Edit a file inside .ki-base/ by replacing text.",
       "inputSchema": { "type": "object", "properties": {} },
-      "outputSchema": { "type": "object", "properties": {} }
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": { "type": "string", "description": "Status message of the edit operation" }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      }
     },
     {
       "name": "ki_call",
       "description": "Universal dispatcher for advanced KI tools (audit_coverage, ki_init_project, generate_dir_index, git_checkpoint, etc.).",
       "inputSchema": { "type": "object", "properties": {} },
-      "outputSchema": { "type": "object", "properties": {} }
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": { "type": "string", "description": "Result output of the dispatched action" }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false
+      }
     }
   ]
 }
