@@ -45,7 +45,7 @@ jobs:
           node-version: "20"
 
       - name: Publish to Smithery Registry
+        if: env.SMITHERY_API_KEY != ''
         env:
           SMITHERY_API_KEY: ${{ secrets.SMITHERY_API_KEY }}
-        if: env.SMITHERY_API_KEY != ''
-        run: npx -y @smithery/cli@latest publish
+        run: npx -y @smithery/cli@latest publish https://github.com/Laeryid/KI-base -n bulyakovbr/ki-manager
