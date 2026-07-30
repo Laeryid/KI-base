@@ -48,4 +48,4 @@ jobs:
         if: env.SMITHERY_API_KEY != ''
         env:
           SMITHERY_API_KEY: ${{ secrets.SMITHERY_API_KEY }}
-        run: npx -y @smithery/cli@latest publish https://github.com/Laeryid/KI-base -n bulyakovbr/ki-manager
+        run: npx -y @smithery/cli@latest mcp publish . -n bulyakovbr/ki-manager
