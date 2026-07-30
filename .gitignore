@@ -22,3 +22,4 @@ doc_state.json
 .vscode/
 .idea/
 test_soft_init_manual/
+server.mcpb
