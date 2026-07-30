@@ -241,7 +241,7 @@ def init_project(args: dict) -> str:
 
     log.append("")
     log.append("✓ Initialization complete.")
-    log.append(f"  Connect MCP server: uvx ki-manager --workspace {project_path}")
+    log.append(f"  Connect MCP server: ki-manager --workspace {project_path}")
     return "\n".join(log)
 
 def migrate_project(project_root: str) -> str:

@@ -126,8 +126,8 @@ PYTHONPATH=src echo '{"jsonrpc":"2.0","id":1,"method":"server/discover","params"
 ### `server/discover` vs `initialize` (fixed in 2.0.11)
 Antigravity IDE начиная с протокола `2026-07-28` отправляет `"method": "server/discover"` вместо `"method": "initialize"`. Код теперь обрабатывает оба метода одинаково. Не удалять `server/discover` из условия!
 
-### `uvx` кэш
-`uvx` агрессивно кэширует пакеты. После публикации новой версии на PyPI пользователям нужно запустить `uvx --refresh ki-manager` один раз для обновления кэша.
+### `uvx` vs `uv tool install`
+Использование `uvx` в конфигурациях IDE MCP вызывало сбои Handshake и дропы stdio-пайпов из-за задержек создания временных окружений. Рекомендуемый способ установки — глобальная утилита `uv tool install ki-manager`. Для обновления кэша/версии пакета используется `uv tool install --reinstall ki-manager`.
 
 ---
 

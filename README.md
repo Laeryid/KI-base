@@ -20,32 +20,38 @@ It provides:
 
 ## Installation
 
-### Option A: uvx (recommended — no install needed)
+### Option A: uv tool install (recommended)
 
-```json
-{
-  "mcpServers": {
-    "ki-manager": {
-      "command": "uvx",
-      "args": ["--quiet", "ki-manager"]
-    }
-  }
-}
-```
+1. Install `ki-manager` globally via [uv](https://docs.astral.sh/uv/):
+   ```bash
+   uv tool install ki-manager
+   ```
 
-> Requires [uv](https://docs.astral.sh/uv/) — install with: `curl -LsSf https://astral.sh/uv/install.sh | sh`  
-> **First run:** `uvx` downloads and caches the package automatically. Subsequent launches are instant.
+2. Add to your IDE MCP configuration (`mcp_config.json`):
+   ```json
+   {
+     "mcpServers": {
+       "ki-manager": {
+         "command": "ki-manager"
+       }
+     }
+   }
+   ```
+   > **Note for Windows / ADI Antigravity:** If `ki-manager` is not found in PATH by your IDE, specify the full path to the executable:
+   > - **Windows:** `"C:\\Users\\<username>\\.local\\bin\\ki-manager.exe"`
+   > - **Linux/macOS:** `"/home/<username>/.local/bin/ki-manager"`
 
-### Option B: Smithery (Claude Desktop / Cursor / Windsurf GUI)
-
-Search for **ki-manager** in your IDE's MCP marketplace and click Install.
-
-### Option C: pip
+### Option B: pip / uv pip
 
 ```bash
 pip install ki-manager
-ki-manager  # starts the MCP server
+# or
+uv pip install ki-manager
 ```
+
+### Option C: Smithery (Claude Desktop / Cursor / Windsurf GUI)
+
+Search for **ki-manager** in your IDE's MCP marketplace and click Install.
 
 ### Option D: Local development
 
@@ -170,30 +176,30 @@ ki-manager/
 
 ### MCP server hangs on initialization (never connects)
 
-This is the most common issue on Windows and affects both `uvx` and direct `python` launches.
+Using `uvx` directly in `mcpServers` configuration is known to cause hangs or stdio pipe drops in **ADI Antigravity** and Windows environments due to ephemeral environment creation delays and process wrapping.
+
+**Solution:** Install via `uv tool install ki-manager` and specify `ki-manager` or its absolute executable path in `mcpServers`.
 
 **Step 1 — Check logs:**  
 Server logs are written to `~/.ki_base/logs/`. Open the latest file and look for `REQ:` lines. If there are no `REQ:` lines at all, stdin is not being piped correctly by the IDE.
 
-**Step 2 — Try the local Python fallback:**  
-Replace `uvx` with the absolute path to `.venv/Scripts/python.exe` (Windows) or `.venv/bin/python` (Linux/macOS) to rule out `uvx` as the cause:
+**Step 2 — Specify exact executable path:**  
+If your IDE cannot find `ki-manager` in system PATH:
 ```json
 {
   "mcpServers": {
     "ki-manager": {
-      "command": "C:\\path\\to\\repo\\.venv\\Scripts\\python.exe",
-      "args": ["-m", "ki_manager.server"]
+      "command": "C:\\Users\\<username>\\.local\\bin\\ki-manager.exe"
     }
   }
 }
 ```
 
-**Step 3 — Refresh the `uvx` cache:**  
-If a new version was published to PyPI, `uvx` may be running a stale cached version. Force a refresh by running this once in a terminal:
+**Step 3 — Reinstall / Upgrade tool:**  
+To upgrade to the latest PyPI version when using `uv tool`:
 ```bash
-uvx --refresh ki-manager
+uv tool install --reinstall ki-manager
 ```
-(Press `Ctrl+C` after it starts — you just need it to update the cache, not keep running.)
 
 ### Server is running but no tools appear
 
@@ -203,7 +209,7 @@ Check that `ki_status` is visible in the IDE. If it shows `No project active for
 
 This error was present in versions `< 2.0.11` on Windows when wrapping `sys.stdout` with a `codecs` encoder. **Upgrade to `>= 2.0.11`** to fix it:
 ```bash
-uvx --refresh ki-manager
+uv tool install --reinstall ki-manager
 ```
 
 ---

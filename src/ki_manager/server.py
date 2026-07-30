@@ -5,8 +5,8 @@ MCP server entry point for ki-manager.
 Implements MCP stdio protocol (JSON-RPC 2.0).
 
 Usage:
-    uvx ki-manager
-    uvx ki-manager --workspace /path/to/project
+    ki-manager
+    ki-manager --workspace /path/to/project
     python -m ki_manager.server
 """
 

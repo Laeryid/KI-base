@@ -20,31 +20,35 @@ It provides:
 
 ## Installation
 
-### Option A: uvx (recommended — no install needed)
+### Option A: uv tool install (recommended)
 
-```json
-{
-  "mcpServers": {
-    "ki-manager": {
-      "command": "uvx",
-      "args": ["ki-manager"]
-    }
-  }
-}
-```
+1. Install `ki-manager` globally via [uv](https://docs.astral.sh/uv/):
+   ```bash
+   uv tool install ki-manager
+   ```
 
-> Requires [uv](https://docs.astral.sh/uv/) — install with: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+2. Add to your IDE MCP configuration (`mcp_config.json`):
+   ```json
+   {
+     "mcpServers": {
+       "ki-manager": {
+         "command": "ki-manager"
+       }
+     }
+   }
+   ```
 
-### Option B: Smithery (Claude Desktop / Cursor / Windsurf GUI)
-
-Search for **ki-manager** in your IDE's MCP marketplace and click Install.
-
-### Option C: pip
+### Option B: pip / uv pip
 
 ```bash
 pip install ki-manager
-ki-manager  # starts the MCP server
+# or
+uv pip install ki-manager
 ```
+
+### Option C: Smithery (Claude Desktop / Cursor / Windsurf GUI)
+
+Search for **ki-manager** in your IDE's MCP marketplace and click Install.
 
 ### Option D: Docker
 
