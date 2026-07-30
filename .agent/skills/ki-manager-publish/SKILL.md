@@ -52,7 +52,7 @@ git log -n 3 --oneline
 
 Убедись, что рабочая директория чистая или все нужные изменения добавлены. Если есть незакоммиченные файлы — спроси пользователя, добавлять ли их в этот коммит.
 
-### Шаг 2: Обновить версию в трех файлах
+### Шаг 2: Обновить версию в пяти файлах
 
 #### `pyproject.toml`
 ```toml
@@ -70,13 +70,23 @@ __version__ = "X.Y.Z"  # ← обновить синхронно
 version: "X.Y.Z"  # ← обновить
 ```
 
+#### `.well-known/mcp/server-card.json`
+```json
+"version": "X.Y.Z"  # ← обновить
+```
+
+#### `manifest.json`
+```json
+"version": "X.Y.Z"  # ← обновить
+```
+
 > [!CAUTION]
-> Версии в обоих файлах ДОЛЖНЫ совпадать. Если они разойдутся — PyPI примет пакет со старой версией.
+> Версии во всех пяти файлах ДОЛЖНЫ совпадать. Если они разойдутся — PyPI или Smithery отклонят публикацию или примут старую версию.
 
 ### Шаг 3: Добавить файлы и создать коммит
 
 ```powershell
-git add pyproject.toml src/ki_manager/__init__.py
+git add pyproject.toml src/ki_manager/__init__.py smithery.yaml .well-known/mcp/server-card.json manifest.json
 # Если пользователь добавил другие файлы — включить их тоже
 git commit -m "Bump version to X.Y.Z"
 git push origin main

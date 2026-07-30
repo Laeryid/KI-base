@@ -11,24 +11,20 @@
 ## 📝 Пошаговый чеклист
 
 ### Шаг 1: Обновление версии в коде
-Перед созданием тега нужно явно указать новую версию в конфигурации пакета.
+Перед созданием тега нужно явно указать новую версию в конфигурации пакета (синхронно в 5 файлах):
 
-1. Открой `pyproject.toml` и измени версию:
-   ```toml
-   [project]
-   version = "2.0.2"  # Укажи новую версию
-   ```
-2. Открой `src/ki_manager/__init__.py` и синхронизируй версию:
-   ```python
-   __version__ = "2.0.2"
-   ```
+1. **`pyproject.toml`**: `version = "X.Y.Z"`
+2. **`src/ki_manager/__init__.py`**: `__version__ = "X.Y.Z"`
+3. **`smithery.yaml`**: `version: "X.Y.Z"`
+4. **`.well-known/mcp/server-card.json`**: `"version": "X.Y.Z"`
+5. **`manifest.json`**: `"version": "X.Y.Z"`
 
 ### Шаг 2: Коммит и пуш изменений
 Изменения версий должны попасть в основную ветку (обычно `main`) **ДО** создания тега.
 
 ```bash
-git add pyproject.toml src/ki_manager/__init__.py
-git commit -m "Bump version to 2.0.2"
+git add pyproject.toml src/ki_manager/__init__.py smithery.yaml .well-known/mcp/server-card.json manifest.json
+git commit -m "Bump version to X.Y.Z"
 git push origin main
 ```
 
