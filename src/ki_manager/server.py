@@ -826,7 +826,7 @@ def main():
 
             elif method == "resources/list":
                 if server_mode == "lazy":
-                    send({"resources": []})
+                    send({"resources": [], "resourceTemplates": []})
                 else:
                     jail = get_jail_dir()
                     resources = [
@@ -839,7 +839,34 @@ def main():
                             fpath = os.path.join(jail, fname)
                             if os.path.exists(fpath):
                                 resources.append({"uri": f"ki://{fname}", "name": fname, "mimeType": "text/plain"})
-                    send({"resources": resources})
+                    if _WORKFLOWS_DIR.exists():
+                        for f in sorted(_WORKFLOWS_DIR.glob("*.md")):
+                            wf_name = f.stem
+                            resources.append({
+                                "uri": f"ki://workflows/{wf_name}",
+                                "name": f"Workflow: {wf_name}",
+                                "mimeType": "text/markdown"
+                            })
+                    resource_templates = [
+                        {
+                            "uriTemplate": "ki://workflows/{name}",
+                            "name": "KI Workflow Instruction",
+                            "mimeType": "text/markdown",
+                            "description": "Access bundled workflow instructions by name"
+                        }
+                    ]
+                    send({"resources": resources, "resourceTemplates": resource_templates})
+
+            elif method == "resources/templates/list":
+                resource_templates = [
+                    {
+                        "uriTemplate": "ki://workflows/{name}",
+                        "name": "KI Workflow Instruction",
+                        "mimeType": "text/markdown",
+                        "description": "Access bundled workflow instructions by name"
+                    }
+                ]
+                send({"resourceTemplates": resource_templates})
 
             elif method == "resources/read":
                 uri = params.get("uri", "")
@@ -853,6 +880,22 @@ def main():
                     content = f"Knowledge Items for this project:\n\n{ki_utils.get_ki_list_table()}"
                 elif uri == "ki://adr-list.md":
                     content = get_adr_list(get_project_root(), jail) if jail else "No active project."
+                elif uri in ("ki://workflows/", "ki://workflows"):
+                    if _WORKFLOWS_DIR.exists():
+                        lines = ["# Available Workflows\n"]
+                        for f in sorted(_WORKFLOWS_DIR.glob("*.md")):
+                            lines.append(f"- `ki://workflows/{f.stem}` ({f.name})")
+                        content = "\n".join(lines)
+                    else:
+                        content = "No workflows directory found."
+                elif uri.startswith("ki://workflows/"):
+                    wf_name = uri.replace("ki://workflows/", "")
+                    if not wf_name.endswith(".md"):
+                        wf_name += ".md"
+                    wf_path = _WORKFLOWS_DIR / wf_name
+                    if wf_path.exists():
+                        with open(wf_path, "r", encoding="utf-8") as f:
+                            content = f.read()
                 
                 # Physical resources in jail
                 elif jail and uri.startswith("ki://"):
