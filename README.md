@@ -3,6 +3,8 @@
 > AI-powered knowledge management for software projects.  
 > Install once, use across all your projects.
 
+[![smithery badge](https://smithery.ai/badge/bulyakovbr/ki-manager)](https://smithery.ai/servers/bulyakovbr/ki-manager)
+
 ---
 
 ## What is ki-manager?
