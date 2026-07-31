@@ -15,10 +15,10 @@ Run this workflow after any significant code changes or on a scheduled basis.
 > [!IMPORTANT]
 > When working with this workflow, it is **STRICTLY PROHIBITED** to use general file editing tools (e.g., `filesystem.edit_file`) for files inside the `<knowledge_root>` directory.
 >
-> You **MUST** use the following MCP tools from the `KnowledgeManager` server:
+> You **MUST** use the following MCP tools from the `ki-manager` server:
 > - `write_know_file` — to create or fully overwrite a KI.
 > - `edit_know_file` — for precise text replacement.
-> - `make_know_dir` — to create directories inside the knowledge base.
+> - `ki_call(action="make_know_dir")` — to create directories inside the knowledge base.
 >
 > This ensures that documentation changes remain isolated within the knowledge sandbox and do not accidentally affect the project's source code.
 
@@ -27,7 +27,7 @@ Run this workflow after any significant code changes or on a scheduled basis.
 ## Phase 1 — Detect Code Changes
 
 // turbo
-`KnowledgeManager.check_changes()`
+`ki_call(action="check_changes")`
 
 Record the list of modified files. This list informs the Audit phase but does not prevent cleaning existing documentation gaps.
 
@@ -37,7 +37,7 @@ Record the list of modified files. This list informs the Audit phase but does no
 
 // turbo
 ```powershell
-# Call via MCP: KnowledgeManager.audit_coverage()
+# Call via MCP: ki_call(action="audit_coverage")
 ```
 
 Analyze the output. Proceed to **Phase 3 (Expand)** if **any** of the following conditions are true:
@@ -93,7 +93,7 @@ Priority order:
 
 ### 3.3 — Create or Update KI File
 
-Use `KnowledgeManager.write_know_file` or `KnowledgeManager.edit_know_file`.
+Use `write_know_file` or `edit_know_file`.
 
 **Standard KI structure:**
 ```markdown
@@ -122,14 +122,14 @@ Update `doc_config.json`: add the new KI to `knowledge_items`, set `depends_on` 
 
 // turbo
 ```powershell
-# Call via MCP: KnowledgeManager.analyze_dependencies(ki_name="KI_FILENAME.md", only_changed=false)
+# Call via MCP: ki_call(action="analyze_dependencies", args={"ki_name": "KI_FILENAME.md", "only_changed": false})
 ```
 
 ---
 
 ## Phase 4 — Synchronize Affected Artifacts
 
-For each artifact listed in the `check_changes()` output:
+For each artifact listed in the `ki_call(action="check_changes")` output:
 
 - `architecture.md` → read dependencies, update the section reflecting the changes.
 - `KI_*.md` → read the KI and update only the outdated parts (preserve structure). Set `<!-- last_verified: YYYY-MM-DD -->`.
@@ -142,31 +142,31 @@ For each artifact listed in the `check_changes()` output:
 ### 5.1 — Rebuild Directory Index
 
 // turbo
-`KnowledgeManager.generate_dir_index()`
+`ki_call(action="generate_dir_index")`
 
 ### 5.2 — Save State
 
 // turbo
-`KnowledgeManager.save_state()`
+`ki_call(action="save_state")`
 
 ### 5.3 — Global Dependency Update
 
 Final pass to ensure all inter-KI links are consistent across the entire knowledge base.
 
 // turbo
-`KnowledgeManager.analyze_all_dependencies()`
+`ki_call(action="analyze_all_dependencies")`
 
 ### 5.4 — Git Checkpoint
 
 // turbo
-`KnowledgeManager.git_checkpoint(message="Update knowledge base: expand + sync")`
+`ki_call(action="git_checkpoint", args={"message": "Update knowledge base: expand + sync"})`
 
 ---
 
 ## Completion Criteria (Checklist)
 
-- [ ] `check_changes()` output reviewed.
-- [ ] `audit_coverage()` run; signals identified.
+- [ ] `ki_call(action="check_changes")` output reviewed.
+- [ ] `ki_call(action="audit_coverage")` run; signals identified.
 - [ ] If gaps found: new or updated `KI_*.md` created in `knowledge/`.
 - [ ] New KI registered in `doc_config.json`.
 - [ ] `last_verified` in every touched KI contains today's date.

@@ -12,7 +12,7 @@ Triggered when there's a need to **add new knowledge**, detail existing knowledg
 
 // turbo
 ```powershell
-# Call via MCP: KnowledgeManager.audit_coverage()
+# Call via MCP: ki_call(action="audit_coverage")
 ```
 
 The script will output a coverage matrix, a list of Blind Spots, and density metrics.
@@ -45,10 +45,10 @@ Select **one** target with the highest priority in the following order:
 > [!IMPORTANT]
 > When working with this workflow, it is **STRICTLY PROHIBITED** to use general file editing tools (e.g., `filesystem.edit_file`) for files inside the <knowledge_root> directory.
 > 
-> You **MUST** use the following MCP tools from the `KnowledgeManager` server:
+> You **MUST** use the following MCP tools from the `ki-manager` server:
 > - `write_know_file` — to create or fully overwrite a KI.
 > - `edit_know_file` — for precise text replacement.
-> - `make_know_dir` — to create directories inside the knowledge base.
+> - `ki_call(action="make_know_dir")` — to create directories inside the knowledge base.
 > 
 > This ensures that documentation changes remain isolated within the knowledge sandbox and do not accidentally affect the project's source code.
 
@@ -107,7 +107,7 @@ Automatically identify and link related KIs based on code imports.
 
 // turbo
 ```powershell
-# Call via MCP: KnowledgeManager.analyze_dependencies(ki_name="KI_FILENAME.md", only_changed=false)
+# Call via MCP: ki_call(action="analyze_dependencies", args={"ki_name": "KI_FILENAME.md", "only_changed": false})
 ```
 
 ---
@@ -116,7 +116,7 @@ Automatically identify and link related KIs based on code imports.
 
 // turbo
 ```powershell
-# Call via MCP: KnowledgeManager.save_state()
+# Call via MCP: ki_call(action="save_state")
 ```
 
 
@@ -124,7 +124,7 @@ Automatically identify and link related KIs based on code imports.
 
 // turbo
 ```powershell
-# Call via MCP: KnowledgeManager.audit_coverage()
+# Call via MCP: ki_call(action="audit_coverage")
 ```
 
 Updates file  coverage_matrix.md.
@@ -134,7 +134,7 @@ Updates file  coverage_matrix.md.
 Finalize the expansion by creating a git snapshot of the knowledge state.
 
 // turbo
-`KnowledgeManager.git_checkpoint(message="Expand knowledge base: new KI registration")`
+`ki_call(action="git_checkpoint", args={"message": "Expand knowledge base: new KI registration"})`
 
 ---
 

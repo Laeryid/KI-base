@@ -14,10 +14,10 @@ Triggered on user demand when it's necessary to document a significant architect
 > [!IMPORTANT]
 > When working with this workflow, it is **STRICTLY PROHIBITED** to use general file editing tools (e.g., `filesystem.edit_file`) for files inside the <knowledge_root> directory.
 > 
-> You **MUST** use the following MCP tools from the `KnowledgeManager` server:
+> You **MUST** use the following MCP tools from the `ki-manager` server:
 > - `write_know_file` — to create or fully overwrite a KI / ADR.
 > - `edit_know_file` — for precise text replacement.
-> - `make_know_dir` — to create directories inside the knowledge base.
+> - `ki_call(action="make_know_dir")` — to create directories inside the knowledge base.
 > 
 > This ensures that ADRs and documentation changes remain isolated within the knowledge sandbox and do not accidentally affect the project's source code.
 
