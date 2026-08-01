@@ -1,6 +1,6 @@
 name: ki-manager
 description: "Knowledge Item (KI) management MCP server for AI-assisted development. Keeps your codebase self-documenting for AI agents. CRITICAL AGENT RULE: For effective use of the KI base, always consider the hints and guidelines from the resource file instructions.md during your work."
-version: "2.0.36"
+version: "2.0.37"
 
 configSchema:
   type: object
@@ -12,17 +12,6 @@ configSchema:
 
 startCommand:
   type: stdio
-  configSchema:
-    type: object
-    properties:
-      workspace:
-        type: string
-        description: "Absolute path to the project workspace root (optional — auto-detected from IDE context)"
-    required: []
-  commandFunction: |
-    (config) => ({
-      command: "ki-manager",
-      args: config.workspace
-        ? ["--workspace", config.workspace]
-        : []
-    })
+  config:
+    command: ki-manager
+    args: []
