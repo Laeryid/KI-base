@@ -72,6 +72,6 @@ def test_knowledge_mcp_unauthorized_jail(monkeypatch):
     import ki_utils
     monkeypatch.setattr(ki_utils, "_CACHE", {"knowledge_root": ""})
     
-    with pytest.raises(PermissionError, match="Knowledge root not initialized"):
+    with pytest.raises(PermissionError, match="No active workspace detected"):
         knowledge_mcp.validate_path("some/file.md")
 

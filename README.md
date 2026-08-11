@@ -51,11 +51,7 @@ pip install ki-manager
 uv pip install ki-manager
 ```
 
-### Option C: Smithery (Claude Desktop / Cursor / Windsurf GUI)
-
-Search for **ki-manager** in your IDE's MCP marketplace and click Install.
-
-### Option D: Local development
+### Option С: Local development
 
 If you cloned the repository and are developing locally, point your IDE to the `.venv` Python directly:
 
