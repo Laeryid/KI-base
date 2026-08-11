@@ -1,5 +1,10 @@
 ---
+name: ki-manager-update-knowledge
 description: Unified workflow — expands knowledge base if gaps exist, increases KI's quality and then synchronizes the full knowledge system
+metadata:
+  author: ki-manager
+  version: "1.0"
+allowed-tools: read_know_file write_know_file edit_know_file audit_coverage ki_instructions
 ---
 
 # /update-knowledge — Knowledge Base Update & Sync

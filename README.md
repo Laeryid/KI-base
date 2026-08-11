@@ -128,6 +128,26 @@ Use the available tools or slash commands:
 
 ---
 
+## Agent Skills
+
+`ki-manager` distributes workflow instructions using the [Agent Skills](https://agentskills.io) standard format.
+
+### Installing Skills
+
+You can install the bundled workflow skills to your IDE's skills folder (e.g., for Google Antigravity):
+
+```bash
+# CD into your skills directory and run:
+ki-manager-skills install-skills
+
+# Or run via uvx specifying the target path explicitly:
+uvx ki-manager-skills install-skills --path ~/.gemini/config/skills/
+```
+
+This will copy all workflow instructions (like `create-adr`, `expand-knowledge`) as standard `.md` skill files. It skips existing ones, so it's safe to run multiple times.
+
+---
+
 ## What Goes Into Git?
 
 | Path | Git | Notes |

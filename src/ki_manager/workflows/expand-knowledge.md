@@ -1,5 +1,10 @@
 ---
+name: ki-manager-expand-knowledge
 description: Iteratively add new KI files for undocumented or poorly documented modules
+metadata:
+  author: ki-manager
+  version: "1.0"
+allowed-tools: read_know_file write_know_file edit_know_file ki_instructions audit_coverage
 ---
 
 # /expand-knowledge — Expanding the Knowledge Base

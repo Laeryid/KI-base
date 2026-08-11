@@ -116,11 +116,27 @@ def get_adr_list(project_root: str, jail: str) -> str:
 _FORBIDDEN_WRITE_EXT = {".py", ".pyc", ".bat", ".ps1", ".sh", ".exe", ".cmd", ".dll"}
 _FORBIDDEN_WRITE_FILES = {"doc_config.json"}  # can only be modified via dedicated tools
 
+NO_WORKSPACE_ERROR = {
+    "isError": True,
+    "content": [{
+        "type": "text",
+        "text": (
+            "❌ No active workspace detected.\n\n"
+            "To fix, call ki_status with explicit path:\n"
+            "  ki_status({\"path\": \"/absolute/path/to/project\"})\n\n"
+            "Or ensure the MCP client passes workspaceUri in _meta.io.modelcontextprotocol/clientInfo."
+        )
+    }]
+}
+
 
 def validate_path(rel_path: str, is_write: bool = False) -> str:
     jail = get_jail_dir()
     if not jail:
-        raise PermissionError("Knowledge root not initialized. Run ki_init_project first.")
+        raise PermissionError(
+            "❌ No active workspace detected. "
+            "Call ki_status({\"path\": \"/absolute/path/to/project\"}) to set it."
+        )
 
     normalized = ki_utils.normalize_path(rel_path, make_absolute=False)
     if not os.path.isabs(normalized):
@@ -149,8 +165,7 @@ def run_script(script_name: str, args: List[str] = None) -> dict:
     """Run a bundled analysis script in the context of the active project."""
     jail = get_jail_dir()
     if not jail:
-        return {"isError": True, "content": [{"type": "text",
-            "text": "Error: No active project. Run ki_init_project first."}]}
+        return NO_WORKSPACE_ERROR
 
     script_path = _SCRIPTS_DIR / script_name
     if not script_path.exists():
@@ -175,6 +190,36 @@ def run_script(script_name: str, args: List[str] = None) -> dict:
 # ─── MCP Tool Definitions ─────────────────────────────────────────────────────
 
 MCP_TOOLS = [
+    {
+        "name": "ki_instructions",
+        "description": (
+            "Get workflow instructions and project rules for ki-manager. "
+            "Available documents:\n"
+            "- 'overview' \u2014 global AI rules and project navigation\n"
+            "- 'knowledge-items' \u2014 table of registered KI files\n"
+            "- 'create-adr' \u2014 workflow: document architectural decisions\n"
+            "- 'expand-knowledge' \u2014 workflow: deep enrichment of KI files\n"
+            "- 'sync-knowledge' \u2014 workflow: sync KI after code changes\n"
+            "- 'update-knowledge' \u2014 workflow: update KI files\n"
+            "Call this before starting any documentation workflow task."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "document": {
+                    "type": "string",
+                    "description": "Document name from the list above (e.g. 'create-adr')"
+                }
+            },
+            "required": ["document"]
+        },
+        "annotations": {
+            "title": "Get KI Instructions",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+        }
+    },
     # ── Initialization ──
     {
         "name": "ki_init_project",
@@ -195,12 +240,24 @@ MCP_TOOLS = [
             },
             "required": ["project_path"],
         },
+        "annotations": {
+            "title": "Initialize KI Project",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False,
+        },
     },
     # ── Registry ──
     {
         "name": "ki_migrate_project",
         "description": "Migrate a legacy .know/ project to the modern .ki-base/ architecture. Renames directories, updates config, and ensures _OVERVIEW.ki.md exists.",
         "inputSchema": {"type": "object"},
+        "annotations": {
+            "title": "Migrate Legacy Project",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False,
+        },
     },
     {
         "name": "ki_register_project",
@@ -211,11 +268,23 @@ MCP_TOOLS = [
                 "config_path": {"type": "string", "description": "Path to ki_config.json or .ki-base/ directory"},
             },
         },
+        "annotations": {
+            "title": "Register Project",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": True,
+        },
     },
     {
         "name": "ki_list_projects",
         "description": "List all projects registered in the global KI registry.",
         "inputSchema": {"type": "object"},
+        "annotations": {
+            "title": "List Projects",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+        },
     },
     {
         "name": "ki_status",
@@ -224,11 +293,23 @@ MCP_TOOLS = [
             "type": "object",
             "properties": {"path": {"type": "string", "description": "Path to check (defaults to workspace root)"}},
         },
+        "annotations": {
+            "title": "Project Status",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+        },
     },
     {
         "name": "ki_prune_registry",
         "description": "Remove projects from the registry whose directories no longer exist.",
         "inputSchema": {"type": "object"},
+        "annotations": {
+            "title": "Prune Registry",
+            "readOnlyHint": False,
+            "destructiveHint": True,
+            "idempotentHint": True,
+        },
     },
     # ── Coverage & Audit ──
     {
@@ -241,12 +322,24 @@ MCP_TOOLS = [
             "new modules, you MUST run this tool to ensure documentation remains in sync."
         ),
         "inputSchema": {"type": "object"},
+        "annotations": {
+            "title": "Audit Coverage",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+        },
     },
 
     {
         "name": "generate_dir_index",
         "description": "Generate or update .ki-base/DIR_INDEX.md with directory structure.",
         "inputSchema": {"type": "object"},
+        "annotations": {
+            "title": "Generate Dir Index",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": True,
+        },
     },
     {
         "name": "analyze_dependencies",
@@ -258,11 +351,23 @@ MCP_TOOLS = [
                 "only_changed": {"type": "boolean", "description": "Only process KIs for changed files"},
             },
         },
+        "annotations": {
+            "title": "Analyze Dependencies",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": True,
+        },
     },
     {
         "name": "analyze_all_dependencies",
         "description": "Analyze all KI files and update their 'Related KIs' sections.",
         "inputSchema": {"type": "object"},
+        "annotations": {
+            "title": "Analyze All Dependencies",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": True,
+        },
     },
     {
         "name": "find_unmapped_files",
@@ -270,6 +375,12 @@ MCP_TOOLS = [
         "inputSchema": {
             "type": "object",
             "properties": {"path": {"type": "string", "description": "Subdirectory to scan (optional)"}},
+        },
+        "annotations": {
+            "title": "Find Unmapped Files",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
         },
     },
     {
@@ -281,6 +392,12 @@ MCP_TOOLS = [
                 "path": {"type": "string"},
                 "recursive": {"type": "boolean"},
             },
+        },
+        "annotations": {
+            "title": "Analyze Module",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
         },
     },
     {
@@ -309,16 +426,34 @@ MCP_TOOLS = [
                 },
             },
         },
+        "annotations": {
+            "title": "Scaffold KI Files",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False,
+        },
     },
     {
         "name": "ki_scaffold_status",
         "description": "Print a concise status table of all scaffold KIs (pending vs enriched) by reading their headers.",
         "inputSchema": {"type": "object"},
+        "annotations": {
+            "title": "Scaffold Status",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+        },
     },
     {
         "name": "update_last_verified",
         "description": "Update the last_verified date in all KI files to today.",
         "inputSchema": {"type": "object"},
+        "annotations": {
+            "title": "Update Last Verified",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": True,
+        },
     },
     # ── File Operations ──
     {
@@ -335,6 +470,12 @@ MCP_TOOLS = [
             "properties": {"rel_path": {"type": "string", "description": "Path relative to .ki-base/"}},
             "required": ["rel_path"],
         },
+        "annotations": {
+            "title": "Read Knowledge Item",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+        },
     },
     {
         "name": "write_know_file",
@@ -346,6 +487,12 @@ MCP_TOOLS = [
                 "content": {"type": "string"},
             },
             "required": ["rel_path", "content"],
+        },
+        "annotations": {
+            "title": "Write Knowledge Item",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False,
         },
     },
     {
@@ -360,6 +507,12 @@ MCP_TOOLS = [
             },
             "required": ["rel_path", "old_text", "new_text"],
         },
+        "annotations": {
+            "title": "Edit Knowledge Item",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False,
+        },
     },
     {
         "name": "make_know_dir",
@@ -369,6 +522,12 @@ MCP_TOOLS = [
             "properties": {"rel_path": {"type": "string"}},
             "required": ["rel_path"],
         },
+        "annotations": {
+            "title": "Create Knowledge Dir",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": True,
+        },
     },
     # ── Git Operations ──
     {
@@ -377,6 +536,12 @@ MCP_TOOLS = [
         "inputSchema": {
             "type": "object",
             "properties": {"message": {"type": "string", "description": "Commit message suffix"}},
+        },
+        "annotations": {
+            "title": "Git Checkpoint",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False,
         },
     },
     {
@@ -389,6 +554,12 @@ MCP_TOOLS = [
                 "revision": {"type": "string", "description": "Git revision (default: HEAD)"},
             },
         },
+        "annotations": {
+            "title": "Git Restore",
+            "readOnlyHint": False,
+            "destructiveHint": True,
+            "idempotentHint": False,
+        },
     },
     {
         "name": "git_diff_secured",
@@ -397,17 +568,35 @@ MCP_TOOLS = [
             "type": "object",
             "properties": {"paths": {"type": "string", "description": "Comma-separated paths"}},
         },
+        "annotations": {
+            "title": "Git Diff",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+        },
     },
     # ── State ──
     {
         "name": "save_state",
         "description": "Capture and save file hash state to doc_state.json.",
         "inputSchema": {"type": "object"},
+        "annotations": {
+            "title": "Save State",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": True,
+        },
     },
     {
         "name": "restore_mapping",
         "description": "Restore doc_config.json from existing KI files.",
         "inputSchema": {"type": "object"},
+        "annotations": {
+            "title": "Restore Mapping",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": True,
+        },
     },
 ]
 
@@ -490,6 +679,24 @@ def tool_git_restore(args: dict) -> dict:
 
 def handle_tool_call(name: str, args: dict) -> Any:
     try:
+        if name == "ki_instructions":
+            doc = args.get("document", "")
+            if doc == "overview":
+                return GLOBAL_INSTRUCTIONS
+            elif doc == "knowledge-items":
+                return f"Knowledge Items for this project:\n\n{ki_utils.get_ki_list_table()}"
+            else:
+                wf_path = _WORKFLOWS_DIR / f"{doc}.md"
+                if wf_path.exists():
+                    with open(wf_path, "r", encoding="utf-8") as f:
+                        return f.read()
+                else:
+                    available = [p.stem for p in _WORKFLOWS_DIR.glob("*.md")] if _WORKFLOWS_DIR.exists() else []
+                    return (
+                        f"Unknown document: '{doc}'.\n"
+                        f"Available: overview, knowledge-items, {', '.join(available)}"
+                    )
+
         # ── Init ──
         if name == "ki_init_project":
             sys.path.insert(0, str(_PACKAGE_DIR / "tools"))
@@ -643,6 +850,13 @@ def _write_ide_instructions() -> None:
                 safe_log(f"Could not write instructions.md to {target_dir}: {e}")
 
 
+def _extract_workspace_from_meta(params: dict) -> Optional[str]:
+    """Извлекает workspace URI из _meta нового протокола (2026-07-28)."""
+    meta = params.get("_meta", {})
+    client_info = meta.get("io.modelcontextprotocol/clientInfo", {})
+    return client_info.get("workspaceUri") or client_info.get("rootUri")
+
+
 def main():
     # Apply --workspace early so registry lookup works
     import argparse
@@ -682,6 +896,13 @@ def main():
             rid = req.get("id")
             method = req.get("method")
             params = req.get("params", {})
+
+            # Новый протокол: извлекаем workspace из _meta при каждом запросе
+            if not ki_utils.ACTIVE_WORKSPACE_PATH:
+                _ws = _extract_workspace_from_meta(params)
+                if _ws:
+                    ki_utils.ACTIVE_WORKSPACE_PATH = ki_utils.normalize_path(_ws)
+                    safe_log(f"SET workspace via _meta: {ki_utils.ACTIVE_WORKSPACE_PATH}")
 
             def send(result_data):
                 resp = json.dumps({"jsonrpc": "2.0", "id": rid, "result": result_data})
@@ -732,11 +953,14 @@ def main():
                     server_version = "2.0.11"
                 safe_log(f"DEBUG: After importlib. version={server_version}")
 
-                send({
-                    "protocolVersion": "2024-11-05",
+                resp = {
+                    "protocolVersion": "2026-07-28" if method == "server/discover" else "2024-11-05",
                     "capabilities": {"tools": {}, "prompts": {}, "resources": {}},
                     "serverInfo": {"name": "ki-manager", "version": server_version},
-                })
+                }
+                if method == "server/discover":
+                    resp["versions"] = ["2026-07-28", "2025-11-25", "2024-11-05"]
+                send(resp)
                 safe_log(f"DEBUG: After send() for {method}")
 
             elif method == "notifications/initialized":
@@ -747,63 +971,25 @@ def main():
                 sys.stdout.flush()
 
             elif method == "tools/list":
-                eager_tool_names = {"ki_status", "read_know_file", "write_know_file", "edit_know_file"}
-                eager_tools = [t for t in MCP_TOOLS if t["name"] in eager_tool_names]
-                lazy_tools = [t for t in MCP_TOOLS if t["name"] not in eager_tool_names]
-                
-                ki_call_tool = {
-                    "name": "ki_call",
-                    "description": "Universal dispatcher for advanced KI tools. Call with action='help' to see all available actions and their schemas.",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "action": {
-                                "type": "string",
-                                "enum": ["help"] + [t["name"] for t in lazy_tools],
-                                "description": "The specific KI tool action to execute"
-                            },
-                            "args": {
-                                "type": "object",
-                                "description": "Arguments for the selected action (see 'help')"
-                            }
-                        },
-                        "required": ["action"]
-                    }
-                }
-                send({"tools": eager_tools + [ki_call_tool]})
+                send({"tools": MCP_TOOLS, "ttlMs": 300000, "cacheScope": "global"})
 
             elif method == "tools/call":
                 tool_name = params["name"]
                 tool_args = params.get("arguments", {})
-                
-                if tool_name == "ki_call":
-                    action = tool_args.get("action")
-                    if action == "help":
-                        eager_tool_names = {"ki_status", "read_know_file", "write_know_file", "edit_know_file"}
-                        lazy_tools = [t for t in MCP_TOOLS if t["name"] not in eager_tool_names]
-                        help_text = "### Available actions for `ki_call`\n\n"
-                        for t in lazy_tools:
-                            schema_str = json.dumps(t.get("inputSchema", {}), indent=2)
-                            help_text += f"**Action:** `{t['name']}`\n{t['description']}\n**Schema:**\n```json\n{schema_str}\n```\n---\n"
-                        result = help_text
-                    else:
-                        sub_args = tool_args.get("args", {})
-                        if sub_args is None:
-                            sub_args = {}
-                        result = handle_tool_call(action, sub_args)
-                else:
-                    result = handle_tool_call(tool_name, tool_args)
-
+                # Fallback: пробуем взять workspace из аргументов инструмента
+                if not ki_utils.ACTIVE_WORKSPACE_PATH:
+                    _ws_arg = tool_args.get("path") or tool_args.get("project_path")
+                    if _ws_arg:
+                        ki_utils.ACTIVE_WORKSPACE_PATH = ki_utils.normalize_path(_ws_arg)
+                        safe_log(f"SET workspace via tool args: {ki_utils.ACTIVE_WORKSPACE_PATH}")
+                result = handle_tool_call(tool_name, tool_args)
                 if isinstance(result, dict) and "content" in result:
                     send(result)
                 else:
                     send({"content": [{"type": "text", "text": str(result)}]})
 
             elif method == "prompts/list":
-                if server_mode == "lazy":
-                    send({"prompts": []})
-                else:
-                    send({"prompts": get_mcp_prompts()})
+                send({"prompts": get_mcp_prompts()})
 
             elif method == "prompts/get":
                 prompt_name = params.get("name")
@@ -825,37 +1011,34 @@ def main():
                 send({"messages": [{"role": "user", "content": {"type": "text", "text": content}}]})
 
             elif method == "resources/list":
-                if server_mode == "lazy":
-                    send({"resources": [], "resourceTemplates": []})
-                else:
-                    jail = get_jail_dir()
-                    resources = [
-                        {"uri": "ki://instructions.md", "name": "instructions.md (Global AI Rules)", "mimeType": "text/markdown"},
-                        {"uri": "ki://knowledge-items.md", "name": "knowledge-items.md (Dynamic KI List)", "mimeType": "text/markdown"},
-                        {"uri": "ki://adr-list.md", "name": "adr-list.md (Dynamic ADR List)", "mimeType": "text/markdown"},
-                    ]
-                    if jail:
-                        for fname in ("doc_config.json", "DIR_INDEX.md"):
-                            fpath = os.path.join(jail, fname)
-                            if os.path.exists(fpath):
-                                resources.append({"uri": f"ki://{fname}", "name": fname, "mimeType": "text/plain"})
-                    if _WORKFLOWS_DIR.exists():
-                        for f in sorted(_WORKFLOWS_DIR.glob("*.md")):
-                            wf_name = f.stem
-                            resources.append({
-                                "uri": f"ki://workflows/{wf_name}",
-                                "name": f"Workflow: {wf_name}",
-                                "mimeType": "text/markdown"
-                            })
-                    resource_templates = [
-                        {
-                            "uriTemplate": "ki://workflows/{name}",
-                            "name": "KI Workflow Instruction",
-                            "mimeType": "text/markdown",
-                            "description": "Access bundled workflow instructions by name"
-                        }
-                    ]
-                    send({"resources": resources, "resourceTemplates": resource_templates})
+                jail = get_jail_dir()
+                resources = [
+                    {"uri": "ki://instructions.md", "name": "instructions.md (Global AI Rules)", "mimeType": "text/markdown"},
+                    {"uri": "ki://knowledge-items.md", "name": "knowledge-items.md (Dynamic KI List)", "mimeType": "text/markdown"},
+                    {"uri": "ki://adr-list.md", "name": "adr-list.md (Dynamic ADR List)", "mimeType": "text/markdown"},
+                ]
+                if jail:
+                    for fname in ("doc_config.json", "DIR_INDEX.md"):
+                        fpath = os.path.join(jail, fname)
+                        if os.path.exists(fpath):
+                            resources.append({"uri": f"ki://{fname}", "name": fname, "mimeType": "text/plain"})
+                if _WORKFLOWS_DIR.exists():
+                    for f in sorted(_WORKFLOWS_DIR.glob("*.md")):
+                        wf_name = f.stem
+                        resources.append({
+                            "uri": f"ki://workflows/{wf_name}",
+                            "name": f"Workflow: {wf_name}",
+                            "mimeType": "text/markdown"
+                        })
+                resource_templates = [
+                    {
+                        "uriTemplate": "ki://workflows/{name}",
+                        "name": "KI Workflow Instruction",
+                        "mimeType": "text/markdown",
+                        "description": "Access bundled workflow instructions by name"
+                    }
+                ]
+                send({"resources": resources, "resourceTemplates": resource_templates})
 
             elif method == "resources/templates/list":
                 resource_templates = [

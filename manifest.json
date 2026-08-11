@@ -1,7 +1,7 @@
 {
   "manifestVersion": "1.0",
   "name": "ki-manager",
-  "version": "2.0.37",
+  "version": "2.1.0",
   "description": "Knowledge Item (KI) management MCP server for AI-assisted development. Keeps your codebase self-documenting for AI agents.",
   "publisher": "bulyakovbr",
   "repository": "https://github.com/Laeryid/KI-base",
@@ -15,7 +15,7 @@
   "user_config": {
     "workspace": {
       "type": "string",
-      "description": "Absolute path to the project workspace root (optional — auto-detected from IDE context)",
+      "description": "Absolute path to the project workspace root (optional \u2014 auto-detected from IDE context)",
       "required": false
     }
   },
@@ -23,11 +23,17 @@
     {
       "name": "ki_status",
       "description": "Check which project is active for the current workspace.",
-      "inputSchema": { "type": "object", "properties": {} },
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
       "outputSchema": {
         "type": "object",
         "properties": {
-          "content": { "type": "string", "description": "Active workspace project information" }
+          "content": {
+            "type": "string",
+            "description": "Active workspace project information"
+          }
         }
       },
       "annotations": {
@@ -39,11 +45,17 @@
     {
       "name": "read_know_file",
       "description": "Read a Knowledge Item (KI) file inside .ki-base/.",
-      "inputSchema": { "type": "object", "properties": {} },
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
       "outputSchema": {
         "type": "object",
         "properties": {
-          "content": { "type": "string", "description": "Contents of the specified Knowledge Item file" }
+          "content": {
+            "type": "string",
+            "description": "Contents of the specified Knowledge Item file"
+          }
         }
       },
       "annotations": {
@@ -55,11 +67,17 @@
     {
       "name": "write_know_file",
       "description": "Create or overwrite a file inside .ki-base/.",
-      "inputSchema": { "type": "object", "properties": {} },
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
       "outputSchema": {
         "type": "object",
         "properties": {
-          "content": { "type": "string", "description": "Confirmation message of created or overwritten file" }
+          "content": {
+            "type": "string",
+            "description": "Confirmation message of created or overwritten file"
+          }
         }
       },
       "annotations": {
@@ -71,11 +89,17 @@
     {
       "name": "edit_know_file",
       "description": "Edit a file inside .ki-base/ by replacing text.",
-      "inputSchema": { "type": "object", "properties": {} },
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
       "outputSchema": {
         "type": "object",
         "properties": {
-          "content": { "type": "string", "description": "Status message of the edit operation" }
+          "content": {
+            "type": "string",
+            "description": "Status message of the edit operation"
+          }
         }
       },
       "annotations": {
@@ -87,11 +111,17 @@
     {
       "name": "ki_call",
       "description": "Universal dispatcher for advanced KI tools (audit_coverage, ki_init_project, generate_dir_index, git_checkpoint, etc.).",
-      "inputSchema": { "type": "object", "properties": {} },
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
       "outputSchema": {
         "type": "object",
         "properties": {
-          "content": { "type": "string", "description": "Result output of the dispatched action" }
+          "content": {
+            "type": "string",
+            "description": "Result output of the dispatched action"
+          }
         }
       },
       "annotations": {

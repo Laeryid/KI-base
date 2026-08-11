@@ -1,5 +1,10 @@
 ---
+name: ki-manager-create-adr
 description: Document architectural decisions, logic transitions, or abandoned paths (ADR)
+metadata:
+  author: ki-manager
+  version: "1.0"
+allowed-tools: read_know_file write_know_file ki_instructions
 ---
 
 # /create-adr — Architectural Decision Records (ADR / Retrospective)

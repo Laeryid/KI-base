@@ -1,5 +1,10 @@
 ---
+name: ki-manager-sync-knowledge
 description: Synchronize the project knowledge system (KI, DIR_INDEX, artifacts)
+metadata:
+  author: ki-manager
+  version: "1.0"
+allowed-tools: read_know_file write_know_file edit_know_file audit_coverage generate_dir_index ki_instructions
 ---
 
 # /sync-knowledge — Knowledge System Synchronization

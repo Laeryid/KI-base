@@ -43,9 +43,10 @@ src/ki_manager/
 **Поддерживаемые методы:**
 | Метод | Действие |
 |-------|----------|
-| `initialize` / `server/discover` | Handshake. Оба обрабатываются одинаково. `server/discover` — новый метод протокола (с 2026-07). |
+| `initialize` | Handshake (deprecated в новой спецификации) |
+| `server/discover` | Handshake (новый метод протокола с 2026-07-28) |
 | `notifications/initialized` | Сервер запрашивает `roots/list` у клиента для детекции workspace |
-| `tools/list` | Возвращает список инструментов (eager + `ki_call`) |
+| `tools/list` | Возвращает список инструментов |
 | `tools/call` | Вызов конкретного инструмента |
 | `resources/list` / `resources/read` | Виртуальные ресурсы: `ki://instructions.md`, `ki://knowledge-items.md` |
 | Все остальные | Возвращает `-32601 Method not found` (не молчит!) |
@@ -54,18 +55,22 @@ src/ki_manager/
 
 ## Инструменты (Tools)
 
-Инструменты делятся на две группы:
+Все инструменты выставляются напрямую через `tools/list`. Деления на eager/lazy нет.
 
-**Eager (всегда загружены):**
-- `ki_status` — статус воркспейса
-- `read_know_file` — чтение KI-файла
-- `write_know_file` — запись KI-файла
-- `edit_know_file` — редактирование KI-файла (patch-like)
+**Инструменты по группам:**
 
-**Lazy (через диспетчер `ki_call`):**
-- Все остальные тяжелые инструменты: `audit_coverage`, `generate_dir_index`, `ki_init_project`, `git_checkpoint` и т.д.
+| Группа | Инструменты |
+|--------|-------------|
+| Инструкции | `ki_instructions` |
+| Инициализация | `ki_init_project`, `ki_migrate_project` |
+| Реестр | `ki_register_project`, `ki_list_projects`, `ki_status`, `ki_prune_registry` |
+| Покрытие | `audit_coverage`, `generate_dir_index`, `analyze_dependencies`, `analyze_all_dependencies`, `find_unmapped_files`, `analyze_module` |
+| Scaffold | `ki_scaffold`, `ki_scaffold_status`, `update_last_verified` |
+| Файлы | `read_know_file`, `write_know_file`, `edit_know_file`, `make_know_dir` |
+| Git | `git_checkpoint`, `git_restore`, `git_diff_secured` |
+| Состояние | `save_state`, `restore_mapping` |
 
-Агент вызывает `ki_call(action="help")` чтобы получить полный список lazy-инструментов и их схемы.
+Полный список с описаниями возвращает `tools/list`. Для получения инструкций по воркфло используй `ki_instructions`.
 
 ---
 
@@ -73,10 +78,12 @@ src/ki_manager/
 
 Сервер пытается определить активный воркспейс в таком порядке:
 
+0. `_meta.io.modelcontextprotocol/clientInfo.workspaceUri` в каждом запросе (новый протокол 2026-07-28)
 1. `--workspace` CLI-аргумент при запуске
 2. `rootUri` / `workspaceFolders` в запросе `initialize`/`server/discover`
 3. Рекурсивный поиск `file://` URI в любом поле params
 4. Ответ клиента на запрос `roots/list` (после `notifications/initialized`)
+5. `path` / `project_path` аргументы вызова инструмента
 
 Текущий воркспейс хранится в `ki_utils.ACTIVE_WORKSPACE_PATH`.
 
@@ -131,6 +138,33 @@ Antigravity IDE начиная с протокола `2026-07-28` отправл
 
 ---
 
+## Agent Skills
+
+ki-manager распространяет воркфло-инструкции в формате [Agent Skills](https://agentskills.io).
+
+### Установка скиллов
+
+```bash
+# В папку со скиллами IDE:
+ki-manager-skills install-skills
+
+# С явным путём:
+ki-manager-skills install-skills --path ~/.gemini/config/skills/
+```
+
+Скиллы устанавливаются из `src/ki_manager/workflows/*.md`. Существующие файлы не перезаписываются.
+
+### Через MCP-инструмент
+
+Если скиллы не установлены, ИИ может получить любую инструкцию напрямую:
+```
+ki_instructions({"document": "create-adr"})
+```
+
+Доступные документы: `overview`, `knowledge-items`, `create-adr`, `expand-knowledge`, `sync-knowledge`, `update-knowledge`.
+
+---
+
 ## Публикация новой версии на PyPI
 
 Смотри `publishing.md` в корне репозитория. Краткий чеклист:
@@ -170,6 +204,8 @@ Antigravity IDE начиная с протокола `2026-07-28` отправл
 | Файл | Зачем читать |
 |------|-------------|
 | `src/ki_manager/server.py` | Весь MCP-цикл, все методы, вся диспетчеризация инструментов |
+| `src/ki_manager/cli.py` | CLI-команды (install-skills) |
+| `src/ki_manager/workflows/*.md` | Воркфло-инструкции в формате Agent Skills |
 | `src/ki_manager/scripts/ki_utils.py` | Нормализация путей, загрузка конфигов, workspace detection |
 | `pyproject.toml` | Версия, entrypoint (`ki-manager = "ki_manager.server:main"`) |
 | `publishing.md` | Пошаговая инструкция по релизу |
