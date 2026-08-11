@@ -1,7 +1,7 @@
 {
   "manifestVersion": "1.0",
   "name": "ki-manager",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Knowledge Item (KI) management MCP server for AI-assisted development. Keeps your codebase self-documenting for AI agents.",
   "publisher": "bulyakovbr",
   "repository": "https://github.com/Laeryid/KI-base",

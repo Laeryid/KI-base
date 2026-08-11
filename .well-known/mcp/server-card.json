@@ -2,7 +2,7 @@
   "$schema": "https://smithery.ai/schemas/server-card.json",
   "name": "ki-manager",
   "description": "Knowledge Item (KI) management MCP server for AI-assisted development. Keeps your codebase self-documenting for AI agents.",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "publisher": "bulyakovbr",
   "repository": "https://github.com/Laeryid/KI-base",
   "license": "MIT",
