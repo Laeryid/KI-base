@@ -103,8 +103,8 @@ def main():
     # Git add, commit, tag, push
     print("Committing and pushing changes...")
     
-    # Add files
-    run_cmd(["git", "add", "pyproject.toml", "src/ki_manager/__init__.py", "smithery.yaml", ".well-known/mcp/server-card.json", "manifest.json"], cwd=repo_root)
+    # Add ALL files (both version bumps and any code changes/fixes)
+    run_cmd(["git", "add", "-A"], cwd=repo_root)
     
     # Commit
     run_cmd(["git", "commit", "-m", msg], cwd=repo_root)
