@@ -15,120 +15,264 @@
   "user_config": {
     "workspace": {
       "type": "string",
-      "description": "Absolute path to the project workspace root (optional \u2014 auto-detected from IDE context)",
+      "description": "Absolute path to the project workspace root (optional — auto-detected from IDE context)",
       "required": false
     }
   },
   "tools": [
     {
+      "name": "ki_instructions",
+      "description": "Return a bundled workflow instruction document (overview, knowledge-items, create-adr, expand-knowledge, sync-knowledge, scaffold-knowledge).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "document": { "type": "string", "description": "Document name, e.g. 'create-adr'" }
+        }
+      },
+      "annotations": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true }
+    },
+    {
+      "name": "ki_init_project",
+      "description": "Initialize a new ki-manager project: creates .ki-base/ structure with config, AGENTS.md, DIR_INDEX.md and a starter _OVERVIEW.ki.md.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "project_path": { "type": "string", "description": "Absolute path to the project root" },
+          "project_name": { "type": "string", "description": "Human-readable project name (optional)" },
+          "language": { "type": "string", "description": "Primary language: python, typescript, etc. (default: python)" },
+          "venv_python": { "type": "string", "description": "Explicit path to venv python.exe (auto-detected if omitted)" },
+          "force": { "type": "boolean", "description": "Overwrite existing files (default: false)" }
+        },
+        "required": ["project_path"]
+      },
+      "annotations": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": false }
+    },
+    {
+      "name": "ki_migrate_project",
+      "description": "Migrate a legacy .know/ project to the modern .ki-base/ architecture.",
+      "inputSchema": { "type": "object", "properties": {} },
+      "annotations": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": false }
+    },
+    {
+      "name": "ki_register_project",
+      "description": "Register an existing project (with .ki-base/ki_config.json) in the global registry.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": { "type": "string", "description": "Path to ki_config.json or .ki-base/ directory" }
+        }
+      },
+      "annotations": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": true }
+    },
+    {
+      "name": "ki_list_projects",
+      "description": "List all projects registered in the global KI registry.",
+      "inputSchema": { "type": "object", "properties": {} },
+      "annotations": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true }
+    },
+    {
       "name": "ki_status",
       "description": "Check which project is active for the current workspace.",
       "inputSchema": {
         "type": "object",
-        "properties": {}
-      },
-      "outputSchema": {
-        "type": "object",
         "properties": {
-          "content": {
-            "type": "string",
-            "description": "Active workspace project information"
-          }
+          "path": { "type": "string", "description": "Path to check (defaults to workspace root)" }
         }
       },
-      "annotations": {
-        "readOnlyHint": true,
-        "destructiveHint": false,
-        "idempotentHint": true
-      }
+      "annotations": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true }
+    },
+    {
+      "name": "ki_prune_registry",
+      "description": "Remove projects from the registry whose directories no longer exist.",
+      "inputSchema": { "type": "object", "properties": {} },
+      "annotations": { "readOnlyHint": false, "destructiveHint": true, "idempotentHint": true }
+    },
+    {
+      "name": "audit_coverage",
+      "description": "Analyze how well the knowledge base covers the actual codebase. Reports blind spots, critical gaps, complexity warnings, and low-density KIs.",
+      "inputSchema": { "type": "object", "properties": {} },
+      "annotations": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true }
+    },
+    {
+      "name": "generate_dir_index",
+      "description": "Generate or update .ki-base/DIR_INDEX.md with the project directory structure.",
+      "inputSchema": { "type": "object", "properties": {} },
+      "annotations": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": true }
+    },
+    {
+      "name": "analyze_dependencies",
+      "description": "Analyze Python/TS imports to update the 'Related KIs' section in a specific KI file.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ki_name": { "type": "string", "description": "KI filename to analyze" },
+          "only_changed": { "type": "boolean", "description": "Only process KIs for changed files" }
+        }
+      },
+      "annotations": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": true }
+    },
+    {
+      "name": "analyze_all_dependencies",
+      "description": "Analyze all KI files and update their 'Related KIs' sections based on code imports.",
+      "inputSchema": { "type": "object", "properties": {} },
+      "annotations": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": true }
+    },
+    {
+      "name": "find_unmapped_files",
+      "description": "Find source files not covered by any KI.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string", "description": "Subdirectory to scan (optional)" }
+        }
+      },
+      "annotations": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true }
+    },
+    {
+      "name": "analyze_module",
+      "description": "Analyze directory stats with knowledge context: file count, KI coverage, etc.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string", "description": "Directory path to analyze" },
+          "recursive": { "type": "boolean", "description": "Recurse into subdirectories" }
+        }
+      },
+      "annotations": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true }
+    },
+    {
+      "name": "ki_scaffold",
+      "description": "Generate scaffold KI stub files for all uncovered modules in one pass. Extracts class/function names via regex (Python, TypeScript, JS, Go). Marks generated KIs with <!-- scaffold: true --> for subsequent AI enrichment.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "modules": { "type": "string", "description": "Comma-separated module paths or labels to scaffold (default: all uncovered)" },
+          "dry_run": { "type": "boolean", "description": "Show what would be created without writing files (default: false)" },
+          "force": { "type": "boolean", "description": "Overwrite existing KI files that have the scaffold marker (default: false)" }
+        }
+      },
+      "annotations": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": false }
+    },
+    {
+      "name": "ki_scaffold_status",
+      "description": "Print a concise status table of all scaffold KIs: pending (<!-- scaffold: true -->) vs enriched (<!-- scaffold: enriched -->).",
+      "inputSchema": { "type": "object", "properties": {} },
+      "annotations": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true }
+    },
+    {
+      "name": "ki_finalize_scaffolds",
+      "description": "Finalize all enriched scaffold KI files: removes <!-- scaffold: enriched --> markers and updates doc_config.json summaries from Overview text. Run after all stubs are enriched.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "dry_run": { "type": "boolean", "description": "Show what would change without writing files (default: false)" }
+        }
+      },
+      "annotations": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": true }
+    },
+    {
+      "name": "update_last_verified",
+      "description": "Update the last_verified date in all KI files to today.",
+      "inputSchema": { "type": "object", "properties": {} },
+      "annotations": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": true }
     },
     {
       "name": "read_know_file",
-      "description": "Read a Knowledge Item (KI) file inside .ki-base/.",
+      "description": "Read a Knowledge Item (KI) file inside the .ki-base/ directory.",
       "inputSchema": {
         "type": "object",
-        "properties": {}
-      },
-      "outputSchema": {
-        "type": "object",
         "properties": {
-          "content": {
-            "type": "string",
-            "description": "Contents of the specified Knowledge Item file"
-          }
-        }
+          "rel_path": { "type": "string", "description": "Path relative to .ki-base/" }
+        },
+        "required": ["rel_path"]
       },
-      "annotations": {
-        "readOnlyHint": true,
-        "destructiveHint": false,
-        "idempotentHint": true
-      }
+      "annotations": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true }
     },
     {
       "name": "write_know_file",
-      "description": "Create or overwrite a file inside .ki-base/.",
+      "description": "Create or overwrite a file inside .ki-base/ (scripts and executables are protected).",
       "inputSchema": {
         "type": "object",
-        "properties": {}
-      },
-      "outputSchema": {
-        "type": "object",
         "properties": {
-          "content": {
-            "type": "string",
-            "description": "Confirmation message of created or overwritten file"
-          }
-        }
+          "rel_path": { "type": "string", "description": "Path relative to .ki-base/" },
+          "content": { "type": "string", "description": "File content to write" }
+        },
+        "required": ["rel_path", "content"]
       },
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": true,
-        "idempotentHint": false
-      }
+      "annotations": { "readOnlyHint": false, "destructiveHint": true, "idempotentHint": false }
     },
     {
       "name": "edit_know_file",
-      "description": "Edit a file inside .ki-base/ by replacing text.",
+      "description": "Edit a file inside .ki-base/ by replacing a specific text fragment.",
       "inputSchema": {
         "type": "object",
-        "properties": {}
-      },
-      "outputSchema": {
-        "type": "object",
         "properties": {
-          "content": {
-            "type": "string",
-            "description": "Status message of the edit operation"
-          }
-        }
+          "rel_path": { "type": "string", "description": "Path relative to .ki-base/" },
+          "old_text": { "type": "string", "description": "Text to find and replace" },
+          "new_text": { "type": "string", "description": "Replacement text" }
+        },
+        "required": ["rel_path", "old_text", "new_text"]
       },
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": true,
-        "idempotentHint": false
-      }
+      "annotations": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": false }
     },
     {
-      "name": "ki_call",
-      "description": "Universal dispatcher for advanced KI tools (audit_coverage, ki_init_project, generate_dir_index, git_checkpoint, etc.).",
+      "name": "make_know_dir",
+      "description": "Create a new subdirectory inside .ki-base/.",
       "inputSchema": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "rel_path": { "type": "string", "description": "Directory path relative to .ki-base/" }
+        },
+        "required": ["rel_path"]
       },
-      "outputSchema": {
+      "annotations": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": true }
+    },
+    {
+      "name": "git_checkpoint",
+      "description": "Stage and commit all .ki-base/ changes to git.",
+      "inputSchema": {
         "type": "object",
         "properties": {
-          "content": {
-            "type": "string",
-            "description": "Result output of the dispatched action"
-          }
+          "message": { "type": "string", "description": "Commit message suffix" }
         }
       },
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": false,
-        "idempotentHint": false
-      }
+      "annotations": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": false }
+    },
+    {
+      "name": "git_restore",
+      "description": "Restore a file inside .ki-base/ from a git revision.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "target": { "type": "string", "description": "File path relative to .ki-base/" },
+          "revision": { "type": "string", "description": "Git revision (default: HEAD)" }
+        },
+        "required": ["target"]
+      },
+      "annotations": { "readOnlyHint": false, "destructiveHint": true, "idempotentHint": false }
+    },
+    {
+      "name": "git_diff_secured",
+      "description": "Get git diff for project files (sandboxed to project directory).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "paths": { "type": "string", "description": "Comma-separated paths" }
+        }
+      },
+      "annotations": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true }
+    },
+    {
+      "name": "save_state",
+      "description": "Capture and save file hash state to doc_state.json.",
+      "inputSchema": { "type": "object", "properties": {} },
+      "annotations": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": true }
+    },
+    {
+      "name": "restore_mapping",
+      "description": "Restore doc_config.json from existing KI files.",
+      "inputSchema": { "type": "object", "properties": {} },
+      "annotations": { "readOnlyHint": false, "destructiveHint": true, "idempotentHint": false }
     }
   ]
 }
