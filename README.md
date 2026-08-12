@@ -115,12 +115,17 @@ Use the available tools or slash commands:
 | Tool / Command | Action |
 |----------------|--------|
 | `audit_coverage` | Find documentation gaps |
-| `generate_dir_index` | Build directory index |
-| `sync_agents_md` | Sync KI table in AGENTS.md |
+| `generate_dir_index` | Rebuild directory index (`DIR_INDEX.md`) |
+| `find_unmapped_files` | List source files not covered by any KI |
+| `ki_scaffold` | Create stub KI files for uncovered modules |
+| `ki_scaffold_status` | Show pending vs enriched scaffold KIs |
+| `ki_finalize_scaffolds` | Strip scaffold markers, update doc_config summaries |
+| `analyze_all_dependencies` | Update "Related KIs" links across all KIs |
 | `git_checkpoint` | Save knowledge snapshot to git |
-| `/expand-knowledge` | Iteratively fill gaps (Antigravity) |
-| `/sync-knowledge` | Full sync workflow (Antigravity) |
-| `/create-adr` | Record architectural decision |
+| `/scaffold-knowledge` | Bootstrap KI stubs → AI enrichment → finalize |
+| `/expand-knowledge` | Iteratively add KIs for undocumented modules (Antigravity) |
+| `/sync-knowledge` | Synchronize KI system: DIR_INDEX, AGENTS.md, dependencies |
+| `/create-adr` | Record an architectural decision |
 
 ---
 

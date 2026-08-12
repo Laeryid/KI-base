@@ -101,6 +101,11 @@ def install_skills(argv=None):
         print(f"Skipped (already exist): {len(skipped)}")
         for name in skipped:
             print(f"  - {name}")
+        print(
+            "\n  To update a skill to the latest version, delete its folder and re-run:\n"
+            f"    rm -rf <skills-dir>/<skill-name>\n"
+            f"    ki-manager install-skills --path <skills-dir>"
+        )
 
     print(f"\nTarget: {target}")
 

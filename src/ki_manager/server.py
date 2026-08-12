@@ -445,6 +445,32 @@ MCP_TOOLS = [
         },
     },
     {
+        "name": "ki_finalize_scaffolds",
+        "description": (
+            "Finalize all enriched scaffold KI files in one pass. "
+            "For each KI marked with <!-- scaffold: enriched -->: "
+            "(1) removes the scaffold marker so the KI becomes a regular KI, "
+            "(2) extracts the Overview text and updates the summary in doc_config.json. "
+            "KIs still marked <!-- scaffold: true --> (pending) are left untouched. "
+            "Run this as Phase 3 of the /scaffold-knowledge workflow, after all stubs are enriched."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "If true, show what would change without writing files (default: false)",
+                },
+            },
+        },
+        "annotations": {
+            "title": "Finalize Scaffold KIs",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": True,
+        },
+    },
+    {
         "name": "update_last_verified",
         "description": "Update the last_verified date in all KI files to today.",
         "inputSchema": {"type": "object"},
@@ -770,6 +796,12 @@ def handle_tool_call(name: str, args: dict) -> Any:
             return run_script("generate_ki_scaffolds.py", cmd_args)
         if name == "ki_scaffold_status":
             return run_script("generate_ki_scaffolds.py", ["--status"])
+        if name == "ki_finalize_scaffolds":
+            cmd_args = []
+            if args.get("dry_run"):
+                cmd_args.append("--dry-run")
+            return run_script("finalize_ki_scaffolds.py", cmd_args)
+
 
         # ── File Ops ──
         if name == "read_know_file":
