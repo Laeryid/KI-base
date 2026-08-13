@@ -1,0 +1,1 @@
+smithery-verification=c90f6eff15717196cbce8771fec412c9930691ae0ec78fc1b9132a7b8802fb50
