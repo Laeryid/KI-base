@@ -14,6 +14,7 @@ import os
 import sys
 import json
 import argparse
+import fnmatch
 from pathlib import Path
 
 # Global state — set by MCP server on initialize
@@ -235,21 +236,94 @@ def get_doc_config() -> dict:
     return {}
 
 
-def get_python_exe() -> str:
-    """Returns venv python from config.json (machine-specific) or ki_config.json."""
-    # First try machine-specific config.json
+def get_local_config() -> dict:
+    """Loads machine-specific config.json if present in knowledge_root."""
     root = get_knowledge_root()
     if root:
         config_json = os.path.join(root, "config.json")
         if os.path.exists(config_json):
             try:
                 with open(config_json, "r", encoding="utf-8") as f:
-                    local_cfg = json.load(f)
-                venv_py = local_cfg.get("venv_python")
-                if venv_py and os.path.exists(venv_py):
-                    return venv_py
+                    return json.load(f)
             except Exception:
                 pass
+    return {}
+
+
+DEFAULT_EXCLUDED_DIRS = {
+    ".git", "__pycache__", "node_modules", ".venv", "venv", "dist", "build",
+    ".mypy_cache", ".pytest_cache", ".ruff_cache",
+}
+
+
+def get_exclude_patterns() -> set:
+    """
+    Returns the set of directory/file exclude patterns.
+    Combines default excluded dirs with exclude_patterns from:
+    1. config.json (machine-specific)
+    2. doc_config.json (coverage_settings.exclude_patterns or top-level exclude_patterns)
+    3. ki_config.json
+    """
+    patterns = set(DEFAULT_EXCLUDED_DIRS)
+
+    # 1. config.json
+    local_cfg = get_local_config()
+    for p in local_cfg.get("exclude_patterns", []):
+        if p:
+            patterns.add(str(p))
+
+    # 2. doc_config.json
+    doc_cfg = get_doc_config()
+    for p in doc_cfg.get("exclude_patterns", []):
+        if p:
+            patterns.add(str(p))
+    for p in doc_cfg.get("coverage_settings", {}).get("exclude_patterns", []):
+        if p:
+            patterns.add(str(p))
+
+    # 3. ki_config.json
+    ki_cfg = get_ki_cfg()
+    for p in ki_cfg.get("exclude_patterns", []):
+        if p:
+            patterns.add(str(p))
+
+    return patterns
+
+
+def should_exclude(name: str, rel_path: str = "", patterns: set = None) -> bool:
+    """
+    Checks if a file or directory name/path matches any exclude pattern.
+    Supports exact name match, component match, and glob pattern (fnmatch).
+    """
+    if patterns is None:
+        patterns = get_exclude_patterns()
+
+    if name in patterns:
+        return True
+
+    norm_rel = rel_path.replace("\\", "/").strip("/") if rel_path else ""
+
+    for pat in patterns:
+        if fnmatch.fnmatch(name, pat):
+            return True
+        if norm_rel:
+            norm_pat = pat.replace("\\", "/").strip("/")
+            if norm_rel == norm_pat or norm_rel.startswith(norm_pat + "/"):
+                return True
+            if fnmatch.fnmatch(norm_rel, norm_pat):
+                return True
+            if any(fnmatch.fnmatch(comp, pat) for comp in norm_rel.split("/")):
+                return True
+
+    return False
+
+
+def get_python_exe() -> str:
+    """Returns venv python from config.json (machine-specific) or ki_config.json."""
+    local_cfg = get_local_config()
+    venv_py = local_cfg.get("venv_python")
+    if venv_py and os.path.exists(venv_py):
+        return venv_py
     # Fallback: ki_config.json paths section (legacy)
     return get_ki_cfg().get("paths", {}).get("venv_python") or sys.executable
 

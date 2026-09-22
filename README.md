@@ -236,6 +236,12 @@ uv tool install --reinstall ki-manager
 
 ---
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for release notes and detailed history of changes.
+
+---
+
 ## License
 
 MIT — free to use, copy, and adapt.

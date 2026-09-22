@@ -37,18 +37,25 @@ def find_unmapped_files(target_path: str):
     
     # Расширения, которые мы обычно игнорируем (артефакты компиляции и т.д.)
     ignored_exts = {'.pyc', '.pyo', '.pyd', '.obj', '.dll', '.exe', '.bin'}
-    ignored_dirs = {'__pycache__', '.git', '.venv', 'node_modules'}
+    exclude_patterns = ki_utils.get_exclude_patterns()
 
     for root, dirs, files in os.walk(abs_target):
         # Фильтруем игнорируемые директории
-        dirs[:] = [d for d in dirs if d not in ignored_dirs]
+        dirs[:] = [
+            d for d in dirs
+            if not d.startswith(".")
+            and not ki_utils.should_exclude(d, os.path.relpath(os.path.join(root, d), project_root), exclude_patterns)
+        ]
         
         for f in files:
-            if any(f.endswith(ext) for ext in ignored_exts):
+            if f.startswith(".") or any(f.endswith(ext) for ext in ignored_exts):
                 continue
                 
             full_path = os.path.abspath(os.path.join(root, f))
-            
+            rel_to_project = os.path.relpath(full_path, project_root)
+            if ki_utils.should_exclude(f, rel_to_project, exclude_patterns):
+                continue
+
             # Проверяем, замаплен ли файл напрямую
             if full_path in mapped_paths:
                 continue
@@ -63,7 +70,6 @@ def find_unmapped_files(target_path: str):
             
             if not is_parent_mapped:
                 # Возвращаем путь относительно корня проекта для удобства
-                rel_to_project = os.path.relpath(full_path, project_root)
                 unmapped.append(rel_to_project)
 
     if unmapped:
@@ -74,6 +80,8 @@ def find_unmapped_files(target_path: str):
         print(f"All files in '{target_path}' are already mapped in doc_config.json.")
 
 if __name__ == "__main__":
+    if sys.platform == "win32":
+        sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description="Find files in a directory not covered by any KI in doc_config.json")
     parser.add_argument("path", help="Relative path from project root to scan")
     args = parser.parse_args()

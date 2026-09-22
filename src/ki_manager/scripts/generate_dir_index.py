@@ -28,11 +28,25 @@ EXCLUDED_DIRS = {
 }
 
 
+def get_excluded_patterns() -> set:
+    patterns = set(EXCLUDED_DIRS)
+    patterns.update(ki_utils.get_exclude_patterns())
+    return patterns
+
+
 def count_files_in_dir(dirpath: str) -> int:
     total = 0
+    patterns = get_excluded_patterns()
+    proj_root = get_project_root()
     for root, dirs, files in os.walk(dirpath):
-        dirs[:] = [d for d in dirs if d not in EXCLUDED_DIRS]
-        total += len(files)
+        dirs[:] = [
+            d for d in dirs
+            if not ki_utils.should_exclude(d, os.path.relpath(os.path.join(root, d), proj_root), patterns)
+        ]
+        for f in files:
+            rel_file = os.path.relpath(os.path.join(root, f), proj_root)
+            if not ki_utils.should_exclude(f, rel_file, patterns):
+                total += 1
     return total
 
 
@@ -46,12 +60,15 @@ def build_tree(root: str, knowledge_root_name: str,
     except PermissionError:
         return []
 
+    patterns = get_excluded_patterns()
+    proj_root = get_project_root()
+
     # Show hidden dirs only if they're the knowledge root or .agent
     show_hidden = {".agent", knowledge_root_name}
     dirs = [
         e for e in entries
         if os.path.isdir(os.path.join(root, e))
-        and e not in EXCLUDED_DIRS
+        and not ki_utils.should_exclude(e, os.path.relpath(os.path.join(root, e), proj_root), patterns)
         and (not e.startswith(".") or e in show_hidden)
     ]
 

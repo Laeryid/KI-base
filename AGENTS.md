@@ -169,10 +169,11 @@ ki_instructions({"document": "create-adr"})
 
 Смотри `publishing.md` в корне репозитория. Краткий чеклист:
 
-1. Обновить версию в `pyproject.toml` и `src/ki_manager/__init__.py` (оба файла, синхронно!)
-2. `git add`, `git commit`, `git push`
-3. `git tag v<версия>` + `git push origin v<версия>`
-4. GitHub Actions `.github/workflows/publish.yml` автоматически соберёт и опубликует пакет
+1. Обновить версию в `pyproject.toml` и `src/ki_manager/__init__.py` (синхронно во всех метаданных)
+2. Обновить `CHANGELOG.md` (ведется строго на английском языке)
+3. `git add`, `git commit`, `git push`
+4. `git tag v<версия>` + `git push origin v<версия>`
+5. GitHub Actions `.github/workflows/publish.yml` автоматически соберёт и опубликует пакет
 
 > [!CAUTION]
 > Никогда не создавай тег на старом коммите — `publish.yml` должен быть в истории коммита, на который указывает тег.
@@ -208,5 +209,6 @@ ki_instructions({"document": "create-adr"})
 | `src/ki_manager/workflows/*.md` | Воркфло-инструкции в формате Agent Skills |
 | `src/ki_manager/scripts/ki_utils.py` | Нормализация путей, загрузка конфигов, workspace detection |
 | `pyproject.toml` | Версия, entrypoint (`ki-manager = "ki_manager.server:main"`) |
+| `CHANGELOG.md` | История релизов и изменений (на английском языке) |
 | `publishing.md` | Пошаговая инструкция по релизу |
 | `README.md` | Документация для пользователей (включая Troubleshooting) |

@@ -60,3 +60,42 @@ def test_get_doc_config_missing_file(tmp_path, monkeypatch):
 
     cfg = ki_utils.get_doc_config()
     assert cfg == {}
+
+
+@pytest.mark.positive
+def test_exclude_patterns_loading(tmp_project, monkeypatch):
+    """get_exclude_patterns loads patterns from config.json and defaults."""
+    import ki_utils
+    monkeypatch.setattr(ki_utils, "_CACHE", {})
+    monkeypatch.chdir(tmp_project)
+
+    from conftest import get_know_info
+    _, know_path, config_path = get_know_info(tmp_project)
+    monkeypatch.setattr(sys, "argv", ["prog", "--config", str(config_path)])
+
+    # Write config.json with custom patterns
+    local_cfg_path = know_path / "config.json"
+    local_cfg = {
+        "exclude_patterns": ["brain", "logs", "scratch", "tmp", "MagicMock", "*.log"]
+    }
+    local_cfg_path.write_text(json.dumps(local_cfg), encoding="utf-8")
+
+    patterns = ki_utils.get_exclude_patterns()
+    assert ".git" in patterns
+    assert "brain" in patterns
+    assert "MagicMock" in patterns
+    assert "*.log" in patterns
+
+
+@pytest.mark.positive
+def test_should_exclude():
+    """should_exclude checks exact names, components, and glob patterns."""
+    import ki_utils
+    patterns = {".git", "brain", "scratch", "tmp", "*.bak", "logs/*"}
+
+    assert ki_utils.should_exclude(".git", "", patterns) is True
+    assert ki_utils.should_exclude("brain", "brain", patterns) is True
+    assert ki_utils.should_exclude("test.bak", "foo/test.bak", patterns) is True
+    assert ki_utils.should_exclude("file.txt", "logs/file.txt", patterns) is True
+    assert ki_utils.should_exclude("main.py", "src/main.py", patterns) is False
+

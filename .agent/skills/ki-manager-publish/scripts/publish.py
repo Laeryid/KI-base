@@ -4,6 +4,7 @@ import argparse
 import subprocess
 import json
 import re
+from datetime import date
 from pathlib import Path
 
 def run_cmd(cmd, cwd=None, check=True):
@@ -44,6 +45,27 @@ def update_json_file(filepath, new_version):
         json.dump(data, f, indent=2)
         f.write("\n")
     print(f"Updated {filepath}")
+
+def update_changelog(filepath, version):
+    if not os.path.exists(filepath):
+        print(f"Warning: File {filepath} not found, skipping changelog update.")
+        return
+    with open(filepath, 'r', encoding='utf-8') as f:
+        content = f.read()
+    
+    if f"## [{version}]" in content or f"## [v{version}]" in content:
+        print(f"Changelog already contains entry for {version}.")
+        return
+    
+    today = date.today().isoformat()
+    if "## [Unreleased]" in content:
+        replacement = f"## [Unreleased]\n\n## [{version}] — {today}"
+        new_content = content.replace("## [Unreleased]", replacement, 1)
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(new_content)
+        print(f"Updated {filepath} with version {version} section.")
+    else:
+        print(f"Notice: '## [Unreleased]' not found in {filepath}. Please update changelog manually if needed.")
 
 def main():
     parser = argparse.ArgumentParser(description="Publish a new version of ki-manager")
@@ -93,6 +115,10 @@ def main():
     # 5. manifest.json
     manifest_path = repo_root / "manifest.json"
     update_json_file(manifest_path, version)
+    
+    # 6. CHANGELOG.md
+    changelog_path = repo_root / "CHANGELOG.md"
+    update_changelog(changelog_path, version)
     
     # Check if there are changes
     status = run_cmd(["git", "status", "--porcelain"], cwd=repo_root)

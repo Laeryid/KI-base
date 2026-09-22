@@ -176,12 +176,16 @@ def run_script(script_name: str, args: List[str] = None) -> dict:
     if args:
         cmd.extend(args)
 
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+
     result = subprocess.run(
         cmd,
         capture_output=True,
         text=True,
         encoding="utf-8",
         cwd=get_project_root(),
+        env=env,
     )
     output = result.stdout + (result.stderr if result.stderr else "")
     return {"content": [{"type": "text", "text": output}]}

@@ -29,6 +29,17 @@ import ki_utils
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
+EXCLUDED_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv", "dist", "build"}
+DENSITY_THRESHOLD = 50.0   # KI bytes per 1 KB of code
+COMPLEXITY_THRESHOLD = 10  # Files per one KI
+
+
+def get_excluded_patterns() -> set:
+    patterns = set(EXCLUDED_DIRS)
+    patterns.update(ki_utils.get_exclude_patterns())
+    return patterns
+
+
 def get_knowledge_root():
     return ki_utils.get_knowledge_root()
 
@@ -65,12 +76,18 @@ def get_module_files(project_root: str, module_path: str) -> list:
     abs_module = os.path.join(project_root, module_path.replace("/", os.sep))
     if not os.path.isdir(abs_module):
         return []
+    exclude_patterns = get_excluded_patterns()
     files_list = []
     for root, dirs, files in os.walk(abs_module):
-        dirs[:] = [d for d in dirs if d not in EXCLUDED_DIRS]
+        dirs[:] = [
+            d for d in dirs
+            if not ki_utils.should_exclude(d, os.path.relpath(os.path.join(root, d), project_root), exclude_patterns)
+        ]
         for f in files:
+            rel_path = os.path.relpath(os.path.join(root, f), project_root)
+            if ki_utils.should_exclude(f, rel_path, exclude_patterns):
+                continue
             if f.endswith((".py", ".ts", ".tsx", ".js", ".jsx")) and not f.startswith("__"):
-                rel_path = os.path.relpath(os.path.join(root, f), project_root)
                 files_list.append(rel_path)
     return files_list
 
@@ -122,16 +139,30 @@ def get_ki_size(project_root: str, module_path: str, doc_config: dict) -> int:
 
 def find_untracked_dirs(project_root: str, tracked_modules: list) -> list:
     tracked_paths = {m[0].replace("/", os.sep).rstrip(os.sep) for m in tracked_modules}
+    exclude_patterns = get_excluded_patterns()
     untracked = []
     for item in os.listdir(project_root):
         abs_item = os.path.join(project_root, item)
-        if not os.path.isdir(abs_item) or item in EXCLUDED_DIRS or item.startswith("."):
+        if (
+            not os.path.isdir(abs_item)
+            or item.startswith(".")
+            or ki_utils.should_exclude(item, item, exclude_patterns)
+        ):
             continue
         for root, dirs, files in os.walk(abs_item):
-            dirs[:] = [d for d in dirs if d not in EXCLUDED_DIRS and not d.startswith(".")]
+            dirs[:] = [
+                d for d in dirs
+                if not d.startswith(".")
+                and not ki_utils.should_exclude(d, os.path.relpath(os.path.join(root, d), project_root), exclude_patterns)
+            ]
             rel_path = os.path.relpath(root, project_root)
             norm_rel = rel_path.replace("/", os.sep).rstrip(os.sep)
-            if any(not f.startswith(".") for f in files):
+            has_relevant_files = any(
+                not f.startswith(".")
+                and not ki_utils.should_exclude(f, os.path.relpath(os.path.join(root, f), project_root), exclude_patterns)
+                for f in files
+            )
+            if has_relevant_files:
                 is_sub_covered = any(
                     norm_rel == tp or norm_rel.startswith(tp + os.sep)
                     for tp in tracked_paths
@@ -395,10 +426,6 @@ def main():
             f.write(md_content)
         print(f"[+] Matrix saved: {output_path}")
 
-
-EXCLUDED_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv", "dist", "build"}
-DENSITY_THRESHOLD = 50.0   # KI bytes per 1 KB of code
-COMPLEXITY_THRESHOLD = 10  # Files per one KI
 
 if __name__ == "__main__":
     if sys.platform == "win32":

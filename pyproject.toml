@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ki-manager"
-version = "2.1.3"
+version = "2.1.4"
 description = "Knowledge Item (KI) management MCP server for AI-assisted development"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -32,9 +32,10 @@ ki-manager-skills = "ki_manager.cli:main"
 Homepage = "https://github.com/Laeryid/KI-base"
 Repository = "https://github.com/Laeryid/KI-base"
 Issues = "https://github.com/Laeryid/KI-base/issues"
+Changelog = "https://github.com/Laeryid/KI-base/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ki_manager"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/ki_manager/**", "README.md", "LICENSE"]
+include = ["src/ki_manager/**", "README.md", "LICENSE", "CHANGELOG.md"]

@@ -114,3 +114,39 @@ def test_priority_label():
     assert "🔴" in ac.priority_label(10)
     assert "🟡" in ac.priority_label(6)
     assert "🟢" in ac.priority_label(2)
+
+
+@pytest.mark.positive
+def test_exclude_patterns_ignored_in_untracked_dirs(tmp_project, setup_ki_utils):
+    """Directories listed in exclude_patterns should not appear in untracked (blind spots)."""
+    from conftest import get_know_info
+    _, know_path, _ = get_know_info(tmp_project)
+
+    # Write config.json with exclude_patterns
+    local_cfg_path = know_path / "config.json"
+    local_cfg = {
+        "exclude_patterns": ["brain", "scratch", "MagicMock", "tmp", "logs"]
+    }
+    local_cfg_path.write_text(json.dumps(local_cfg), encoding="utf-8")
+
+    # Create excluded directories with code files
+    for folder in ["brain", "scratch", "MagicMock"]:
+        d = tmp_project / folder
+        d.mkdir(exist_ok=True)
+        (d / "dummy.py").write_text("print('test')\n", encoding="utf-8")
+
+    # Also create a non-excluded untracked directory
+    other = tmp_project / "other_untracked"
+    other.mkdir(exist_ok=True)
+    (other / "real.py").write_text("print('real')\n", encoding="utf-8")
+
+    ac = setup_ki_utils
+    tracked = [["src/module_a", "Module A", 5]]
+    data = ac.build_coverage_matrix(str(tmp_project), tracked)
+
+    untracked_names = [os.path.basename(u) for u in data["untracked"]]
+    assert "brain" not in untracked_names
+    assert "scratch" not in untracked_names
+    assert "MagicMock" not in untracked_names
+    assert "other_untracked" in untracked_names
+

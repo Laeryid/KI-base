@@ -230,4 +230,6 @@ def main():
         parser.print_help()
 
 if __name__ == "__main__":
+    if sys.platform == "win32":
+        sys.stdout.reconfigure(encoding="utf-8")
     main()
