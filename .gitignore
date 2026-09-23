@@ -23,3 +23,9 @@ doc_state.json
 .idea/
 test_soft_init_manual/
 server.mcpb
+
+# Release drafts & social posts
+posts/
+
+# Private plans (moved to KI-enterprise)
+plans/
