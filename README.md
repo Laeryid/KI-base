@@ -175,8 +175,7 @@ The MCP server operates in a **sandbox**:
 
 ```
 ki-manager/
-├── pyproject.toml            ← pip / uvx package config
-├── smithery.yaml             ← Smithery MCP marketplace config
+├── pyproject.toml            ← pip / uv package config
 ├── src/ki_manager/
 │   ├── server.py             ← MCP server entry point
 │   ├── tools/

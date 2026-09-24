@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] — 2026-09-24
+
+### Added
+- `ki_graph_visualize` MCP tool: on-the-fly Mermaid architecture diagrams visualizing dependencies and file clusters across Knowledge Items.
+- Cross-platform CI matrix workflow testing both Ubuntu and Windows environments on Python 3.10, 3.11, and 3.12.
+- End-to-end MCP integration test suite validating real JSON-RPC stdio subprocess communication, handshake, and tool execution.
+- Automated pre-flight release verification gate ensuring zero broken packages before release tagging.
+
+### Fixed
+- Proper exit codes and help formatting for `ki-manager-skills` CLI flags (`--help`, `-h`, `--version`).
+
 ## [2.1.4] — 2026-09-22
 
 ### Added
@@ -53,7 +64,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Initial 2.0 release of the `ki-manager` MCP server for project knowledge base management.
 
-[Unreleased]: https://github.com/Laeryid/KI-base/compare/v2.1.4...HEAD
+[Unreleased]: https://github.com/Laeryid/KI-base/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/Laeryid/KI-base/compare/v2.1.4...v2.2.0
 [2.1.4]: https://github.com/Laeryid/KI-base/compare/v2.1.3...v2.1.4
 [2.1.3]: https://github.com/Laeryid/KI-base/compare/v2.1.2...v2.1.3
 [2.1.2]: https://github.com/Laeryid/KI-base/compare/v2.1.1...v2.1.2

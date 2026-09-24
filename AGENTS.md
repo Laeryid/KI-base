@@ -64,7 +64,7 @@ src/ki_manager/
 | Инструкции | `ki_instructions` |
 | Инициализация | `ki_init_project`, `ki_migrate_project` |
 | Реестр | `ki_register_project`, `ki_list_projects`, `ki_status`, `ki_prune_registry` |
-| Покрытие | `audit_coverage`, `generate_dir_index`, `analyze_dependencies`, `analyze_all_dependencies`, `find_unmapped_files`, `analyze_module` |
+| Покрытие | `audit_coverage`, `generate_dir_index`, `analyze_dependencies`, `analyze_all_dependencies`, `find_unmapped_files`, `analyze_module`, `ki_graph_visualize` |
 | Scaffold | `ki_scaffold`, `ki_scaffold_status`, `update_last_verified` |
 | Файлы | `read_know_file`, `write_know_file`, `edit_know_file`, `make_know_dir` |
 | Git | `git_checkpoint`, `git_restore`, `git_diff_secured` |

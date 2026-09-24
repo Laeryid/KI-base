@@ -118,15 +118,23 @@ def main():
         except Exception:
             pass
 
-    if len(sys.argv) < 2:
-        print("Usage: ki-manager <command> [options]")
+    if len(sys.argv) < 2 or sys.argv[1] in ("--help", "-h"):
+        print("Usage: ki-manager-skills <command> [options]")
         print("Commands:")
         print("  install-skills  Install bundled workflows as Agent Skills")
-        sys.exit(1)
+        sys.exit(0 if len(sys.argv) >= 2 and sys.argv[1] in ("--help", "-h") else 1)
     
     command = sys.argv[1]
     if command == "install-skills":
         install_skills(sys.argv[2:])
+    elif command in ("--version", "-v"):
+        import importlib.metadata
+        try:
+            v = importlib.metadata.version("ki-manager")
+        except Exception:
+            v = "unknown"
+        print(f"ki-manager {v}")
+        sys.exit(0)
     else:
         print(f"Unknown command: {command}", file=sys.stderr)
         sys.exit(1)

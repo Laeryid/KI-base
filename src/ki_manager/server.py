@@ -374,6 +374,41 @@ MCP_TOOLS = [
         },
     },
     {
+        "name": "ki_graph_visualize",
+        "description": (
+            "Generate a Mermaid architecture diagram visualizing relationships between "
+            "Knowledge Items (KIs) and files. "
+            "Modes: 'semantic' (default, files grouped into KI subgraphs with dependency edges), "
+            "'ki-only' (high-level map of KI nodes only), "
+            "'coverage' (semantic map plus an 'Unmapped Files' cluster to highlight gaps)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "mode": {
+                    "type": "string",
+                    "enum": ["semantic", "ki-only", "coverage"],
+                    "description": "Visualization mode (default: semantic)",
+                },
+                "ki_name": {
+                    "type": "string",
+                    "description": "Optional KI name to focus on (shows only this KI and its direct neighbors)",
+                },
+                "direction": {
+                    "type": "string",
+                    "enum": ["TD", "LR", "TB", "RL", "BT"],
+                    "description": "Flowchart layout direction (default: TD)",
+                },
+            },
+        },
+        "annotations": {
+            "title": "Visualize Knowledge Graph",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+        },
+    },
+    {
         "name": "find_unmapped_files",
         "description": "Find source files not covered by any KI.",
         "inputSchema": {
@@ -782,6 +817,17 @@ def handle_tool_call(name: str, args: dict) -> Any:
                 return {"isError": True, "content": [{"type": "text",
                     "text": "Error: provide ki_name or only_changed=true"}]}
             return run_script("ki_dependency_analyzer.py", cmd_args)
+        if name == "ki_graph_visualize":
+            cmd_args = []
+            if args.get("mode"):
+                cmd_args += ["--mode", args["mode"]]
+            if args.get("ki_name"):
+                cmd_args += ["--ki", args["ki_name"]]
+            elif args.get("ki"):
+                cmd_args += ["--ki", args["ki"]]
+            if args.get("direction"):
+                cmd_args += ["--direction", args["direction"]]
+            return run_script("ki_graph_visualize.py", cmd_args)
         if name == "find_unmapped_files":
             return run_script("find_unmapped_files.py", [args.get("path", ".")])
         if name == "analyze_module":

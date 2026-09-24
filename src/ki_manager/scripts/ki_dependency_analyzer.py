@@ -8,6 +8,7 @@ This tool follows the 'No Russian' and 'No Hardcoded Paths' rules.
 """
 
 import os
+import sys
 import re
 import ast
 import argparse

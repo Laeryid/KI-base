@@ -72,6 +72,7 @@ def main():
     parser.add_argument("version", help="New version (e.g. 2.0.38)")
     parser.add_argument("-m", "--message", help="Commit message", default=None)
     parser.add_argument("--repo-root", help="Path to repository root", default=".")
+    parser.add_argument("--skip-tests", action="store_true", help="Skip pre-flight verification gate")
     
     args = parser.parse_args()
     
@@ -82,6 +83,15 @@ def main():
     msg = args.message if args.message else f"Bump version to {version}"
     repo_root = Path(args.repo_root).resolve()
     
+    # Pre-flight gate: verify all tests and build pass BEFORE modifying any files
+    if not args.skip_tests:
+        print("Running pre-flight verification gate (pytest + build + CLI checks)...")
+        verify_script = repo_root / "scripts" / "verify_release.py"
+        if verify_script.exists():
+            run_cmd([sys.executable, str(verify_script)], cwd=repo_root)
+        else:
+            run_cmd([sys.executable, "-m", "pytest", "tests/"], cwd=repo_root)
+
     print(f"Bumping version to {version}...")
     
     # 1. pyproject.toml
@@ -100,23 +110,7 @@ def main():
         f'__version__ = "{version}"'
     )
     
-    # 3. smithery.yaml
-    smithery_path = repo_root / "smithery.yaml"
-    update_file_regex(
-        smithery_path,
-        r'version:\s*"[^"]+"',
-        f'version: "{version}"'
-    )
-    
-    # 4. .well-known/mcp/server-card.json
-    server_card_path = repo_root / ".well-known" / "mcp" / "server-card.json"
-    update_json_file(server_card_path, version)
-    
-    # 5. manifest.json
-    manifest_path = repo_root / "manifest.json"
-    update_json_file(manifest_path, version)
-    
-    # 6. CHANGELOG.md
+    # 3. CHANGELOG.md
     changelog_path = repo_root / "CHANGELOG.md"
     update_changelog(changelog_path, version)
     

@@ -3,8 +3,6 @@
 > AI-powered knowledge management for software projects.  
 > Install once, use across all your projects.
 
-[![smithery badge](https://smithery.ai/badge/bulyakovbr/ki-manager)](https://smithery.ai/servers/bulyakovbr/ki-manager)
-
 ---
 
 ## What is ki-manager?
@@ -48,11 +46,7 @@ pip install ki-manager
 uv pip install ki-manager
 ```
 
-### Option C: Smithery (Claude Desktop / Cursor / Windsurf GUI)
-
-Search for **ki-manager** in your IDE's MCP marketplace and click Install.
-
-### Option D: Docker
+### Option C: Docker
 
 ```bash
 docker run -i --rm -v "$(pwd):/workspace" ghcr.io/laeryid/ki-manager
@@ -131,8 +125,7 @@ The MCP server operates in a **sandbox**:
 
 ```
 ki-manager/
-├── pyproject.toml            ← pip / uvx package config
-├── smithery.yaml             ← Smithery MCP marketplace config
+├── pyproject.toml            ← pip / uv package config
 ├── src/ki_manager/
 │   ├── server.py             ← MCP server entry point
 │   ├── tools/
