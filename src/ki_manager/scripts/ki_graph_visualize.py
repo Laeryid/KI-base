@@ -14,6 +14,7 @@ import os
 import sys
 import re
 import argparse
+import textwrap
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple, Any
 
@@ -45,16 +46,31 @@ def clean_label(text: str) -> str:
     return text.replace('"', "'").replace("\n", " ").strip()
 
 
+def wrap_label(text: str, width: int = 35) -> str:
+    """Wraps long labels with <br/> for compact Mermaid node rendering."""
+    cleaned = clean_label(text)
+    if len(cleaned) <= width:
+        return cleaned
+    parts = textwrap.wrap(cleaned, width=width)
+    return "<br/>".join(parts)
+
+
 def build_mermaid_graph(
     mode: str = "semantic",
     ki_filter: Optional[str] = None,
-    direction: str = "TD",
+    direction: Optional[str] = None,
     max_unmapped: int = 15,
+    max_files_per_ki: int = 10,
 ) -> str:
     """
     Generates Mermaid graph markdown based on doc_config.json and dependency analysis.
     """
-    direction = direction.upper() if direction.upper() in ("TD", "LR", "TB", "RL", "BT") else "TD"
+    # Adaptive direction: LR (horizontal) for focused single-KI subgraphs, TD (top-down) for global overviews
+    if not direction:
+        direction = "LR" if ki_filter else "TD"
+    else:
+        direction = direction.upper() if direction.upper() in ("TD", "LR", "TB", "RL", "BT") else "TD"
+
     doc_config = ki_utils.get_doc_config()
     knowledge_items: Dict[str, Any] = doc_config.get("knowledge_items", {}) if doc_config else {}
 
@@ -113,7 +129,7 @@ def build_mermaid_graph(
             files_count = len(info.get("depends_on", []))
             ki_id = sanitize_id(ki_name, prefix="ki")
             display_title = info.get("summary") or os.path.splitext(ki_name)[0]
-            lines.append(f'  {ki_id}["{clean_label(display_title)}<br/>({files_count} files)"]')
+            lines.append(f'  {ki_id}["{wrap_label(display_title, width=32)}<br/>({files_count} files)"]')
 
         for src, dst in sorted(edges):
             if src in visible_kis and dst in visible_kis:
@@ -127,12 +143,29 @@ def build_mermaid_graph(
             subgraph_id = sanitize_id(ki_name, prefix="sg")
             display_title = info.get("summary") or os.path.splitext(ki_name)[0]
 
-            lines.append(f'  subgraph {subgraph_id} ["{clean_label(display_title)}"]')
+            lines.append(f'  subgraph {subgraph_id} ["{wrap_label(display_title, width=40)}"]')
             if depends_on:
-                for file_path in sorted(depends_on):
-                    fid = sanitize_id(f"{ki_name}_{file_path}", prefix="f")
-                    basename = os.path.basename(file_path)
-                    lines.append(f'    {fid}["{clean_label(basename)}"]')
+                # If global semantic mode (no filter), limit files per KI to prevent visual spaghetti
+                files_to_render = depends_on
+                overflow_count = 0
+                if not ki_filter and len(depends_on) > max_files_per_ki:
+                    files_to_render = depends_on[:max_files_per_ki]
+                    overflow_count = len(depends_on) - max_files_per_ki
+
+                for file_path in sorted(files_to_render):
+                    is_dir = file_path.endswith(("/", "\\"))
+                    clean_path = file_path.rstrip("/\\")
+                    if not is_dir and analyzer and (analyzer.project_root / clean_path).is_dir():
+                        is_dir = True
+
+                    fid = sanitize_id(f"{ki_name}_{clean_path}", prefix="f")
+                    basename = os.path.basename(clean_path) or clean_path
+                    icon = "📁 " if is_dir else ""
+                    lines.append(f'    {fid}["{icon}{clean_label(basename)}"]')
+
+                if overflow_count > 0:
+                    more_id = sanitize_id(f"more_{ki_name}", prefix="f")
+                    lines.append(f'    {more_id}["... and {overflow_count} more files"]')
             else:
                 placeholder_id = sanitize_id(f"empty_{ki_name}", prefix="node")
                 lines.append(f'    {placeholder_id}["(no tracked files)"]')
@@ -188,8 +221,8 @@ def main():
     parser.add_argument(
         "--direction",
         choices=["TD", "LR", "TB", "RL", "BT"],
-        default="TD",
-        help="Mermaid flowchart direction (default: TD)",
+        default=None,
+        help="Mermaid flowchart direction (default: LR for focused --ki, TD for global)",
     )
     args = parser.parse_args()
 

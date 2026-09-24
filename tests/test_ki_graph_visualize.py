@@ -126,3 +126,43 @@ def test_server_dispatch_tool_call(tmp_project):
     assert isinstance(res, dict)
     assert "content" in res
     assert "```mermaid" in res["content"][0]["text"]
+
+
+@pytest.mark.positive
+def test_wrap_label():
+    short_text = "Core Engine"
+    assert kgv.wrap_label(short_text, width=30) == "Core Engine"
+
+    long_text = "Architecture of agent roles, skills, and prompt assembly"
+    wrapped = kgv.wrap_label(long_text, width=25)
+    assert "<br/>" in wrapped
+
+
+@pytest.mark.positive
+def test_folder_trailing_slash_and_icon(tmp_project):
+    from conftest import get_know_info
+    _, know_path, _ = get_know_info(tmp_project)
+    cfg_file = know_path / "doc_config.json"
+    cfg = json.loads(cfg_file.read_text(encoding="utf-8"))
+
+    # Folder with trailing slash
+    cfg["knowledge_items"]["KI_prompts.md"] = {
+        "summary": "Agent Prompts Directory",
+        "depends_on": ["app/core/prompts/"]
+    }
+    cfg_file.write_text(json.dumps(cfg), encoding="utf-8")
+
+    graph = kgv.build_mermaid_graph(mode="semantic", ki_filter="KI_prompts")
+    assert '📁 prompts' in graph
+    assert '[""]' not in graph
+
+
+@pytest.mark.positive
+def test_adaptive_direction():
+    # Focused filter defaults to LR
+    graph_focused = kgv.build_mermaid_graph(mode="ki-only", ki_filter="KI_alpha")
+    assert "flowchart LR" in graph_focused
+
+    # Global overview defaults to TD
+    graph_global = kgv.build_mermaid_graph(mode="ki-only")
+    assert "flowchart TD" in graph_global
