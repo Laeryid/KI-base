@@ -18,16 +18,16 @@ Triggered manually after completing significant work (refactoring, new feature, 
 > You **MUST** use the following MCP tools from the `ki-manager` server:
 > - `write_know_file` — to create or fully overwrite a KI.
 > - `edit_know_file` — for precise text replacement.
-> - `ki_call(action="make_know_dir")` — to create directories inside the knowledge base.
+> - `make_know_dir` — to create directories inside the knowledge base.
 > 
 > This ensures that documentation changes remain isolated within the knowledge sandbox and do not accidentally affect the project's source code.
 
 ## Step 1 — Identify Changes
 
-Run `ki_call(action="check_changes")` to get a list of modified files:
+Run `git_diff_secured` to get a list of modified files:
 
 // turbo
-`ki_call(action="check_changes")`
+`git_diff_secured`
 
 Record the result. If there are no changes, terminate; everything is up to date.
 
@@ -36,7 +36,7 @@ Record the result. If there are no changes, terminate; everything is up to date.
 1. **Smart Date Update**:
    Run the following tool to update `last_verified` tags ONLY in KIs affected by code changes:
    // turbo
-   `ki_call(action="update_last_verified")`
+   `update_last_verified`
 
 2. **Manual Updates**:
    For each artifact in `AFFECTED ARTIFACTS` that requires content changes (not just date):
@@ -47,28 +47,28 @@ Record the result. If there are no changes, terminate; everything is up to date.
 ## Step 3 — Update DIR_INDEX.md
 
 // turbo
-`ki_call(action="generate_dir_index")`
+`generate_dir_index`
 
 If the script hasn't been created yet, generate `DIR_INDEX.md` manually: project directories only (no files), with file counts for each.
 
 ## Step 4 — Save New State to doc_state.json
 
 // turbo
-`ki_call(action="save_state")`
+`save_state`
 
 ## Step 5 — Incremental Dependency Update
 
 Update inter-KI links ONLY for modified KIs to minimize Git noise.
 
 // turbo
-`ki_call(action="analyze_dependencies", args={"only_changed": true})`
+`analyze_dependencies(args={"only_changed": true})`
 
 > [!NOTE]
-> Use `ki_call(action="analyze_all_dependencies")` only if there were global structural changes in the project.
+> Use `analyze_all_dependencies` only if there were global structural changes in the project.
 
 ## Step 6 — Git Checkpoint
 
 Finalize the synchronization by creating a git snapshot of the knowledge state.
 
 // turbo
-`ki_call(action="git_checkpoint", args={"message": "Sync knowledge system state"})`
+`git_checkpoint(args={"message": "Sync knowledge system state"})`

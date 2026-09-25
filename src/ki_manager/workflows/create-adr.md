@@ -22,7 +22,7 @@ Triggered on user demand when it's necessary to document a significant architect
 > You **MUST** use the following MCP tools from the `ki-manager` server:
 > - `write_know_file` — to create or fully overwrite a KI / ADR.
 > - `edit_know_file` — for precise text replacement.
-> - `ki_call(action="make_know_dir")` — to create directories inside the knowledge base.
+> - `make_know_dir` — to create directories inside the knowledge base.
 > 
 > This ensures that ADRs and documentation changes remain isolated within the knowledge sandbox and do not accidentally affect the project's source code.
 

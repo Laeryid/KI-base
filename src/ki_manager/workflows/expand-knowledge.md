@@ -17,7 +17,7 @@ Triggered when there's a need to **add new knowledge**, detail existing knowledg
 
 // turbo
 ```powershell
-# Call via MCP: ki_call(action="audit_coverage")
+# Call via MCP: audit_coverage
 ```
 
 The script will output a coverage matrix, a list of Blind Spots, and density metrics.
@@ -53,7 +53,7 @@ Select **one** target with the highest priority in the following order:
 > You **MUST** use the following MCP tools from the `ki-manager` server:
 > - `write_know_file` — to create or fully overwrite a KI.
 > - `edit_know_file` — for precise text replacement.
-> - `ki_call(action="make_know_dir")` — to create directories inside the knowledge base.
+> - `make_know_dir` — to create directories inside the knowledge base.
 > 
 > This ensures that documentation changes remain isolated within the knowledge sandbox and do not accidentally affect the project's source code.
 
@@ -112,7 +112,7 @@ Automatically identify and link related KIs based on code imports.
 
 // turbo
 ```powershell
-# Call via MCP: ki_call(action="analyze_dependencies", args={"ki_name": "KI_FILENAME.md", "only_changed": false})
+# Call via MCP: analyze_dependencies(args={"ki_name": "KI_FILENAME.md", "only_changed": false})
 ```
 
 ---
@@ -121,7 +121,7 @@ Automatically identify and link related KIs based on code imports.
 
 // turbo
 ```powershell
-# Call via MCP: ki_call(action="save_state")
+# Call via MCP: save_state
 ```
 
 
@@ -129,7 +129,7 @@ Automatically identify and link related KIs based on code imports.
 
 // turbo
 ```powershell
-# Call via MCP: ki_call(action="audit_coverage")
+# Call via MCP: audit_coverage
 ```
 
 Updates file  coverage_matrix.md.
@@ -139,7 +139,7 @@ Updates file  coverage_matrix.md.
 Finalize the expansion by creating a git snapshot of the knowledge state.
 
 // turbo
-`ki_call(action="git_checkpoint", args={"message": "Expand knowledge base: new KI registration"})`
+`git_checkpoint(args={"message": "Expand knowledge base: new KI registration"})`
 
 ---
 

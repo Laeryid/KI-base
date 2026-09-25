@@ -20,8 +20,11 @@ from typing import Any, Dict, List, Optional
 
 if sys.platform == "win32":
     # Removed codecs.getwriter because it causes OSError [Errno 22] Invalid argument on flush() with Windows pipes.
-    # Python 3 handles stdout encodings natively well enough for JSON-RPC over pipes.
-    pass
+    # Force UTF-8 for native stdin/stdout on Windows to avoid surrogateescape crashes on Cyrillic.
+    if hasattr(sys.stdin, "reconfigure"):
+        sys.stdin.reconfigure(encoding="utf-8")
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
 
 # ─── Package paths ────────────────────────────────────────────────────────────
 _PACKAGE_DIR = Path(__file__).parent
@@ -255,7 +258,7 @@ MCP_TOOLS = [
     {
         "name": "ki_migrate_project",
         "description": "Migrate a legacy .know/ project to the modern .ki-base/ architecture. Renames directories, updates config, and ensures _OVERVIEW.ki.md exists.",
-        "inputSchema": {"type": "object"},
+        "inputSchema": {"type": "object", "properties": {}},
         "annotations": {
             "title": "Migrate Legacy Project",
             "readOnlyHint": False,
@@ -282,7 +285,7 @@ MCP_TOOLS = [
     {
         "name": "ki_list_projects",
         "description": "List all projects registered in the global KI registry.",
-        "inputSchema": {"type": "object"},
+        "inputSchema": {"type": "object", "properties": {}},
         "annotations": {
             "title": "List Projects",
             "readOnlyHint": True,
@@ -307,7 +310,7 @@ MCP_TOOLS = [
     {
         "name": "ki_prune_registry",
         "description": "Remove projects from the registry whose directories no longer exist.",
-        "inputSchema": {"type": "object"},
+        "inputSchema": {"type": "object", "properties": {}},
         "annotations": {
             "title": "Prune Registry",
             "readOnlyHint": False,
@@ -325,7 +328,7 @@ MCP_TOOLS = [
             "CRITICAL AGENT RULE: After making significant architectural changes or creating "
             "new modules, you MUST run this tool to ensure documentation remains in sync."
         ),
-        "inputSchema": {"type": "object"},
+        "inputSchema": {"type": "object", "properties": {}},
         "annotations": {
             "title": "Audit Coverage",
             "readOnlyHint": True,
@@ -337,7 +340,7 @@ MCP_TOOLS = [
     {
         "name": "generate_dir_index",
         "description": "Generate or update .ki-base/DIR_INDEX.md with directory structure.",
-        "inputSchema": {"type": "object"},
+        "inputSchema": {"type": "object", "properties": {}},
         "annotations": {
             "title": "Generate Dir Index",
             "readOnlyHint": False,
@@ -365,7 +368,7 @@ MCP_TOOLS = [
     {
         "name": "analyze_all_dependencies",
         "description": "Analyze all KI files and update their 'Related KIs' sections.",
-        "inputSchema": {"type": "object"},
+        "inputSchema": {"type": "object", "properties": {}},
         "annotations": {
             "title": "Analyze All Dependencies",
             "readOnlyHint": False,
@@ -475,7 +478,7 @@ MCP_TOOLS = [
     {
         "name": "ki_scaffold_status",
         "description": "Print a concise status table of all scaffold KIs (pending vs enriched) by reading their headers.",
-        "inputSchema": {"type": "object"},
+        "inputSchema": {"type": "object", "properties": {}},
         "annotations": {
             "title": "Scaffold Status",
             "readOnlyHint": True,
@@ -512,7 +515,7 @@ MCP_TOOLS = [
     {
         "name": "update_last_verified",
         "description": "Update the last_verified date in all KI files to today.",
-        "inputSchema": {"type": "object"},
+        "inputSchema": {"type": "object", "properties": {}},
         "annotations": {
             "title": "Update Last Verified",
             "readOnlyHint": False,
@@ -548,7 +551,7 @@ MCP_TOOLS = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "rel_path": {"type": "string"},
+                "rel_path": {"type": "string", "description": "Path relative to .ki-base/"},
                 "content": {"type": "string"},
             },
             "required": ["rel_path", "content"],
@@ -566,7 +569,7 @@ MCP_TOOLS = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "rel_path": {"type": "string"},
+                "rel_path": {"type": "string", "description": "Path relative to .ki-base/"},
                 "old_text": {"type": "string"},
                 "new_text": {"type": "string"},
             },
@@ -584,7 +587,7 @@ MCP_TOOLS = [
         "description": "Create a new subdirectory inside .ki-base/.",
         "inputSchema": {
             "type": "object",
-            "properties": {"rel_path": {"type": "string"}},
+            "properties": {"rel_path": {"type": "string", "description": "Path relative to .ki-base/"}},
             "required": ["rel_path"],
         },
         "annotations": {
@@ -644,7 +647,7 @@ MCP_TOOLS = [
     {
         "name": "save_state",
         "description": "Capture and save file hash state to doc_state.json.",
-        "inputSchema": {"type": "object"},
+        "inputSchema": {"type": "object", "properties": {}},
         "annotations": {
             "title": "Save State",
             "readOnlyHint": False,
@@ -655,7 +658,7 @@ MCP_TOOLS = [
     {
         "name": "restore_mapping",
         "description": "Restore doc_config.json from existing KI files.",
-        "inputSchema": {"type": "object"},
+        "inputSchema": {"type": "object", "properties": {}},
         "annotations": {
             "title": "Restore Mapping",
             "readOnlyHint": False,
@@ -704,7 +707,7 @@ def tool_git_checkpoint(args: dict) -> dict:
     try:
         for t in targets:
             if t and os.path.exists(os.path.join(project_root, t)):
-                subprocess.run(["git", "add", t], cwd=project_root, check=True, capture_output=True)
+                subprocess.run(["git", "add", t], cwd=project_root, check=False, capture_output=True)
         status = subprocess.run(["git", "diff", "--quiet", "--cached"], cwd=project_root)
         if status.returncode == 0:
             return {"content": [{"type": "text", "text": "No changes to checkpoint."}]}
@@ -802,7 +805,26 @@ def handle_tool_call(name: str, args: dict) -> Any:
         if name == "generate_dir_index":
             return run_script("generate_dir_index.py")
         if name == "update_last_verified":
-            return run_script("update_last_verified.py")
+            import datetime, glob, re as re_mod
+            jail = get_jail_dir()
+            if not jail: return "Error: No project."
+            today = datetime.datetime.now().strftime("%Y-%m-%d")
+            count = 0
+            for filepath in glob.glob(os.path.join(jail, "knowledge", "*.md")):
+                with open(filepath, "r", encoding="utf-8") as f:
+                    content = f.read()
+                new_content = re_mod.sub(r'^(last_verified:\s*)"?\d{4}-\d{2}-\d{2}"?', rf'\g<1>"{today}"', content, flags=re_mod.MULTILINE)
+                if new_content != content:
+                    import tempfile
+                    fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(filepath), text=True)
+                    try:
+                        with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
+                            f.write(new_content)
+                        os.replace(tmp_path, filepath)
+                        count += 1
+                    except Exception:
+                        if os.path.exists(tmp_path): os.remove(tmp_path)
+            return f"Updated last_verified in {count} files."
         if name == "analyze_all_dependencies":
             return run_script("ki_dependency_analyzer.py", ["--all"])
         if name == "analyze_dependencies":
@@ -860,17 +882,27 @@ def handle_tool_call(name: str, args: dict) -> Any:
         if name == "write_know_file":
             p = validate_path(args["rel_path"], is_write=True)
             os.makedirs(os.path.dirname(p), exist_ok=True)
-            with open(p, "w", encoding="utf-8") as f:
-                f.write(args["content"])
+            import tempfile
+            fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(p), text=True)
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
+                    f.write(args["content"])
+                os.replace(tmp_path, p)
+            except Exception as e:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+                raise e
             return "File written."
         if name == "edit_know_file":
             p = validate_path(args["rel_path"], is_write=True)
             with open(p, "r", encoding="utf-8") as f:
                 content = f.read()
-            if args["old_text"] not in content:
+            old_text = args["old_text"].replace("\r\n", "\n")
+            new_text = args["new_text"].replace("\r\n", "\n")
+            if old_text not in content:
                 return "Error: old_text not found in file."
             with open(p, "w", encoding="utf-8") as f:
-                f.write(content.replace(args["old_text"], args["new_text"], 1))
+                f.write(content.replace(old_text, new_text, 1))
             return "File edited."
         if name == "make_know_dir":
             os.makedirs(validate_path(args["rel_path"]), exist_ok=True)

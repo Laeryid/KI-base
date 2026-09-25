@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Fixed zero-byte file truncation in `write_know_file` when facing encoding errors by implementing atomic write operations (`tempfile` + `os.replace`).
+- Fixed surrogate character crashes on Windows by forcing `sys.stdin`/`sys.stdout` to UTF-8 regardless of locale.
+- Fixed strict newline mismatch (`CRLF` vs `LF`) in `edit_know_file` by normalizing text blocks to `\n` before replacement.
+- Fixed `update_last_verified` tool failing with a missing script error by inlining the logic directly into the server.
+- Fixed `git_checkpoint` aborting on `git add` failures when attempting to stage ignored files.
+- Fixed `MCP_TOOLS` schema definitions by adding missing properties structures for parameterless tools and clarifying path relativity.
+- Fixed obsolete `ki_call(action="...")` wrapper syntax across bundled workflow instructions, replacing them with direct tool names.
 ## [2.2.0] — 2026-09-24
 
 ### Added
