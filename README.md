@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Laeryid/KI-base/main/ki_manager_logo.png" width="150" alt="ki-manager Logo">
+</p>
+
 # ki-manager — Knowledge Item MCP Server
 
 > AI-powered knowledge management for software projects.  
