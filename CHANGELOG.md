@@ -9,7 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.2.1] — 2026-10-04
+## [2.3.0.dev1] — 2026-10-05
+
+### Added
+- `--tool-mode full|compact` CLI option and `KI_TOOL_MODE` environment variable: compact facade mode reducing `tools/list` from 33 schemas to 6 essential tools (`ki_instructions`, `ki_search`, `ki_read`, `ki_tools`, `ki_call`, `ki_mutate`), drastically reducing context token usage for MCP clients.
+- `ki_search` MCP tool & search engine: BM25 ranking across Knowledge Items and ADRs without external embedding dependencies, featuring bilingual RU/EN stemming, weighted fields (Title x5, Headers x3, Path x2, Body x1), and contextual snippets.
+- `ki_read` MCP tool: token-efficient reader for KI and ADR markdown files with section filtering and character limit truncation.
+- `ki_tools` MCP tool: grouped catalog of all available tools and on-demand JSON schema inspector.
+- `ki_call` and `ki_mutate` facade dispatchers: safe routing with schema validation and enforcement of `readOnlyHint` (read-only queries in `ki_call`, mutations in `ki_mutate`).
+- Dynamic instructions & template directives: workflows and server rules dynamically adapt tool call examples and `allowed-tools` frontmatter to active `--tool-mode` (`full` vs `compact`) via HTML comment directives (`<!-- if-compact -->`), maintaining a single source of truth without content divergence.
+- Dedicated Agent Skill `ki-manager-workflows`: guide in `.agent/skills/ki-manager-workflows/` for authoring and maintaining dual-mode workflow instructions.
+- CLI `install-skills` mode option: `ki-manager install-skills` supports `--tool-mode full|compact` to render installed skill markdown for the intended client environment.
+- `add_ki_to_config` MCP tool and CLI helper: safely register or update Knowledge Items in `doc_config.json` with sandbox checks and atomic file updates.
+- `edit_doc_config` MCP tool: granular and safe modifications (`set`, `append`, `delete`) to service sections (`tracked_modules`, `artifacts`, `coverage_settings`) of `doc_config.json`.
+- `sync_agents_md` MCP tool and script: synchronize Knowledge Items and ADR tables in `AGENTS.md` using the single source of truth from `doc_config.json` and `decisions/`.
+- Per-project configurable agent instructions sync: `sync_agents_md` can be disabled via `"sync_agents_md": false` in `ki_config.json` to prevent context pollution in large projects.
+- `create_adr` MCP tool: create new Architecture Decision Records (ADR) with auto-incremented sequential ID prefix (`XXX`), standardized metadata, registration in `doc_config.json`, and automatic `AGENTS.md` sync.
+- Structured ADR table parser and enhanced `ki://adr-list.md` virtual resource displaying ID, Title, Status, Date, and File links.
+- Automatic IDE MCP tool schema generation (`<tool>.json`) for Antigravity, Cursor, and Windsurf on startup.
+- Comprehensive positive and negative test suite for configuration tools, ADR creation, synchronization rules, and sandbox enforcement.
+- Flexible configuration discovery: `ki_config.json` can now reside in project root, `.config/`, `config/`, `.ki-base/`, or `.know/`.
+- Fileless project registration: `ki_register_project` now supports registering projects directly via `workspace` and `inline_config` in `~/.ki_base/registry.json` without requiring configuration files on disk.
+- First-class custom knowledge root support: `paths.knowledge_root` is dynamically resolved and respected across all tools, engines, and scripts without chicken-and-egg discovery issues.
+- Configurable scaffolding: `ki_init_project` now accepts `knowledge_root` and `config_location` (`root` or `knowledge_dir`) parameters.
+- Dynamic workflow paths: workflow instructions dynamically substitute `{{KI_DIR}}` with the active project's knowledge folder name.
+- Unit and negative test coverage for flexible discovery, custom roots, and registry validation errors.
+
+### Changed
+- `scaffold.migrate_project` now preserves existing `AGENTS.md` files instead of forcibly deleting them.
+- Neutralized MCP tool descriptions and server prompt schemas, replacing hardcoded `.ki-base/` with dynamic references.
+
 
 ### Fixed
 - Fixed an issue where `write_know_file` could permanently delete the contents of a file (leaving 0 bytes) if an encoding error occurred during saving.
@@ -75,7 +104,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Initial 2.0 release of the `ki-manager` MCP server for project knowledge base management.
 
-[Unreleased]: https://github.com/Laeryid/KI-base/compare/v2.2.0...HEAD
+[Unreleased]: https://github.com/Laeryid/KI-base/compare/v2.3.0.dev1...HEAD
+[2.3.0.dev1]: https://github.com/Laeryid/KI-base/compare/v2.2.1...v2.3.0.dev1
+[2.2.1]: https://github.com/Laeryid/KI-base/compare/v2.2.0...v2.2.1
 [2.2.0]: https://github.com/Laeryid/KI-base/compare/v2.1.4...v2.2.0
 [2.1.4]: https://github.com/Laeryid/KI-base/compare/v2.1.3...v2.1.4
 [2.1.3]: https://github.com/Laeryid/KI-base/compare/v2.1.2...v2.1.3
