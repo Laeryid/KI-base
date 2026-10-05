@@ -11,6 +11,7 @@ Usage:
 """
 
 import sys
+import os
 import argparse
 from pathlib import Path
 
@@ -61,6 +62,13 @@ def install_skills(argv=None):
         default=None,
         help="Target skills directory (default: current working directory)",
     )
+    parser.add_argument(
+        "--tool-mode",
+        type=str,
+        choices=["full", "compact"],
+        default=None,
+        help="Format for skill instructions (default: full, or KI_TOOL_MODE env var)",
+    )
     args = parser.parse_args(argv)
 
     target = Path(args.path).resolve() if args.path else Path.cwd()
@@ -77,9 +85,17 @@ def install_skills(argv=None):
     installed = []
     skipped = []
 
+    # Import facade renderer
+    sys.path.insert(0, str(_PACKAGE_DIR / "tools"))
+    from facade import render_instruction
+    target_mode = (args.tool_mode or os.environ.get("KI_TOOL_MODE", "full")).lower()
+    if target_mode not in ("full", "compact"):
+        target_mode = "full"
+
     for wf_file in workflow_files:
-        content = wf_file.read_text(encoding="utf-8")
-        meta, _ = _parse_frontmatter(content)
+        raw_content = wf_file.read_text(encoding="utf-8")
+        rendered_content = render_instruction(raw_content, tool_mode=target_mode)
+        meta, _ = _parse_frontmatter(rendered_content)
         
         skill_name = meta.get("name") or f"ki-manager-{wf_file.stem}"
         skill_dir = target / skill_name
@@ -90,7 +106,7 @@ def install_skills(argv=None):
             continue
         
         skill_dir.mkdir(parents=True, exist_ok=True)
-        skill_md.write_text(content, encoding="utf-8")
+        skill_md.write_text(rendered_content, encoding="utf-8")
         installed.append(skill_name)
 
     print(f"Installed: {len(installed)} skill(s)")

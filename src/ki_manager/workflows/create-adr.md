@@ -3,8 +3,12 @@ name: ki-manager-create-adr
 description: Document architectural decisions, logic transitions, or abandoned paths (ADR)
 metadata:
   author: ki-manager
-  version: "1.0"
-allowed-tools: read_know_file write_know_file ki_instructions
+  version: "1.1"
+<!-- if-compact -->
+allowed-tools: ki_instructions ki_read ki_search ki_tools ki_call ki_mutate
+<!-- else-compact -->
+allowed-tools: read_know_file write_know_file ki_instructions create_adr sync_agents_md
+<!-- /if-compact -->
 ---
 
 # /create-adr — Architectural Decision Records (ADR / Retrospective)
@@ -19,10 +23,21 @@ Triggered on user demand when it's necessary to document a significant architect
 > [!IMPORTANT]
 > When working with this workflow, it is **STRICTLY PROHIBITED** to use general file editing tools (e.g., `filesystem.edit_file`) for files inside the <knowledge_root> directory.
 > 
+<!-- if-compact -->
 > You **MUST** use the following MCP tools from the `ki-manager` server:
-> - `write_know_file` — to create or fully overwrite a KI / ADR.
+> - `ki_mutate(tool="create_adr", ...)` — to create and register a new ADR.
+> - `ki_read` — to read existing ADRs.
+> - `ki_mutate(tool="sync_agents_md")` — to synchronize ADR tables in AGENTS.md.
+> - `ki_mutate(tool="write_know_file", ...)` — to create or fully overwrite a file.
+> - `ki_mutate(tool="edit_know_file", ...)` — for precise text replacement.
+<!-- else-compact -->
+> You **MUST** use the following MCP tools from the `ki-manager` server:
+> - `create_adr` — to create and register a new ADR.
+> - `read_know_file` / `ki_read` — to read existing ADRs.
+> - `sync_agents_md` — to synchronize ADR tables in AGENTS.md.
+> - `write_know_file` — to create or fully overwrite a file.
 > - `edit_know_file` — for precise text replacement.
-> - `make_know_dir` — to create directories inside the knowledge base.
+<!-- /if-compact -->
 > 
 > This ensures that ADRs and documentation changes remain isolated within the knowledge sandbox and do not accidentally affect the project's source code.
 
@@ -33,32 +48,29 @@ Before writing the document, the AI must analyze the context of recent changes t
 3. **Proposal**: Formulate a list of ADR candidates (e.g., "Abandoning FP16", "Switching to explicit Parquet schemas").
 4. **Validation**: Present this list to the user. If the user approves, proceed to Step 1.
 
-## Step 1 — Determining the Sequence Number (ID)
-Analyze the file list in the `decisions/` directory using `list_dir` or `run_command` (e.g., `Get-ChildItem`).
-- Find the maximum prefix `XXX_...`.
-- The new ADR should have the prefix `XXX + 1` (e.g., if `001_...` exists, the new one will be `002_...`). If the directory does not exist yet, create it and start with `001_`.
+## Step 1 — Create and Register ADR
+Use the dedicated `create_adr` tool. It automatically:
+- Assigns the next sequential numeric ID prefix (`XXX`).
+- Formats standard Markdown structure with date, context, decision, and impact.
+- Registers the ADR entry into `doc_config.json`.
+- Runs `sync_agents_md` to update the ADR index table in `AGENTS.md`.
 
-## Step 2 — Writing the Document
-Create a file in the `decisions/` folder named `<ID>_<short_topic_name>.md`.
-The document **must** have the following structure:
+<!-- if-compact -->
+// turbo
+`ki_mutate(tool="create_adr", args={"title": "<Descriptive Title>", "topic_name": "<short_topic_slug>", "context": "<Context and Problem statement>", "decision": "<Specific architectural decision reached>", "consequences": "<Positive and negative trade-offs>"})`
+<!-- else-compact -->
+// turbo
+`create_adr(title="<Descriptive Title>", topic_name="<short_topic_slug>", context="<Context and Problem statement>", decision="<Specific architectural decision reached>", consequences="<Positive and negative trade-offs>")`
+<!-- /if-compact -->
 
-```markdown
-<!-- created: YYYY-MM-DD -->
-# ADR <ID>: <Title>
+## Step 2 — Verify and Synchronize
+Verify that the ADR was created in `decisions/` and referenced in documentation:
+<!-- if-compact -->
+// turbo
+`ki_mutate(tool="sync_agents_md")`
+<!-- else-compact -->
+// turbo
+`sync_agents_md()`
+<!-- /if-compact -->
 
-## Context and Problem
-Briefly describe what we encountered, why the old approach stopped working, and what the constraints were.
-
-## Decisions Made and Lessons Learned
-- **What was tried and didn't work:** (optional, if there was a negative experience)
-- **Successful Solution (Best Practice):** The specific architectural decision or rule reached. Short and to the point.
-
-## Impact
-What will change in the project after this decision is adopted (positive and negative trade-offs).
-```
-
-## Step 3 — Registration in Configuration
-Add the created file to the `knowledge_items` block of `doc_config.json` configuration with a brief summary.
-
-## Step 4 — Knowledge Synchronization
-Immediately after successful integration, suggest that the user run, or (if permitted) automatically launch the `/sync-knowledge` workflow to update `DIR_INDEX`.
+Immediately after successful integration, suggest that the user run (or automatically launch) the `/sync-knowledge` workflow to keep `DIR_INDEX` up to date.

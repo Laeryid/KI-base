@@ -3,8 +3,12 @@ name: ki-manager-expand-knowledge
 description: Iteratively add new KI files for undocumented or poorly documented modules
 metadata:
   author: ki-manager
-  version: "1.0"
-allowed-tools: read_know_file write_know_file edit_know_file ki_instructions audit_coverage
+  version: "1.1"
+<!-- if-compact -->
+allowed-tools: ki_instructions ki_read ki_search ki_tools ki_call ki_mutate
+<!-- else-compact -->
+allowed-tools: read_know_file write_know_file edit_know_file ki_instructions ki_read audit_coverage add_ki_to_config analyze_dependencies save_state git_checkpoint
+<!-- /if-compact -->
 ---
 
 # /expand-knowledge — Expanding the Knowledge Base
@@ -16,9 +20,11 @@ Triggered when there's a need to **add new knowledge**, detail existing knowledg
 ## Step 1 — Run Coverage Audit
 
 // turbo
-```powershell
-# Call via MCP: audit_coverage
-```
+<!-- if-compact -->
+`ki_call(tool="audit_coverage")`
+<!-- else-compact -->
+`audit_coverage()`
+<!-- /if-compact -->
 
 The script will output a coverage matrix, a list of Blind Spots, and density metrics.
 
@@ -26,7 +32,7 @@ The script will output a coverage matrix, a list of Blind Spots, and density met
 Iterations can be stopped if ALL of the following conditions are met:
 1. All modules in the matrix have **GREEN (✅)** status.
 2. The **⚠️ Untracked Areas** section is empty.
-3. No **🔥 (Complexity)** tags — overloaded KIs.
+3. No **🔷 (Complexity)** tags — overloaded KIs.
 4. No **❄️ (Low Density)** tags — documentation too brief for the code volume.
 
 > [!TIP]
@@ -40,9 +46,9 @@ Select **one** target with the highest priority in the following order:
 
 1. ⚠️ **Blind Spots** (folders exist, lots of code, but missing from audit) — create a new KI.
 2. 🔴 **Critical Priority** in the matrix (no KI + large size).
-3. 🔥 **Complexity Warning** (one KI covers >10 files) — goal: split into multiple KIs.
+3. 🔷 **Complexity Warning** (one KI covers >10 files) — goal: split into multiple KIs.
 4. ❄️ **Low Density** (KI exists but is "empty" relative to code) — goal: detailing.
-5. 🟡 **Medium/Low Priority** — for planned improvement.
+5. 🌾 **Medium/Low Priority** — for planned improvement.
 
 ---
 
@@ -50,10 +56,19 @@ Select **one** target with the highest priority in the following order:
 > [!IMPORTANT]
 > When working with this workflow, it is **STRICTLY PROHIBITED** to use general file editing tools (e.g., `filesystem.edit_file`) for files inside the <knowledge_root> directory.
 > 
+<!-- if-compact -->
 > You **MUST** use the following MCP tools from the `ki-manager` server:
+> - `ki_read` — to read existing KIs.
+> - `ki_mutate(tool="write_know_file", ...)` — to create or fully overwrite a KI.
+> - `ki_mutate(tool="edit_know_file", ...)` — for precise text replacement.
+> - `ki_mutate(tool="make_know_dir", ...)` — to create directories inside the knowledge base.
+<!-- else-compact -->
+> You **MUST** use the following MCP tools from the `ki-manager` server:
+> - `read_know_file` / `ki_read` — to read existing KIs.
 > - `write_know_file` — to create or fully overwrite a KI.
 > - `edit_know_file` — for precise text replacement.
 > - `make_know_dir` — to create directories inside the knowledge base.
+<!-- /if-compact -->
 > 
 > This ensures that documentation changes remain isolated within the knowledge sandbox and do not accidentally affect the project's source code.
 
@@ -67,7 +82,7 @@ Select **one** target with the highest priority in the following order:
 3. Check dependencies (who calls this module).
 
 ### Case B: Splitting (Complexity)
-1. Read the current KI.
+1. Read the current KI with `ki_read(rel_path="...")`.
 2. Identify logical groups of files (e.g., `core logic`, `models`, `utils`).
 3. Prepare the structure for new, more focused KIs.
 
@@ -78,6 +93,15 @@ Select **one** target with the highest priority in the following order:
 ---
 
 ## Step 4 — Create or Update a KI File
+
+Write the file using `write_know_file` or `edit_know_file`:
+<!-- if-compact -->
+// turbo
+`ki_mutate(tool="write_know_file", args={"rel_path": "<filename>.ki.md", "content": "..."})`
+<!-- else-compact -->
+// turbo
+`write_know_file(rel_path="<filename>.ki.md", content="...")`
+<!-- /if-compact -->
 
 **KI Structure (Standard)**:
 ```markdown
@@ -102,44 +126,60 @@ Select **one** target with the highest priority in the following order:
 
 ## Step 5 — Registration
 
-1. **doc_config.json**: Register the new KI or update `depends_on` for existing ones.
+Register the new KI in `doc_config.json`:
+<!-- if-compact -->
+// turbo
+`ki_mutate(tool="add_ki_to_config", args={"ki_name": "<filename>.ki.md", "files": ["path/to/tracked/file.py"], "summary": "<Concise summary>"})`
+<!-- else-compact -->
+// turbo
+`add_ki_to_config(ki_name="<filename>.ki.md", files=["path/to/tracked/file.py"], summary="<Concise summary>")`
+<!-- /if-compact -->
 
 ---
 
 ## Step 5.1 — Analyze Dependencies
 
-Automatically identify and link related KIs based on code imports.
+Automatically identify and link related KIs based on code imports:
 
 // turbo
-```powershell
-# Call via MCP: analyze_dependencies(args={"ki_name": "KI_FILENAME.md", "only_changed": false})
-```
+<!-- if-compact -->
+`ki_call(tool="analyze_dependencies", args={"ki_name": "<filename>.ki.md", "only_changed": false})`
+<!-- else-compact -->
+`analyze_dependencies(args={"ki_name": "<filename>.ki.md", "only_changed": false})`
+<!-- /if-compact -->
 
 ---
 
 ## Step 6 — Committing the State
 
 // turbo
-```powershell
-# Call via MCP: save_state
-```
+<!-- if-compact -->
+`ki_mutate(tool="save_state")`
+<!-- else-compact -->
+`save_state()`
+<!-- /if-compact -->
 
-
-## Step 7 - Final Run Coverage Audit
+## Step 7 — Final Run Coverage Audit
 
 // turbo
-```powershell
-# Call via MCP: audit_coverage
-```
+<!-- if-compact -->
+`ki_call(tool="audit_coverage")`
+<!-- else-compact -->
+`audit_coverage()`
+<!-- /if-compact -->
 
-Updates file  coverage_matrix.md.
+Updates coverage metrics and verifies that the blind spot is resolved.
 
 ## Step 8 — Git Checkpoint
 
 Finalize the expansion by creating a git snapshot of the knowledge state.
 
 // turbo
+<!-- if-compact -->
+`ki_mutate(tool="git_checkpoint", args={"message": "Expand knowledge base: new KI registration"})`
+<!-- else-compact -->
 `git_checkpoint(args={"message": "Expand knowledge base: new KI registration"})`
+<!-- /if-compact -->
 
 ---
 
