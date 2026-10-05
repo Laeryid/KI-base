@@ -94,7 +94,7 @@ def build_tree(root: str, knowledge_root_name: str,
 def generate_dir_index(output_path: str, max_depth: int = 3) -> None:
     project_root = get_project_root()
     knowledge_root = get_knowledge_root()
-    knowledge_root_name = os.path.basename(knowledge_root) if knowledge_root else ".know"
+    knowledge_root_name = os.path.basename(knowledge_root) if knowledge_root else ".ki-base"
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     project_name = os.path.basename(os.path.abspath(project_root))
     total_files = count_files_in_dir(project_root)

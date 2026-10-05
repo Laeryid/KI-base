@@ -24,9 +24,14 @@ except ImportError:
 
 
 class KnowledgeEngine:
-    def __init__(self, project_root: str, knowledge_root: str = ".ki-base"):
+    def __init__(self, project_root: str, knowledge_root: str = None):
         self.project_root = Path(project_root).resolve()
-        self.knowledge_root = self.project_root / knowledge_root
+        if knowledge_root is None:
+            import ki_manager.scripts.ki_utils as ki_utils
+            know_root_path = ki_utils.get_knowledge_root()
+            self.knowledge_root = Path(know_root_path) if know_root_path else self.project_root / ".ki-base"
+        else:
+            self.knowledge_root = self.project_root / knowledge_root
         self.state_file = self.knowledge_root / "doc_state.json"
         self.config_file = self.knowledge_root / "doc_config.json"
         self._doc_config = None
@@ -192,7 +197,7 @@ class KnowledgeEngine:
         for ki in ki_items:
             ki_items[ki]["depends_on"] = []
 
-        knowledge_dir = self.project_root / ".know" / "knowledge"
+        knowledge_dir = self.knowledge_root / "knowledge"
         if not knowledge_dir.exists():
             return "Knowledge directory not found"
 

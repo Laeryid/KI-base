@@ -150,12 +150,6 @@ def _format_template(template, **kwargs) -> dict:
 def init_project(args: dict) -> str:
     """
     ki_init_project tool implementation.
-    args:
-      - project_path (required): absolute path to project root
-      - project_name (optional): defaults to folder name
-      - language (optional): 'python', 'typescript', etc. Defaults to 'python'
-      - venv_python (optional): explicit path to venv python
-      - force (optional): overwrite existing files if True
     """
     raw_path = args.get("project_path", "")
     if not raw_path:
@@ -169,16 +163,16 @@ def init_project(args: dict) -> str:
     language = args.get("language", "python")
     venv_python = args.get("venv_python") or detect_venv(project_path)
     force = args.get("force", False)
+    know_name = args.get("knowledge_root", ".ki-base")
+    cfg_loc = args.get("config_location", "knowledge_dir")
 
-    ki_base = project_path / ".ki-base"
+    ki_base = project_path / know_name
     knowledge_dir = ki_base / "knowledge"
     log = []
 
-    # ── Create directories ──
     knowledge_dir.mkdir(parents=True, exist_ok=True)
-    log.append(f"[+] Created .ki-base/ structure at: {ki_base}")
+    log.append(f"[+] Created {know_name}/ structure at: {ki_base}")
 
-    # ── config.json (machine-specific) ──
     config_json_path = ki_base / "config.json"
     if not config_json_path.exists() or force:
         config_data = {
@@ -189,51 +183,43 @@ def init_project(args: dict) -> str:
             "exclude_patterns": ["node_modules", ".venv", "venv", "__pycache__", ".git", "dist", "build"]
         }
         write_json(config_json_path, config_data)
-        log.append(f"[+] Created .ki-base/config.json (machine-specific, in .gitignore)")
+        log.append(f"[+] Created {know_name}/config.json (machine-specific)")
     else:
-        log.append(f"[~] .ki-base/config.json already exists, skipping")
+        log.append(f"[~] {know_name}/config.json already exists")
 
-    # ── ki_config.json (in git) ──
-    ki_config_path = ki_base / "ki_config.json"
+    ki_config_path = project_path / "ki_config.json" if cfg_loc == "root" else ki_base / "ki_config.json"
     if not ki_config_path.exists() or force:
-        ki_config_data = _format_template(KI_CONFIG_TEMPLATE, project_name=project_name, language=language)
-        write_json(ki_config_path, ki_config_data)
-        log.append(f"[+] Created .ki-base/ki_config.json")
+        data = _format_template(KI_CONFIG_TEMPLATE, project_name=project_name, language=language)
+        if know_name != ".ki-base":
+            if "paths" not in data:
+                data["paths"] = {}
+            data["paths"]["knowledge_root"] = know_name
+        write_json(ki_config_path, data)
+        log.append(f"[+] Created {ki_config_path.relative_to(project_path)}")
     else:
-        log.append(f"[~] .ki-base/ki_config.json already exists, skipping")
+        log.append(f"[~] {ki_config_path.relative_to(project_path)} already exists")
 
-    # ── doc_config.json (in git) ──
     doc_config_path = ki_base / "doc_config.json"
     if not doc_config_path.exists() or force:
         doc_config_data = _format_template(DOC_CONFIG_TEMPLATE, project_name=project_name)
         write_json(doc_config_path, doc_config_data)
-        log.append(f"[+] Created .ki-base/doc_config.json")
-    else:
-        log.append(f"[~] .ki-base/doc_config.json already exists, skipping")
+        log.append(f"[+] Created {know_name}/doc_config.json")
 
-    # ── DIR_INDEX.md (in git) ──
     dir_index_path = ki_base / "DIR_INDEX.md"
     if not dir_index_path.exists() or force:
         write_text(dir_index_path, DIR_INDEX_TEMPLATE)
-        log.append(f"[+] Created .ki-base/DIR_INDEX.md")
-    else:
-        log.append(f"[~] .ki-base/DIR_INDEX.md already exists, skipping")
+        log.append(f"[+] Created {know_name}/DIR_INDEX.md")
 
-    # ── _OVERVIEW.ki.md (in git) ──
     overview_path = knowledge_dir / "_OVERVIEW.ki.md"
     if not overview_path.exists() or force:
         today = datetime.now().strftime("%Y-%m-%d")
         write_text(overview_path, OVERVIEW_KI_TEMPLATE.format(project_name=project_name, date=today))
-        log.append(f"[+] Created .ki-base/knowledge/_OVERVIEW.ki.md")
-    else:
-        log.append(f"[~] .ki-base/knowledge/_OVERVIEW.ki.md already exists, skipping")
+        log.append(f"[+] Created {know_name}/knowledge/_OVERVIEW.ki.md")
 
-    # ── .gitignore ──
-    update_gitignore(project_path)
-    log.append(f"[+] Added .ki-base/config.json to .gitignore")
-
-    # ── Register in global registry ──
-    success, msg = ki_utils.register_project(str(ki_config_path))
+    if cfg_loc != "root":
+        update_gitignore(project_path)
+    
+    success, msg = ki_utils.register_project(config_path=str(ki_config_path), workspace=str(project_path))
     if success:
         log.append(f"[+] {msg}")
     else:
@@ -289,14 +275,10 @@ def migrate_project(project_root: str) -> str:
         except Exception as e:
             log.append(f"[!] Error updating doc_config.json: {e}")
 
-    # 3. Delete AGENTS.md
+    # 3. Preserve AGENTS.md (no longer forcibly deleted)
     agents_md = new_dir / "AGENTS.md"
     if agents_md.exists():
-        try:
-            agents_md.unlink()
-            log.append("[+] Deleted legacy AGENTS.md (now handled virtually)")
-        except Exception as e:
-            log.append(f"[!] Could not delete AGENTS.md: {e}")
+        log.append("[~] Preserved existing AGENTS.md")
 
     # 4. Create _OVERVIEW.ki.md if missing
     knowledge_dir = new_dir / "knowledge"

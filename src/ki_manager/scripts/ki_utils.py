@@ -13,6 +13,8 @@ Folder convention: <project>/.ki-base/ (replaces legacy .know/)
 import os
 import sys
 import json
+import re
+import tempfile
 import argparse
 import fnmatch
 from pathlib import Path
@@ -84,33 +86,44 @@ def save_registry(registry: dict):
         json.dump(registry, f, indent=4, ensure_ascii=False)
 
 
-def register_project(config_path: str):
-    """Adds a project to the global registry. config_path must point to ki_config.json."""
-    config_path = normalize_path(config_path)
-    if not os.path.exists(config_path):
-        return False, f"Config not found: {config_path}"
+def register_project(config_path: str = None, workspace: str = None, inline_config: dict = None):
+    """Adds a project to the global registry."""
+    if not config_path and not workspace:
+        return False, "Must provide config_path or workspace"
 
-    try:
-        with open(config_path, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-    except Exception as e:
-        return False, f"Invalid JSON in config: {str(e)}"
-
-    # Structure: <project_root>/.ki-base/ki_config.json
-    ki_base_root = os.path.dirname(config_path)   # .ki-base/
-    proj_root = os.path.dirname(ki_base_root)      # project root
-
+    if config_path:
+        config_path = normalize_path(config_path)
+        if not os.path.exists(config_path):
+            return False, f"Config not found: {config_path}"
+        try:
+            import json
+            with open(config_path, "r", encoding="utf-8") as f:
+                json.load(f)
+        except Exception as e:
+            return False, f"Invalid JSON in config: {str(e)}"
+        
+        if not workspace:
+            parent = os.path.dirname(config_path)
+            if os.path.basename(parent) in (".ki-base", ".know", ".config", "config"):
+                workspace = os.path.dirname(parent)
+            else:
+                workspace = parent
+    
+    workspace = normalize_path(workspace)
     registry = load_registry()
-    proj_root = os.path.normpath(proj_root)
-
-    registry["projects"][proj_root] = {
-        "config_path": config_path,
-        "know_root": ki_base_root,
-        "name": os.path.basename(proj_root),
-        "last_registered": os.path.getmtime(config_path),
+    
+    entry = {
+        "name": os.path.basename(workspace),
+        "last_registered": __import__("time").time()
     }
+    if config_path:
+        entry["config_path"] = config_path
+    if inline_config is not None:
+        entry["config"] = inline_config
+        
+    registry["projects"][workspace] = entry
     save_registry(registry)
-    return True, f"Project '{os.path.basename(proj_root)}' registered at {proj_root}"
+    return True, f"Project '{entry['name']}' registered at {workspace}"
 
 
 def find_project_by_cwd(cwd=None) -> dict:
@@ -122,6 +135,7 @@ def find_project_by_cwd(cwd=None) -> dict:
     registry = load_registry()
     best_match = None
     max_len = -1
+    best_proj = None
 
     for proj_root, data in registry["projects"].items():
         norm_proj = normalize_path(proj_root)
@@ -129,7 +143,10 @@ def find_project_by_cwd(cwd=None) -> dict:
             if len(norm_proj) > max_len:
                 max_len = len(norm_proj)
                 best_match = data
+                best_proj = proj_root
 
+    if best_match:
+        best_match["workspace"] = best_proj
     return best_match
 
 
@@ -137,25 +154,23 @@ def find_project_by_cwd(cwd=None) -> dict:
 
 def load_ki_config() -> dict:
     """
-    Loads ki_config.json for the active project.
-    Resolution order:
-      1. --config CLI argument
-      2. Global registry lookup by CWD / ACTIVE_WORKSPACE_PATH
-      3. Recursive filesystem search for .ki-base/ki_config.json
+    Loads ki_config.json and/or registry inline config for the active project.
     """
+    import argparse
+    from pathlib import Path
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--config", type=str)
     parser.add_argument("--workspace", type=str)
     args, _ = parser.parse_known_args()
 
     config_path = None
+    inline_config = {}
+    registry_workspace = None
 
-    # Priority 0: --workspace sets ACTIVE_WORKSPACE_PATH
     global ACTIVE_WORKSPACE_PATH
     if args.workspace:
         ACTIVE_WORKSPACE_PATH = normalize_path(args.workspace)
 
-    # Priority 1: explicit --config
     if args.config:
         norm_arg = normalize_path(args.config)
         if os.path.exists(norm_arg):
@@ -163,35 +178,48 @@ def load_ki_config() -> dict:
             if os.path.isdir(config_path):
                 config_path = os.path.join(config_path, "ki_config.json")
 
-    # Priority 2: registry
     if not config_path:
         match = find_project_by_cwd()
         if match:
-            config_path = match["config_path"]
+            config_path = match.get("config_path")
+            inline_config = match.get("config", {})
+            registry_workspace = match.get("workspace")
 
-    # Priority 3: filesystem walk
-    if not config_path:
+    if not config_path and not inline_config:
         current = Path(ACTIVE_WORKSPACE_PATH) if ACTIVE_WORKSPACE_PATH else Path.cwd()
         for parent in [current] + list(current.parents):
-            check_path = parent / KI_BASE_DIR / "ki_config.json"
-            if check_path.exists():
-                config_path = str(check_path)
-                break
-            # Legacy fallback
-            check_path = parent / ".know" / "ki_config.json"
-            if check_path.exists():
-                config_path = str(check_path)
+            for candidate in [
+                parent / KI_BASE_DIR / "ki_config.json",
+                parent / "ki_config.json",
+                parent / ".config" / "ki_config.json",
+                parent / "config" / "ki_config.json",
+                parent / ".know" / "ki_config.json"
+            ]:
+                if candidate.exists():
+                    config_path = str(candidate)
+                    break
+            if config_path:
                 break
 
+    cfg = {}
     if config_path and os.path.exists(config_path):
         try:
             with open(config_path, "r", encoding="utf-8") as f:
                 cfg = json.load(f)
                 cfg["_loaded_from"] = config_path
-                return cfg
         except Exception:
             pass
-    return {}
+    
+    if inline_config:
+        for k, v in inline_config.items():
+            if isinstance(v, dict) and isinstance(cfg.get(k), dict):
+                cfg[k].update(v)
+            else:
+                cfg[k] = v
+        if registry_workspace and "_project_root" not in cfg:
+            cfg["_project_root"] = registry_workspace
+
+    return cfg
 
 
 # ─── Path Resolution ──────────────────────────────────────────────────────────
@@ -201,20 +229,55 @@ def get_ki_cfg() -> dict:
 
 
 def get_knowledge_root() -> str:
-    """Returns the .ki-base/ directory path for the active project."""
+    """Returns the knowledge directory path for the active project."""
+    if "knowledge_root" in _CACHE:
+        return _CACHE["knowledge_root"]
+
     cfg = get_ki_cfg()
+    if not cfg:
+        return ""
+
+    know_root = cfg.get("paths", {}).get("knowledge_root")
+    if know_root:
+        if os.path.isabs(know_root):
+            return know_root
+        return os.path.join(get_project_root(), know_root)
+
+    # Fallback to config path
     loaded_from = cfg.get("_loaded_from")
     if loaded_from:
-        return os.path.dirname(loaded_from)
+        parent = os.path.dirname(loaded_from)
+        basename = os.path.basename(parent)
+        if basename in (".ki-base", ".know"):
+            return parent
+        return os.path.join(get_project_root(), KI_BASE_DIR)
+
+    if "_project_root" in cfg:
+        return os.path.join(cfg["_project_root"], KI_BASE_DIR)
+
     return ""
 
-
 def get_project_root() -> str:
-    """Returns the project root (parent of .ki-base/)."""
-    know_root = get_knowledge_root()
-    if not know_root:
-        return os.getcwd()
-    return os.path.dirname(know_root)
+    """Returns the absolute path to the project root."""
+    cfg = get_ki_cfg()
+    if "_project_root" in cfg:
+        return cfg["_project_root"]
+        
+    loaded_from = cfg.get("_loaded_from")
+    if loaded_from:
+        parent = os.path.dirname(loaded_from)
+        if os.path.basename(parent) in (".ki-base", ".know", ".config", "config"):
+            return os.path.dirname(parent)
+        return parent
+        
+    if ACTIVE_WORKSPACE_PATH:
+        return ACTIVE_WORKSPACE_PATH
+        
+    match = find_project_by_cwd()
+    if match and match.get("workspace"):
+        return match["workspace"]
+    
+    return os.getcwd()
 
 
 def get_doc_config_path() -> str:
@@ -346,8 +409,158 @@ def get_ki_list_table() -> str:
     items = doc_config.get("knowledge_items", {})
     if not items:
         return "No Knowledge Items registered yet."
-    rows = ["| File | Summary |", "|------|---------|"]
+    rows = ["| File | Topic / Summary |", "|------|-----------------|"]
     for name, info in sorted(items.items()):
         summary = info.get("summary", info.get("description", "—"))
         rows.append(f"| `{name}` | {summary} |")
     return "\n".join(rows)
+
+
+def save_doc_config(config: dict) -> str:
+    """Atomically saves doc_config.json for the active project."""
+    path = get_doc_config_path()
+    if not path:
+        raise ValueError("doc_config.json path could not be resolved.")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(path), text=True)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
+        os.replace(tmp_path, path)
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        raise
+    return path
+
+
+def is_sync_agents_md_enabled() -> bool:
+    """Checks whether sync_agents_md is enabled in ki_config.json (default: True)."""
+    cfg = get_ki_cfg()
+    return bool(cfg.get("sync_agents_md", True))
+
+
+def get_decisions_dirs(project_root: str = None, jail: str = None) -> list:
+    """Returns candidate directories where ADRs can be stored."""
+    if not project_root:
+        project_root = get_project_root()
+    if not jail:
+        jail = get_knowledge_root()
+    dirs = []
+    if project_root:
+        dirs.append(os.path.join(project_root, "decisions"))
+    if jail and (not project_root or os.path.normcase(jail) != os.path.normcase(project_root)):
+        dirs.append(os.path.join(jail, "decisions"))
+    return dirs
+
+
+def parse_adr_file(filepath: str, project_root: str = None) -> dict:
+    """Parses metadata from an ADR markdown file."""
+    if not project_root:
+        project_root = get_project_root()
+    filename = os.path.basename(filepath)
+    rel_path = os.path.relpath(filepath, project_root).replace("\\", "/") if project_root else filename
+
+    title = filename
+    status = "Accepted"
+    date = "—"
+    summary = "—"
+    adr_id = "—"
+
+    m_id = re.match(r"^(\d+)", filename)
+    if m_id:
+        adr_id = m_id.group(1)
+
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            content = f.read()
+    except Exception:
+        content = ""
+
+    # Parse title
+    m_title = re.search(r"^#\s+(?:ADR\s*\d*[:\-]?\s*)?([^\n\r]+)", content, re.MULTILINE)
+    if m_title:
+        title = m_title.group(1).strip()
+
+    # Parse status
+    m_status = re.search(r"<!--\s*status:\s*([^\n\r>]+?)\s*-->", content, re.IGNORECASE)
+    if not m_status:
+        m_status = re.search(r"\*\*Status\*\*:\s*([^\n\r]+)", content, re.IGNORECASE)
+    if not m_status:
+        m_status = re.search(r"^Status:\s*([^\n\r]+)", content, re.MULTILINE | re.IGNORECASE)
+    if m_status:
+        status = m_status.group(1).strip()
+
+    # Parse date
+    m_date = re.search(r"<!--\s*created:\s*([^\n\r>]+?)\s*-->", content, re.IGNORECASE)
+    if not m_date:
+        m_date = re.search(r"\*\*Date\*\*:\s*([^\n\r]+)", content, re.IGNORECASE)
+    if not m_date:
+        m_date = re.search(r"^Date:\s*([^\n\r]+)", content, re.MULTILINE | re.IGNORECASE)
+    if m_date:
+        date = m_date.group(1).strip()
+
+    # Parse summary / context
+    m_ctx = re.search(r"##\s*(?:Context|Контекст)[^\n\r]*\n+([\s\S]*?)(?=\n##|\Z)", content, re.IGNORECASE)
+    if m_ctx:
+        ctx_lines = [l.strip() for l in m_ctx.group(1).splitlines() if l.strip() and not l.strip().startswith("<!--")]
+        if ctx_lines:
+            summary = ctx_lines[0]
+            if len(summary) > 120:
+                summary = summary[:117] + "..."
+
+    return {
+        "id": adr_id,
+        "title": title,
+        "status": status,
+        "date": date,
+        "summary": summary,
+        "file": filename,
+        "rel_path": rel_path,
+        "abs_path": filepath
+    }
+
+
+def get_adr_table(project_root: str = None, jail: str = None) -> str:
+    """Dynamically scans for ADR files and formats a structured Markdown table."""
+    if not project_root:
+        project_root = get_project_root()
+    if not jail:
+        jail = get_knowledge_root()
+
+    candidates = get_decisions_dirs(project_root, jail)
+    adr_records = []
+    seen_files = set()
+
+    for c in candidates:
+        if os.path.exists(c) and os.path.isdir(c):
+            for f in sorted(os.listdir(c)):
+                if f.endswith(".md") and f not in seen_files:
+                    seen_files.add(f)
+                    full_p = os.path.join(c, f)
+                    adr_records.append(parse_adr_file(full_p, project_root))
+
+    if not adr_records:
+        return "No ADRs found in this project."
+
+    # Sort by numeric ID or filename
+    def _sort_key(r):
+        num = int(r["id"]) if r["id"].isdigit() else 999999
+        return (num, r["file"])
+
+    adr_records.sort(key=_sort_key)
+
+    rows = [
+        "| ID | Title | Status | Date | File |",
+        "|----|-------|--------|------|------|"
+    ]
+    for r in adr_records:
+        link = f"[{r['file']}]({r['rel_path']})"
+        rows.append(f"| {r['id']} | {r['title']} | {r['status']} | {r['date']} | {link} |")
+
+    return "\n".join(rows)
+
+
+def get_adr_list(project_root: str = None, jail: str = None) -> str:
+    """Dynamic ADR list representation."""
+    return get_adr_table(project_root, jail)
