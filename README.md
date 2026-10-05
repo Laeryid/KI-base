@@ -81,6 +81,23 @@ On Windows:
 }
 ```
 
+### Compact Mode (Token Saver)
+
+By default, `ki-manager` runs in `full` mode and exposes all tools directly. For AI clients that inject tool definitions into the context window, you can enable compact facade mode to expose only 6 essential tools (`ki_instructions`, `ki_search`, `ki_read`, `ki_tools`, `ki_call`, `ki_mutate`):
+
+```json
+{
+  "mcpServers": {
+    "ki-manager": {
+      "command": "ki-manager",
+      "args": ["--tool-mode", "compact"]
+    }
+  }
+}
+```
+
+Alternatively, set the environment variable `KI_TOOL_MODE=compact`.
+
 ---
 
 ## Quickstart
@@ -123,6 +140,10 @@ Use the available tools or slash commands:
 | `ki_scaffold` | Create stub KI files for uncovered modules |
 | `ki_scaffold_status` | Show pending vs enriched scaffold KIs |
 | `ki_finalize_scaffolds` | Strip scaffold markers, update doc_config summaries |
+| `add_ki_to_config` | Register or update Knowledge Item in `doc_config.json` |
+| `edit_doc_config` | Safely modify `doc_config.json` (`tracked_modules`, `artifacts`, `coverage_settings`) |
+| `sync_agents_md` | Sync Knowledge Items and ADR tables in `AGENTS.md` (can be disabled via `sync_agents_md: false` in `ki_config.json`) |
+| `create_adr` | Create structured ADR with sequential ID, template, and auto-registration |
 | `analyze_all_dependencies` | Update "Related KIs" links across all KIs |
 | `git_checkpoint` | Save knowledge snapshot to git |
 | `/scaffold-knowledge` | Bootstrap KI stubs → AI enrichment → finalize |

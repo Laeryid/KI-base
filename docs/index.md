@@ -68,7 +68,16 @@ In your IDE chat, call the `ki_init_project` tool:
 ki_init_project(project_path="/absolute/path/to/your-project")
 ```
 
-This creates:
+Custom folder name or root-level configuration can be specified as well:
+```
+ki_init_project(
+  project_path="/absolute/path/to/your-project",
+  knowledge_root="docs",          # custom knowledge directory (default: .ki-base)
+  config_location="root"          # put ki_config.json in project root or knowledge_dir
+)
+```
+
+By default, this creates:
 
 ```
 your-project/
@@ -82,15 +91,63 @@ your-project/
         └── _OVERVIEW.ki.md  ← starter Knowledge Item
 ```
 
+---
+
+## Flexible Configuration & Custom Knowledge Roots
+
+`ki-manager` automatically locates project configurations without hardcoded path restrictions.
+
+### Config Resolution Order
+When searching for project configuration, the server checks:
+1. **Explicit CLI argument**: `--config <path>` or `--workspace <path>`
+2. **Global registry**: Project entry in `~/.ki_base/registry.json`
+3. **Upward filesystem search** in order:
+   - `<parent>/.ki-base/ki_config.json`
+   - `<parent>/ki_config.json` (project root)
+   - `<parent>/.config/ki_config.json`
+   - `<parent>/config/ki_config.json`
+   - `<parent>/.know/ki_config.json` (legacy fallback)
+
+### Custom Knowledge Root (`paths.knowledge_root`)
+To name your knowledge folder something other than `.ki-base` (e.g. `docs` or `kb`), specify it in `ki_config.json`:
+```json
+{
+  "paths": {
+    "knowledge_root": "docs"
+  }
+}
+```
+All MCP tools, audits, and index generators will dynamically operate inside the configured directory.
+
+### Fileless Project Registration
+To link an external repository without committing configuration files to it, register it directly in the global registry using `ki_register_project`:
+```
+ki_register_project(
+  workspace="/path/to/repo",
+  inline_config={
+    "paths": {"knowledge_root": "docs"},
+    "project_name": "MyExternalProject"
+  }
+)
+```
+
+---
+
 ### 3. Start documenting
 
 Use the available tools or slash commands:
 
 | Tool / Command | Action |
 |----------------|--------|
+| `ki_register_project` | Register project in global registry (supports `config_path` or `workspace` + `inline_config`) |
+| `ki_list_projects` | List all registered projects |
+| `ki_status` | Check active workspace and resolved paths |
 | `audit_coverage` | Find documentation gaps |
 | `generate_dir_index` | Build directory index |
-| `sync_agents_md` | Sync KI table in AGENTS.md |
+| `add_ki_to_config` | Register or update Knowledge Items in `doc_config.json` |
+| `edit_doc_config` | Safely modify `doc_config.json` (`tracked_modules`, `artifacts`, `coverage_settings`) |
+| `sync_agents_md` | Sync Knowledge Items and ADR tables in `AGENTS.md` (configurable via `sync_agents_md: false` in `ki_config.json`) |
+| `create_adr` | Create structured ADR with sequential ID, template, and registration |
 | `git_checkpoint` | Save knowledge snapshot to git |
 | `/expand-knowledge` | Iteratively fill gaps (Antigravity) |
 | `/sync-knowledge` | Full sync workflow (Antigravity) |

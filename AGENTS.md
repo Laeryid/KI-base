@@ -53,20 +53,37 @@ src/ki_manager/
 
 ---
 
+## Режимы работы (`--tool-mode`)
+
+Сервер поддерживает два режима экспозиции инструментов:
+- `--tool-mode full` (по умолчанию, или `KI_TOOL_MODE=full`): возвращает все 33 инструмента.
+- `--tool-mode compact` (или `KI_TOOL_MODE=compact`): возвращает всего 6 фасадных инструментов, экономя тысячи токенов контекста.
+
+### Компактный режим (Compact Facade)
+В режиме `compact` в `tools/list` видны только:
+1. `ki_instructions` — доступ к воркфло-инструкциям.
+2. `ki_search` — BM25-поиск по KI и ADR (названия, заголовки, сниппеты).
+3. `ki_read` — быстрое чтение KI или ADR (с опциональным `section` и `max_chars`).
+4. `ki_tools` — просмотр каталога инструментов (`ki_tools()`) или схемы конкретного инструмента (`ki_tools({"name": "..."})`).
+5. `ki_call` — диспетчер вызова read-only инструментов (`ki_call({"tool": "...", "args": {...}})`).
+6. `ki_mutate` — диспетчер вызова мутирующих инструментов (`ki_mutate({"tool": "...", "args": {...}})`).
+
+---
+
 ## Инструменты (Tools)
 
-Все инструменты выставляются напрямую через `tools/list`. Деления на eager/lazy нет.
-
-**Инструменты по группам:**
+В режиме `full` доступны напрямую:
 
 | Группа | Инструменты |
 |--------|-------------|
 | Инструкции | `ki_instructions` |
+| Поиск и чтение | `ki_search`, `ki_read` |
 | Инициализация | `ki_init_project`, `ki_migrate_project` |
 | Реестр | `ki_register_project`, `ki_list_projects`, `ki_status`, `ki_prune_registry` |
 | Покрытие | `audit_coverage`, `generate_dir_index`, `analyze_dependencies`, `analyze_all_dependencies`, `find_unmapped_files`, `analyze_module`, `ki_graph_visualize` |
-| Scaffold | `ki_scaffold`, `ki_scaffold_status`, `update_last_verified` |
+| Scaffold | `ki_scaffold`, `ki_scaffold_status`, `ki_finalize_scaffolds`, `update_last_verified` |
 | Файлы | `read_know_file`, `write_know_file`, `edit_know_file`, `make_know_dir` |
+| Конфиг и ADR | `add_ki_to_config`, `edit_doc_config`, `sync_agents_md`, `create_adr` |
 | Git | `git_checkpoint`, `git_restore`, `git_diff_secured` |
 | Состояние | `save_state`, `restore_mapping` |
 
@@ -101,7 +118,7 @@ src/ki_manager/
 ### Ключевые строки в логах
 | Строка | Значение |
 |--------|----------|
-| `ki-manager MCP server started (PID: ..., mode: ...)` | Сервер запустился |
+| `ki-manager MCP server started (PID: ..., tool-mode: ...)` | Сервер запустился |
 | `REQ: {...}` | IDE прислала запрос (stdin работает) |
 | `RESP: {...}` | Сервер ответил (stdout работает) |
 | `ERROR: [Errno 22] Invalid argument` | Проблема с `stdout.flush()` (см. Known Issues) |
