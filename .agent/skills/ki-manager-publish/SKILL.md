@@ -68,7 +68,7 @@ git log -n 3 --oneline
 > [!NOTE]
 > **Что происходит под капотом (для справки и отладки):**
 > Скрипт `publish.py` автоматически выполняет следующие шаги:
-> 0. **Pre-flight Gate**: запускает `scripts/verify_release.py` (76+ тестов, E2E MCP subprocess, тестовая сборка wheel и sdist, проверка CLI). Если что-то падает — релиз немедленно останавливается ДО внесения изменений в git.
+> 0. **Pre-flight Gate**: запускает `verify_release.py` из папки `scripts/` скилла (76+ тестов, E2E MCP subprocess, тестовая сборка wheel и sdist, проверка CLI). Если что-то падает — релиз немедленно останавливается ДО внесения изменений в git.
 > 1. Обновляет версию пакета в файлах метаданных:
 >    - `pyproject.toml` (`[project] version = "..."`)
 >    - `src/ki_manager/__init__.py` (`__version__ = "..."`)

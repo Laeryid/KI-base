@@ -13,7 +13,7 @@
 ### Шаг 0: Предрелизная верификация
 Запустите проверку тестов и сборки пакета локально:
 ```bash
-python scripts/verify_release.py
+python .agent/skills/ki-manager-publish/scripts/verify_release.py
 ```
 
 ### Шаг 1: Обновление версии в коде и документации

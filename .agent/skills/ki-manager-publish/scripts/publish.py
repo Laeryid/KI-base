@@ -86,7 +86,7 @@ def main():
     # Pre-flight gate: verify all tests and build pass BEFORE modifying any files
     if not args.skip_tests:
         print("Running pre-flight verification gate (pytest + build + CLI checks)...")
-        verify_script = repo_root / "scripts" / "verify_release.py"
+        verify_script = Path(__file__).resolve().parent / "verify_release.py"
         if verify_script.exists():
             run_cmd([sys.executable, str(verify_script)], cwd=repo_root)
         else:

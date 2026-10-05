@@ -1,5 +1,5 @@
 """
-scripts/verify_release.py
+.agent/skills/ki-manager-publish/scripts/verify_release.py
 
 Pre-flight release gate for ki-manager:
 1. Runs full test suite (including unit tests and MCP E2E tests).
@@ -18,7 +18,15 @@ if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
     except Exception:
         pass
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+
+def find_repo_root() -> Path:
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "pyproject.toml").exists():
+            return parent
+    return Path(__file__).resolve().parents[4]
+
+
+REPO_ROOT = find_repo_root()
 
 
 def run_step(name: str, cmd: list, cwd: Path = REPO_ROOT):
