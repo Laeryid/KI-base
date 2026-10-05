@@ -26,16 +26,20 @@ if sys.platform == "win32":
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
 
-# ─── Package paths ────────────────────────────────────────────────────────────
+# â”€â”€â”€ Package paths â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _PACKAGE_DIR = Path(__file__).parent
 _SCRIPTS_DIR = _PACKAGE_DIR / "scripts"
 _WORKFLOWS_DIR = _PACKAGE_DIR / "workflows"
 
-# Make ki_utils importable for server.py itself
+# Make scripts and tools importable for server.py itself
+_TOOLS_DIR = _PACKAGE_DIR / "tools"
 sys.path.insert(0, str(_SCRIPTS_DIR))
+sys.path.insert(0, str(_TOOLS_DIR))
 import ki_utils
+import facade
+import ki_search
 
-# ─── Logging ──────────────────────────────────────────────────────────────────
+# â”€â”€â”€ Logging â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _LOG_DIR = Path.home() / ".ki_base" / "logs"
 
 
@@ -49,7 +53,7 @@ def safe_log(msg: str):
         pass
 
 
-# ─── Context helpers ──────────────────────────────────────────────────────────
+# â”€â”€â”€ Context helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def get_jail_dir() -> str:
     return ki_utils.get_knowledge_root()
@@ -63,29 +67,40 @@ def get_doc_config() -> dict:
     return ki_utils.get_doc_config()
 
 
-# ─── Global Virtual Content ───────────────────────────────────────────────────
+CURRENT_TOOL_MODE: str = os.environ.get("KI_TOOL_MODE", "full").lower()
+
+
+# ─── Global Virtual Content ─────────────────────────────────────────────────
 
 GLOBAL_INSTRUCTIONS = """\
 # Global AI Instructions for ki-manager
 
 ## 1. Project Navigation
-- **`DIR_INDEX.md`** (`.ki-base/DIR_INDEX.md`) — project directory tree.
-- **`doc_config.json`** (`.ki-base/doc_config.json`) — manifest of tracked artifacts.
-- All Knowledge Items (KI) live in `.ki-base/knowledge/`.
-- Architecture Decision Records (ADR) live in `.ki-base/decisions/` or `decisions/`.
-- Start here: `.ki-base/knowledge/_OVERVIEW.ki.md`
+- **`DIR_INDEX.md`** (`{{KI_DIR}}/DIR_INDEX.md`) — project directory tree.
+- **`doc_config.json`** (`{{KI_DIR}}/doc_config.json`) — manifest of tracked artifacts.
+- All Knowledge Items (KI) live in `{{KI_DIR}}/knowledge/`.
+- Architecture Decision Records (ADR) live in `{{KI_DIR}}/decisions/` or `decisions/`.
+- Start here: `{{KI_DIR}}/knowledge/_OVERVIEW.ki.md`
 
 ## 2. Forced Efficiency (Anti-Hallucinations)
 1. **Mandatory Planning Template**:
    Before making code changes, your initial plan (Implementation Plan) **MUST** include:
    - **Affected layers**: [which subsystems are affected]
-   - **Read KIs**: [LIST of files from `.ki-base/knowledge/` which you read for this task]. *If the list is empty — read KIs before writing code!*
+   - **Read KIs**: [LIST of files from `{{KI_DIR}}/knowledge/` which you read for this task]. *If the list is empty — read KIs before writing code!*
    - **KIs Constraints**: [which approaches are prohibited by current architecture]
 
 2. **Strict Adherence**:
    - Always read relevant KIs before modifying a module.
+<!-- if-compact -->
+   - Use `ki_search(query="...")` and `ki_read(rel_path="...")` to discover and read documentation.
+   - For read-only analysis tools (`audit_coverage`, `generate_dir_index`, `ki_scaffold_status`, `git_diff_secured`), call `ki_call(tool="...")`.
+   - For state-modifying operations (`git_checkpoint`, `write_know_file`, `edit_know_file`, `ki_scaffold`, `create_adr`), call `ki_mutate(tool="...", args={...})`.
+   - To inspect schemas of available tools, call `ki_tools(name="<tool_name>")`.
+<!-- else-compact -->
+   - Use `ki_search(query="...")` and `ki_read(rel_path="...")` or `read_know_file(rel_path="...")` to explore documentation.
    - After significant changes, run `audit_coverage` via MCP.
    - Use `git_checkpoint` to save knowledge snapshots.
+<!-- /if-compact -->
    
 ## 3. Workflow-driven Execution
 1. Check `ki://workflows/` resources or MCP Prompts if the user asks for a complex documentation task.
@@ -94,27 +109,10 @@ GLOBAL_INSTRUCTIONS = """\
 
 def get_adr_list(project_root: str, jail: str) -> str:
     """Dynamically scan for ADR files in decisions/ or .ki-base/decisions/."""
-    candidates = [
-        os.path.join(project_root, "decisions"),
-        os.path.join(jail, "decisions")
-    ]
-    lines = ["# Architecture Decision Records (ADRs)\n"]
-    found = False
-    for c in candidates:
-        if os.path.exists(c) and os.path.isdir(c):
-            lines.append(f"Found in: {os.path.relpath(c, project_root)}")
-            for f in sorted(os.listdir(c)):
-                if f.endswith(".md"):
-                    lines.append(f"- {f}")
-                    found = True
-            lines.append("")
-    
-    if not found:
-        lines.append("No ADRs found in this project.")
-    return "\n".join(lines)
+    return ki_utils.get_adr_table(project_root, jail)
 
 
-# ─── Security ─────────────────────────────────────────────────────────────────
+# â”€â”€â”€ Security â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 _FORBIDDEN_WRITE_EXT = {".py", ".pyc", ".bat", ".ps1", ".sh", ".exe", ".cmd", ".dll"}
 _FORBIDDEN_WRITE_FILES = {"doc_config.json"}  # can only be modified via dedicated tools
@@ -124,7 +122,7 @@ NO_WORKSPACE_ERROR = {
     "content": [{
         "type": "text",
         "text": (
-            "❌ No active workspace detected.\n\n"
+            "âťŚ No active workspace detected.\n\n"
             "To fix, call ki_status with explicit path:\n"
             "  ki_status({\"path\": \"/absolute/path/to/project\"})\n\n"
             "Or ensure the MCP client passes workspaceUri in _meta.io.modelcontextprotocol/clientInfo."
@@ -137,7 +135,7 @@ def validate_path(rel_path: str, is_write: bool = False) -> str:
     jail = get_jail_dir()
     if not jail:
         raise PermissionError(
-            "❌ No active workspace detected. "
+            "âťŚ No active workspace detected. "
             "Call ki_status({\"path\": \"/absolute/path/to/project\"}) to set it."
         )
 
@@ -162,7 +160,7 @@ def validate_path(rel_path: str, is_write: bool = False) -> str:
     return target
 
 
-# ─── Script runner ────────────────────────────────────────────────────────────
+# â”€â”€â”€ Script runner â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def run_script(script_name: str, args: List[str] = None) -> dict:
     """Run a bundled analysis script in the context of the active project."""
@@ -194,7 +192,7 @@ def run_script(script_name: str, args: List[str] = None) -> dict:
     return {"content": [{"type": "text", "text": output}]}
 
 
-# ─── MCP Tool Definitions ─────────────────────────────────────────────────────
+# â”€â”€â”€ MCP Tool Definitions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 MCP_TOOLS = [
     {
@@ -227,14 +225,13 @@ MCP_TOOLS = [
             "idempotentHint": True,
         }
     },
-    # ── Initialization ──
+    # â”€â”€ Initialization â”€â”€
     {
         "name": "ki_init_project",
         "description": (
-            "Initialize .ki-base/ knowledge structure in a project directory. "
-            "Creates ki_config.json, doc_config.json, AGENTS.md, DIR_INDEX.md, "
-            "and a starter _OVERVIEW.ki.md. Registers the project in the global registry. "
-            "Run this ONCE when adding ki-manager to a new project."
+            "Initialize knowledge structure in a project directory. "
+            "Creates ki_config.json, doc_config.json, DIR_INDEX.md, "
+            "and a starter _OVERVIEW.ki.md. Registers the project in the global registry."
         ),
         "inputSchema": {
             "type": "object",
@@ -243,6 +240,8 @@ MCP_TOOLS = [
                 "project_name": {"type": "string", "description": "Human-readable project name (optional, defaults to folder name)"},
                 "language": {"type": "string", "description": "Primary language: python, typescript, etc. (default: python)"},
                 "venv_python": {"type": "string", "description": "Explicit path to venv python.exe (auto-detected if omitted)"},
+                "knowledge_root": {"type": "string", "description": "Name of the knowledge directory (default: .ki-base)"},
+                "config_location": {"type": "string", "description": "Where to put ki_config.json: 'root' or 'knowledge_dir' (default: knowledge_dir)"},
                 "force": {"type": "boolean", "description": "Overwrite existing files (default: false)"},
             },
             "required": ["project_path"],
@@ -254,7 +253,7 @@ MCP_TOOLS = [
             "idempotentHint": False,
         },
     },
-    # ── Registry ──
+    # â”€â”€ Registry â”€â”€
     {
         "name": "ki_migrate_project",
         "description": "Migrate a legacy .know/ project to the modern .ki-base/ architecture. Renames directories, updates config, and ensures _OVERVIEW.ki.md exists.",
@@ -268,11 +267,13 @@ MCP_TOOLS = [
     },
     {
         "name": "ki_register_project",
-        "description": "Register an existing project (with .ki-base/ki_config.json) in the global registry.",
+        "description": "Register an existing project in the global registry. Can point to ki_config.json or use inline_config (bypassing the file).",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "config_path": {"type": "string", "description": "Path to ki_config.json or .ki-base/ directory"},
+                "config_path": {"type": "string", "description": "Path to ki_config.json (optional)"},
+                "workspace": {"type": "string", "description": "Absolute path to the project root (optional if config_path is given)"},
+                "inline_config": {"type": "object", "description": "JSON object with config settings (e.g. {'paths': {'knowledge_root': 'docs'}})"}
             },
         },
         "annotations": {
@@ -318,7 +319,7 @@ MCP_TOOLS = [
             "idempotentHint": True,
         },
     },
-    # ── Coverage & Audit ──
+    # â”€â”€ Coverage & Audit â”€â”€
     {
         "name": "audit_coverage",
         "description": (
@@ -523,11 +524,154 @@ MCP_TOOLS = [
             "idempotentHint": True,
         },
     },
-    # ── File Operations ──
+    # ─── Config & ADR Management ───
+    {
+        "name": "add_ki_to_config",
+        "description": "Register a new or update an existing Knowledge Item (KI) in doc_config.json.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "ki_name": {
+                    "type": "string",
+                    "description": "Knowledge Item filename (e.g. 'KI_storage.md')"
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Full description of the Knowledge Item"
+                },
+                "covers": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of covered modules or functional areas"
+                },
+                "depends_on": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of source files/directories this KI depends on"
+                },
+                "summary": {
+                    "type": "string",
+                    "description": "Optional short summary for tables and overview"
+                }
+            },
+            "required": ["ki_name", "description"]
+        },
+        "annotations": {
+            "title": "Add KI To Config",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": True
+        }
+    },
+    {
+        "name": "edit_doc_config",
+        "description": (
+            "Safely edit service sections of doc_config.json: "
+            "'tracked_modules', 'artifacts', or 'coverage_settings'."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "section": {
+                    "type": "string",
+                    "enum": ["tracked_modules", "artifacts", "coverage_settings"],
+                    "description": "Section in doc_config.json to modify"
+                },
+                "action": {
+                    "type": "string",
+                    "enum": ["set", "append", "delete"],
+                    "description": "Action to perform: set, append, or delete"
+                },
+                "key": {
+                    "type": "string",
+                    "description": "Key name (for dicts) or identifier/index"
+                },
+                "value": {
+                    "description": "Value to set or append (can be string, number, dict, or list)"
+                }
+            },
+            "required": ["section", "action"]
+        },
+        "annotations": {
+            "title": "Edit Doc Config",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False
+        }
+    },
+    {
+        "name": "sync_agents_md",
+        "description": (
+            "Synchronize Knowledge Items and ADR tables in AGENTS.md "
+            "with doc_config.json and decisions/ directory. "
+            "Can be disabled in ki_config.json ('sync_agents_md': false)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "agents_path": {
+                    "type": "string",
+                    "description": "Optional explicit path to AGENTS.md"
+                }
+            }
+        },
+        "annotations": {
+            "title": "Sync AGENTS.md",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": True
+        }
+    },
+    {
+        "name": "create_adr",
+        "description": (
+            "Create a new Architecture Decision Record (ADR), automatically allocating "
+            "the next sequential ID (XXX), saving the template file, registering it in "
+            "doc_config.json, and updating AGENTS.md."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "Title of the architecture decision"
+                },
+                "status": {
+                    "type": "string",
+                    "default": "Accepted",
+                    "description": "Status of the decision (e.g. 'Accepted', 'Proposed', 'Superseded')"
+                },
+                "context": {
+                    "type": "string",
+                    "description": "Context and problem statement"
+                },
+                "decision": {
+                    "type": "string",
+                    "description": "The decision that was made and rules adopted"
+                },
+                "consequences": {
+                    "type": "string",
+                    "description": "Consequences, trade-offs, and impact"
+                },
+                "topic_name": {
+                    "type": "string",
+                    "description": "Short slug for the filename (e.g. 'sqlite_storage')"
+                }
+            },
+            "required": ["title", "context", "decision", "consequences", "topic_name"]
+        },
+        "annotations": {
+            "title": "Create ADR",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False
+        }
+    },
+    # â”€â”€ File Operations â”€â”€
     {
         "name": "read_know_file",
         "description": (
-            "Read a Knowledge Item (KI) file inside the .ki-base/ directory. "
+            "Read a Knowledge Item (KI) file inside the knowledge root directory. "
             "CRITICAL AGENT RULE: In this project, code is documented using ki-manager. "
             "Before planning implementation or modifying any code, you MUST use this tool "
             "to read .ki-base/knowledge/_OVERVIEW.ki.md and any other relevant KIs to "
@@ -535,7 +679,7 @@ MCP_TOOLS = [
         ),
         "inputSchema": {
             "type": "object",
-            "properties": {"rel_path": {"type": "string", "description": "Path relative to .ki-base/"}},
+            "properties": {"rel_path": {"type": "string", "description": "Path relative to knowledge root/"}},
             "required": ["rel_path"],
         },
         "annotations": {
@@ -547,11 +691,11 @@ MCP_TOOLS = [
     },
     {
         "name": "write_know_file",
-        "description": "Create or overwrite a file inside .ki-base/ (scripts and executables are protected).",
+        "description": "Create or overwrite a file inside knowledge root (scripts and executables are protected).",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "rel_path": {"type": "string", "description": "Path relative to .ki-base/"},
+                "rel_path": {"type": "string", "description": "Path relative to knowledge root/"},
                 "content": {"type": "string"},
             },
             "required": ["rel_path", "content"],
@@ -565,11 +709,11 @@ MCP_TOOLS = [
     },
     {
         "name": "edit_know_file",
-        "description": "Edit a file inside .ki-base/ by replacing a specific text fragment.",
+        "description": "Edit a file inside knowledge root by replacing a specific text fragment.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "rel_path": {"type": "string", "description": "Path relative to .ki-base/"},
+                "rel_path": {"type": "string", "description": "Path relative to knowledge root/"},
                 "old_text": {"type": "string"},
                 "new_text": {"type": "string"},
             },
@@ -584,10 +728,10 @@ MCP_TOOLS = [
     },
     {
         "name": "make_know_dir",
-        "description": "Create a new subdirectory inside .ki-base/.",
+        "description": "Create a new subdirectory inside knowledge root.",
         "inputSchema": {
             "type": "object",
-            "properties": {"rel_path": {"type": "string", "description": "Path relative to .ki-base/"}},
+            "properties": {"rel_path": {"type": "string", "description": "Path relative to knowledge root/"}},
             "required": ["rel_path"],
         },
         "annotations": {
@@ -597,10 +741,10 @@ MCP_TOOLS = [
             "idempotentHint": True,
         },
     },
-    # ── Git Operations ──
+    # â”€â”€ Git Operations â”€â”€
     {
         "name": "git_checkpoint",
-        "description": "Stage and commit all .ki-base/ changes to git.",
+        "description": "Stage and commit all knowledge root changes to git.",
         "inputSchema": {
             "type": "object",
             "properties": {"message": {"type": "string", "description": "Commit message suffix"}},
@@ -618,7 +762,7 @@ MCP_TOOLS = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "target": {"type": "string", "description": "File path relative to .ki-base/"},
+                "target": {"type": "string", "description": "File path relative to knowledge root/"},
                 "revision": {"type": "string", "description": "Git revision (default: HEAD)"},
             },
         },
@@ -643,7 +787,7 @@ MCP_TOOLS = [
             "idempotentHint": True,
         },
     },
-    # ── State ──
+    # â”€â”€ State â”€â”€
     {
         "name": "save_state",
         "description": "Capture and save file hash state to doc_state.json.",
@@ -666,6 +810,19 @@ MCP_TOOLS = [
             "idempotentHint": True,
         },
     },
+    # ─── Search & Read ───
+    facade.KI_SEARCH_TOOL,
+    facade.KI_READ_TOOL,
+]
+
+_INSTRUCTIONS_TOOL = next(t for t in MCP_TOOLS if t["name"] == "ki_instructions")
+COMPACT_TOOLS = [
+    _INSTRUCTIONS_TOOL,
+    facade.KI_SEARCH_TOOL,
+    facade.KI_READ_TOOL,
+    facade.KI_TOOLS_TOOL,
+    facade.KI_CALL_TOOL,
+    facade.KI_MUTATE_TOOL,
 ]
 
 def get_mcp_prompts() -> list:
@@ -688,7 +845,7 @@ def get_mcp_prompts() -> list:
     return prompts
 
 
-# ─── Tool Implementations ─────────────────────────────────────────────────────
+# â”€â”€â”€ Tool Implementations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def tool_git_checkpoint(args: dict) -> dict:
     jail = get_jail_dir()
@@ -743,21 +900,378 @@ def tool_git_restore(args: dict) -> dict:
         return {"isError": True, "content": [{"type": "text", "text": f"Git Error: {e.stderr or str(e)}"}]}
 
 
-# ─── Tool Dispatcher ──────────────────────────────────────────────────────────
+def tool_add_ki_to_config(args: dict) -> dict:
+    jail = get_jail_dir()
+    if not jail:
+        return NO_WORKSPACE_ERROR
+
+    ki_name = args.get("ki_name")
+    description = args.get("description")
+    covers = args.get("covers", [])
+    depends_on = args.get("depends_on", [])
+    summary = args.get("summary")
+
+    if not ki_name or not description:
+        return {"isError": True, "content": [{"type": "text", "text": "Error: 'ki_name' and 'description' are required."}]}
+
+    if not isinstance(covers, list) or not isinstance(depends_on, list):
+        return {"isError": True, "content": [{"type": "text", "text": "Error: 'covers' and 'depends_on' must be arrays."}]}
+
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+    import add_ki_to_config
+    try:
+        msg = add_ki_to_config.add_ki(ki_name, description, covers, depends_on, summary)
+        return {"content": [{"type": "text", "text": msg}]}
+    except Exception as e:
+        return {"isError": True, "content": [{"type": "text", "text": f"Error registering KI: {e}"}]}
+
+
+def tool_edit_doc_config(args: dict) -> dict:
+    jail = get_jail_dir()
+    if not jail:
+        return NO_WORKSPACE_ERROR
+
+    section = args.get("section")
+    action = args.get("action")
+    key = args.get("key")
+    value = args.get("value")
+
+    allowed_sections = {"tracked_modules", "artifacts", "coverage_settings"}
+    if section not in allowed_sections:
+        return {"isError": True, "content": [{"type": "text", "text": f"Error: section '{section}' is not allowed. Allowed: {sorted(allowed_sections)}"}]}
+
+    if action not in ("set", "append", "delete"):
+        return {"isError": True, "content": [{"type": "text", "text": f"Error: action '{action}' is not supported. Use set, append, or delete."}]}
+
+    config = ki_utils.get_doc_config()
+    if not config:
+        config = {}
+
+    if section == "tracked_modules":
+        # May be stored in coverage_settings.tracked_modules or root tracked_modules
+        target_container = config.setdefault("coverage_settings", {})
+        if "tracked_modules" not in target_container and "tracked_modules" in config:
+            modules_list = config["tracked_modules"]
+        else:
+            modules_list = target_container.setdefault("tracked_modules", [])
+
+        if not isinstance(modules_list, list):
+            modules_list = []
+            target_container["tracked_modules"] = modules_list
+
+        if action == "append":
+            if value is None:
+                return {"isError": True, "content": [{"type": "text", "text": "Error: 'value' is required for append action."}]}
+            modules_list.append(value)
+            msg = f"Appended module to tracked_modules: {value}"
+        elif action == "set":
+            if key is not None:
+                idx = -1
+                if isinstance(key, int) or (isinstance(key, str) and key.isdigit()):
+                    idx = int(key)
+                else:
+                    for i, item in enumerate(modules_list):
+                        mod_name = item[0] if isinstance(item, list) and item else (item if isinstance(item, str) else "")
+                        if mod_name == key:
+                            idx = i
+                            break
+                if 0 <= idx < len(modules_list):
+                    modules_list[idx] = value
+                    msg = f"Updated tracked_modules at index {idx}: {value}"
+                else:
+                    modules_list.append(value)
+                    msg = f"Key '{key}' not found in tracked_modules; appended {value}"
+            else:
+                if isinstance(value, list):
+                    if "tracked_modules" in config and target_container is not config:
+                        config["tracked_modules"] = value
+                    else:
+                        target_container["tracked_modules"] = value
+                    msg = f"Set tracked_modules list to {len(value)} items"
+                else:
+                    return {"isError": True, "content": [{"type": "text", "text": "Error: 'value' must be a list when setting tracked_modules without key."}]}
+        elif action == "delete":
+            deleted = False
+            if key is not None:
+                if isinstance(key, int) or (isinstance(key, str) and key.isdigit()):
+                    idx = int(key)
+                    if 0 <= idx < len(modules_list):
+                        removed = modules_list.pop(idx)
+                        deleted = True
+                        msg = f"Deleted tracked_module at index {idx}: {removed}"
+                else:
+                    for i, item in enumerate(list(modules_list)):
+                        mod_name = item[0] if isinstance(item, list) and item else (item if isinstance(item, str) else "")
+                        if mod_name == key:
+                            modules_list.remove(item)
+                            deleted = True
+                            msg = f"Deleted tracked_module '{key}': {item}"
+                            break
+            elif value is not None:
+                if value in modules_list:
+                    modules_list.remove(value)
+                    deleted = True
+                    msg = f"Deleted tracked_module: {value}"
+            if not deleted:
+                return {"isError": True, "content": [{"type": "text", "text": f"Error: module key/value '{key or value}' not found in tracked_modules."}]}
+
+    elif section == "artifacts":
+        artifacts = config.setdefault("artifacts", {})
+        if not isinstance(artifacts, dict):
+            artifacts = {}
+            config["artifacts"] = artifacts
+
+        if action == "set":
+            if not key:
+                return {"isError": True, "content": [{"type": "text", "text": "Error: 'key' (artifact name) is required for set action on artifacts."}]}
+            artifacts[key] = value
+            msg = f"Set artifact '{key}' in doc_config.json"
+        elif action == "append":
+            if not key:
+                return {"isError": True, "content": [{"type": "text", "text": "Error: 'key' (artifact name) is required for append action on artifacts."}]}
+            art = artifacts.setdefault(key, {"description": "", "depends_on": []})
+            deps = art.setdefault("depends_on", [])
+            if isinstance(value, list):
+                for v in value:
+                    if v not in deps:
+                        deps.append(v)
+            elif value is not None:
+                if value not in deps:
+                    deps.append(value)
+            msg = f"Appended dependencies to artifact '{key}'"
+        elif action == "delete":
+            if not key:
+                return {"isError": True, "content": [{"type": "text", "text": "Error: 'key' is required for delete action on artifacts."}]}
+            if key in artifacts:
+                del artifacts[key]
+                msg = f"Deleted artifact '{key}' from doc_config.json"
+            else:
+                return {"isError": True, "content": [{"type": "text", "text": f"Error: artifact '{key}' not found in doc_config.json."}]}
+
+    elif section == "coverage_settings":
+        settings = config.setdefault("coverage_settings", {})
+        if not isinstance(settings, dict):
+            settings = {}
+            config["coverage_settings"] = settings
+
+        if action == "set":
+            if key:
+                settings[key] = value
+                msg = f"Set coverage_settings['{key}'] = {value}"
+            elif isinstance(value, dict):
+                settings.update(value)
+                msg = f"Updated coverage_settings with {list(value.keys())}"
+            else:
+                return {"isError": True, "content": [{"type": "text", "text": "Error: 'key' or dict 'value' is required for set action on coverage_settings."}]}
+        elif action == "append":
+            if not key:
+                return {"isError": True, "content": [{"type": "text", "text": "Error: 'key' is required for append action on coverage_settings."}]}
+            target_list = settings.setdefault(key, [])
+            if isinstance(target_list, list):
+                if isinstance(value, list):
+                    target_list.extend(value)
+                elif value is not None:
+                    target_list.append(value)
+                msg = f"Appended to coverage_settings['{key}']"
+            else:
+                return {"isError": True, "content": [{"type": "text", "text": f"Error: coverage_settings['{key}'] is not a list."}]}
+        elif action == "delete":
+            if not key:
+                return {"isError": True, "content": [{"type": "text", "text": "Error: 'key' is required for delete action on coverage_settings."}]}
+            if key in settings:
+                del settings[key]
+                msg = f"Deleted coverage_settings['{key}']"
+            else:
+                return {"isError": True, "content": [{"type": "text", "text": f"Error: key '{key}' not found in coverage_settings."}]}
+
+    ki_utils.save_doc_config(config)
+    return {"content": [{"type": "text", "text": msg}]}
+
+
+def tool_sync_agents_md(args: dict) -> dict:
+    jail = get_jail_dir()
+    if not jail:
+        return NO_WORKSPACE_ERROR
+
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+    import sync_agents_md
+    msg = sync_agents_md.sync_agents_md(args.get("agents_path"))
+    return {"content": [{"type": "text", "text": msg}]}
+
+
+def tool_create_adr(args: dict) -> dict:
+    jail = get_jail_dir()
+    project_root = get_project_root()
+    if not jail or not project_root:
+        return NO_WORKSPACE_ERROR
+
+    title = args.get("title", "").strip()
+    status = args.get("status", "Accepted").strip()
+    context = args.get("context", "").strip()
+    decision = args.get("decision", "").strip()
+    consequences = args.get("consequences", "").strip()
+    topic_name = args.get("topic_name", "").strip()
+
+    if not title or not topic_name:
+        return {"isError": True, "content": [{"type": "text", "text": "Error: 'title' and 'topic_name' are required."}]}
+
+    import re
+    topic_slug = re.sub(r"[^\w\-]+", "_", topic_name).strip("_").lower()
+
+    decisions_candidates = ki_utils.get_decisions_dirs(project_root, jail)
+    target_dir = None
+    for d in decisions_candidates:
+        if os.path.exists(d):
+            target_dir = d
+            break
+    if not target_dir:
+        target_dir = os.path.join(project_root, "decisions")
+        os.makedirs(target_dir, exist_ok=True)
+
+    max_num = 0
+    if os.path.exists(target_dir):
+        for f in os.listdir(target_dir):
+            m = re.match(r"^(\d+)", f)
+            if m:
+                num = int(m.group(1))
+                if num > max_num:
+                    max_num = num
+
+    next_id = f"{max_num + 1:03d}"
+    adr_filename = f"{next_id}_{topic_slug}.md"
+    adr_abs_path = os.path.join(target_dir, adr_filename)
+
+    import datetime
+    today = datetime.date.today().isoformat()
+
+    adr_content = f"""<!-- created: {today} -->
+<!-- status: {status} -->
+# ADR {next_id}: {title}
+
+**Status**: {status}  
+**Date**: {today}  
+
+## Context and Problem
+{context}
+
+## Decisions Made
+{decision}
+
+## Consequences
+{consequences}
+"""
+    with open(adr_abs_path, "w", encoding="utf-8") as f:
+        f.write(adr_content)
+
+    rel_doc_path = os.path.relpath(adr_abs_path, jail).replace("\\", "/")
+    if rel_doc_path.startswith(".."):
+        rel_doc_path = os.path.relpath(adr_abs_path, project_root).replace("\\", "/")
+
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+    import add_ki_to_config
+    reg_msg = add_ki_to_config.add_ki(
+        ki_name=rel_doc_path,
+        description=f"ADR {next_id}: {title} ({status})",
+        covers=["Architecture Decisions"],
+        depends_on=[],
+        summary=f"ADR {next_id}: {title}"
+    )
+
+    import sync_agents_md
+    sync_res = sync_agents_md.sync_agents_md()
+
+    return {
+        "content": [{
+            "type": "text",
+            "text": f"Created ADR {adr_filename} at {adr_abs_path}\n{reg_msg}\n{sync_res}"
+        }]
+    }
+
+
+def tool_read_file(args: dict) -> Any:
+    """Read a Knowledge Item or ADR file with optional section filtering and character limit."""
+    rel_path = args.get("rel_path", "").strip()
+    if not rel_path:
+        return "Error: 'rel_path' is required."
+
+    project_root = get_project_root()
+    jail = get_jail_dir()
+
+    target = None
+    # 1. Try resolving within jail (knowledge root)
+    if jail:
+        try:
+            cand = validate_path(rel_path)
+            if os.path.exists(cand):
+                target = cand
+        except Exception:
+            target = None
+
+    # 2. Try resolving ADR or path relative to project_root
+    if not target and project_root:
+        norm = ki_utils.normalize_path(rel_path, make_absolute=False)
+        candidates = ki_utils.get_decisions_dirs(project_root, jail)
+        # Check by basename in decisions dirs
+        for d in candidates:
+            cand_p = os.path.abspath(os.path.join(d, os.path.basename(norm)))
+            if os.path.exists(cand_p) and cand_p.endswith(".md"):
+                target = cand_p
+                break
+        if not target:
+            # Check relative to project root, ensuring it is within decisions or jail
+            cand_p = os.path.abspath(os.path.join(project_root, norm))
+            if os.path.exists(cand_p) and cand_p.endswith(".md"):
+                valid_prefixes = candidates + ([jail] if jail else [])
+                for vp in valid_prefixes:
+                    if os.path.normcase(cand_p).startswith(os.path.normcase(vp)):
+                        target = cand_p
+                        break
+
+    if not target or not os.path.exists(target):
+        return f"File not found: '{rel_path}'."
+
+    try:
+        with open(target, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read()
+    except Exception as e:
+        return f"Error reading file '{rel_path}': {e}"
+
+    section = args.get("section")
+    if section:
+        sec_content = facade.extract_markdown_section(content, section)
+        if sec_content is None:
+            return f"Section '{section}' not found in '{rel_path}'."
+        content = sec_content
+
+    max_chars = args.get("max_chars")
+    if max_chars is not None:
+        try:
+            mc = int(max_chars)
+            if mc > 0 and len(content) > mc:
+                content = content[:mc] + f"\n\n... [truncated to {mc} characters]"
+        except (ValueError, TypeError):
+            pass
+
+    return content
+
+
+# ─── Tool Dispatcher ─────────────────────────────────────────────────────────
 
 def handle_tool_call(name: str, args: dict) -> Any:
     try:
         if name == "ki_instructions":
             doc = args.get("document", "")
+            know_name = os.path.basename(ki_utils.get_knowledge_root()) or ".ki-base"
             if doc == "overview":
-                return GLOBAL_INSTRUCTIONS
+                return facade.render_instruction(GLOBAL_INSTRUCTIONS, CURRENT_TOOL_MODE, know_name)
             elif doc == "knowledge-items":
                 return f"Knowledge Items for this project:\n\n{ki_utils.get_ki_list_table()}"
             else:
                 wf_path = _WORKFLOWS_DIR / f"{doc}.md"
                 if wf_path.exists():
                     with open(wf_path, "r", encoding="utf-8") as f:
-                        return f.read()
+                        raw = f.read()
+                        return facade.render_instruction(raw, CURRENT_TOOL_MODE, know_name)
                 else:
                     available = [p.stem for p in _WORKFLOWS_DIR.glob("*.md")] if _WORKFLOWS_DIR.exists() else []
                     return (
@@ -765,13 +1279,13 @@ def handle_tool_call(name: str, args: dict) -> Any:
                         f"Available: overview, knowledge-items, {', '.join(available)}"
                     )
 
-        # ── Init ──
+        # â”€â”€ Init â”€â”€
         if name == "ki_init_project":
             sys.path.insert(0, str(_PACKAGE_DIR / "tools"))
             from scaffold import init_project
             return init_project(args)
 
-        # ── Registry ──
+        # â”€â”€ Registry â”€â”€
         if name == "ki_migrate_project":
             return scaffold.migrate_project(str(get_project_root()))
         if name == "ki_register_project":
@@ -798,7 +1312,7 @@ def handle_tool_call(name: str, args: dict) -> Any:
             ki_utils.save_registry(reg)
             return f"Pruned {before - len(reg['projects'])} stale project(s)."
 
-        # ── Coverage / Analysis ──
+        # â”€â”€ Coverage / Analysis â”€â”€
         if name == "audit_coverage":
             return run_script("audit_coverage.py")
 
@@ -874,8 +1388,17 @@ def handle_tool_call(name: str, args: dict) -> Any:
                 cmd_args.append("--dry-run")
             return run_script("finalize_ki_scaffolds.py", cmd_args)
 
+        # ─── Config & ADR Management ───
+        if name == "add_ki_to_config":
+            return tool_add_ki_to_config(args)
+        if name == "edit_doc_config":
+            return tool_edit_doc_config(args)
+        if name == "sync_agents_md":
+            return tool_sync_agents_md(args)
+        if name == "create_adr":
+            return tool_create_adr(args)
 
-        # ── File Ops ──
+        # ─── File Ops ───
         if name == "read_know_file":
             with open(validate_path(args["rel_path"]), "r", encoding="utf-8") as f:
                 return f.read()
@@ -908,7 +1431,7 @@ def handle_tool_call(name: str, args: dict) -> Any:
             os.makedirs(validate_path(args["rel_path"]), exist_ok=True)
             return "Directory created."
 
-        # ── Git ──
+        # â”€â”€ Git â”€â”€
         if name == "git_checkpoint":
             return tool_git_checkpoint(args)
         if name == "git_restore":
@@ -917,7 +1440,7 @@ def handle_tool_call(name: str, args: dict) -> Any:
             paths = args.get("paths", "").split(",") if args.get("paths") else []
             return run_script("git_diff_secured.py", paths)
 
-        # ── State ──
+        # â”€â”€ State â”€â”€
         if name in ("save_state", "restore_mapping"):
             jail = get_jail_dir()
             sys.path.insert(0, str(_SCRIPTS_DIR))
@@ -927,13 +1450,77 @@ def handle_tool_call(name: str, args: dict) -> Any:
                 return ke.restore_mapping()
             return str(ke.save_state(ke.capture_full_state()))
 
+        # ─── Search & Read ───
+        if name == "ki_search":
+            query = args.get("query", "").strip()
+            scope = args.get("scope", "all")
+            limit = int(args.get("limit", 10))
+            res = ki_search.search_knowledge(query, project_root=get_project_root(), scope=scope, limit=limit)
+            return json.dumps(res, ensure_ascii=False, indent=2)
+
+        if name == "ki_read":
+            return tool_read_file(args)
+
+        # ─── Facade Dispatchers & Catalog ───
+        if name == "ki_tools":
+            tool_name = args.get("name")
+            group_name = args.get("group")
+            if tool_name:
+                tools_map = {t["name"]: t for t in MCP_TOOLS}
+                for ct in COMPACT_TOOLS:
+                    tools_map[ct["name"]] = ct
+                if tool_name in tools_map:
+                    return json.dumps(tools_map[tool_name], ensure_ascii=False, indent=2)
+                return f"Tool '{tool_name}' not found."
+            return facade.format_tools_catalog(MCP_TOOLS, group_filter=group_name)
+
+        if name in ("ki_call", "ki_mutate"):
+            target_tool = args.get("tool", "").strip()
+            target_args = args.get("args")
+            if target_args is None:
+                target_args = {}
+            if not isinstance(target_args, dict):
+                return "Error: 'args' parameter must be an object/dict."
+            if not target_tool:
+                return "Error: 'tool' parameter is required."
+            if target_tool in ("ki_call", "ki_mutate"):
+                return "Cannot nest dispatcher calls."
+
+            tools_map = {t["name"]: t for t in MCP_TOOLS}
+            for ct in COMPACT_TOOLS:
+                tools_map[ct["name"]] = ct
+
+            if target_tool not in tools_map:
+                return f"Unknown tool: '{target_tool}'. Use ki_tools() to view available tools."
+
+            tool_def = tools_map[target_tool]
+            is_ro = tool_def.get("annotations", {}).get("readOnlyHint", False)
+
+            if name == "ki_call" and not is_ro:
+                return (
+                    f"Tool '{target_tool}' is state-modifying and cannot be called via ki_call. "
+                    f"Use ki_mutate(tool='{target_tool}', args=...) instead."
+                )
+            if name == "ki_mutate" and is_ro:
+                return (
+                    f"Tool '{target_tool}' is read-only. "
+                    f"Use ki_call(tool='{target_tool}', args=...) instead."
+                )
+
+            valid, err_msg = facade.validate_args_against_schema(tool_def.get("inputSchema", {}), target_args)
+            if not valid:
+                schema_json = json.dumps(tool_def.get("inputSchema", {}), ensure_ascii=False, indent=2)
+                return f"Invalid arguments for '{target_tool}': {err_msg}\nRequired Schema:\n{schema_json}"
+
+            return handle_tool_call(target_tool, target_args)
+
         return f"Unknown tool: {name}"
 
     except Exception as e:
         return f"Error in {name}: {str(e)}"
 
 
-# ─── MCP Main Loop ────────────────────────────────────────────────────────────
+# â”€â”€â”€ MCP Main Loop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _write_ide_instructions() -> None:
     """Write instructions.md to known IDE MCP config directories on startup.
@@ -951,7 +1538,8 @@ def _write_ide_instructions() -> None:
         home / ".windsurf" / "mcp" / "ki-manager",
         home / "Library" / "Application Support" / "Claude" / "mcp" / "ki-manager",
     ]
-    content = GLOBAL_INSTRUCTIONS
+    content = facade.render_instruction(GLOBAL_INSTRUCTIONS, CURRENT_TOOL_MODE)
+    tools_to_write = COMPACT_TOOLS if CURRENT_TOOL_MODE == "compact" else MCP_TOOLS
     for target_dir in candidates:
         # Only write if the parent MCP folder already exists (IDE is installed)
         if target_dir.parent.parent.exists():
@@ -960,12 +1548,25 @@ def _write_ide_instructions() -> None:
                 instructions_path = target_dir / "instructions.md"
                 instructions_path.write_text(content, encoding="utf-8")
                 safe_log(f"Wrote instructions.md → {instructions_path}")
+
+                # Sync tool schema JSON files if target is an IDE mcp tool directory
+                for tool in tools_to_write:
+                    try:
+                        tool_file = target_dir / f"{tool['name']}.json"
+                        schema_data = {
+                            "name": tool["name"],
+                            "description": tool["description"],
+                            "parameters": tool.get("inputSchema", {})
+                        }
+                        tool_file.write_text(json.dumps(schema_data, indent=2, ensure_ascii=False), encoding="utf-8")
+                    except Exception as te:
+                        safe_log(f"Could not write tool schema {tool['name']}.json: {te}")
             except Exception as e:
                 safe_log(f"Could not write instructions.md to {target_dir}: {e}")
 
 
 def _extract_workspace_from_meta(params: dict) -> Optional[str]:
-    """Извлекает workspace URI из _meta нового протокола (2026-07-28)."""
+    """ĐĐ·Đ˛Đ»ĐµĐşĐ°ĐµŃ‚ workspace URI Đ¸Đ· _meta Đ˝ĐľĐ˛ĐľĐłĐľ ĐżŃ€ĐľŃ‚ĐľĐşĐľĐ»Đ° (2026-07-28)."""
     meta = params.get("_meta", {})
     client_info = meta.get("io.modelcontextprotocol/clientInfo", {})
     return client_info.get("workspaceUri") or client_info.get("rootUri")
@@ -976,14 +1577,18 @@ def main():
     import argparse
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--workspace", type=str)
-    parser.add_argument("--mode", type=str, choices=["eager", "lazy"], default=None)
+    parser.add_argument("--tool-mode", type=str, choices=["full", "compact"], default=None)
     known, _ = parser.parse_known_args()
     if known.workspace:
         ki_utils.ACTIVE_WORKSPACE_PATH = ki_utils.normalize_path(known.workspace)
         
-    server_mode = known.mode
+    global CURRENT_TOOL_MODE
+    tool_mode = (known.tool_mode or os.environ.get("KI_TOOL_MODE", "full")).lower()
+    if tool_mode not in ("full", "compact"):
+        tool_mode = "full"
+    CURRENT_TOOL_MODE = tool_mode
 
-    safe_log(f"ki-manager MCP server started (PID: {os.getpid()}, mode: {server_mode})")
+    safe_log(f"ki-manager MCP server started (PID: {os.getpid()}, tool-mode: {tool_mode})")
     _write_ide_instructions()
 
     while True:
@@ -1011,7 +1616,7 @@ def main():
             method = req.get("method")
             params = req.get("params", {})
 
-            # Новый протокол: извлекаем workspace из _meta при каждом запросе
+            # ĐťĐľĐ˛Ń‹Đą ĐżŃ€ĐľŃ‚ĐľĐşĐľĐ»: Đ¸Đ·Đ˛Đ»ĐµĐşĐ°ĐµĐĽ workspace Đ¸Đ· _meta ĐżŃ€Đ¸ ĐşĐ°Đ¶Đ´ĐľĐĽ Đ·Đ°ĐżŃ€ĐľŃĐµ
             if not ki_utils.ACTIVE_WORKSPACE_PATH:
                 _ws = _extract_workspace_from_meta(params)
                 if _ws:
@@ -1067,10 +1672,12 @@ def main():
                     server_version = "2.0.11"
                 safe_log(f"DEBUG: After importlib. version={server_version}")
 
+                know_name = os.path.basename(ki_utils.get_knowledge_root()) or ".ki-base"
                 resp = {
                     "protocolVersion": "2026-07-28" if method == "server/discover" else "2024-11-05",
                     "capabilities": {"tools": {}, "prompts": {}, "resources": {}},
                     "serverInfo": {"name": "ki-manager", "version": server_version},
+                    "instructions": facade.render_instruction(GLOBAL_INSTRUCTIONS, CURRENT_TOOL_MODE, know_name),
                 }
                 if method == "server/discover":
                     resp["versions"] = ["2026-07-28", "2025-11-25", "2024-11-05"]
@@ -1085,12 +1692,13 @@ def main():
                 sys.stdout.flush()
 
             elif method == "tools/list":
-                send({"tools": MCP_TOOLS, "ttlMs": 300000, "cacheScope": "global"})
+                tools_list = COMPACT_TOOLS if tool_mode == "compact" else MCP_TOOLS
+                send({"tools": tools_list, "ttlMs": 300000, "cacheScope": "global"})
 
             elif method == "tools/call":
                 tool_name = params["name"]
                 tool_args = params.get("arguments", {})
-                # Fallback: пробуем взять workspace из аргументов инструмента
+                # Fallback: ĐżŃ€ĐľĐ±ŃĐµĐĽ Đ˛Đ·ŃŹŃ‚ŃŚ workspace Đ¸Đ· Đ°Ń€ĐłŃĐĽĐµĐ˝Ń‚ĐľĐ˛ Đ¸Đ˝ŃŃ‚Ń€ŃĐĽĐµĐ˝Ń‚Đ°
                 if not ki_utils.ACTIVE_WORKSPACE_PATH:
                     _ws_arg = tool_args.get("path") or tool_args.get("project_path")
                     if _ws_arg:
@@ -1107,19 +1715,23 @@ def main():
 
             elif method == "prompts/get":
                 prompt_name = params.get("name")
-                match = ki_utils.find_project_by_cwd()
+                know_name = os.path.basename(ki_utils.get_knowledge_root()) or ".ki-base"
                 content = None
-                if not match:
-                    content = "No registered project. Run ki_init_project first."
-                elif prompt_name == "knowledge-instructions":
-                    content = GLOBAL_INSTRUCTIONS
+                if prompt_name == "knowledge-instructions":
+                    content = facade.render_instruction(GLOBAL_INSTRUCTIONS, CURRENT_TOOL_MODE, know_name)
                 elif prompt_name == "knowledge-items":
-                    content = f"Knowledge Items for this project:\n\n{ki_utils.get_ki_list_table()}"
+                    match = ki_utils.find_project_by_cwd() or ki_utils.ACTIVE_WORKSPACE_PATH
+                    if not match:
+                        content = "No registered project. Run ki_init_project first."
+                    else:
+                        content = f"Knowledge Items for this project:\n\n{ki_utils.get_ki_list_table()}"
                 else:
                     wf_path = _WORKFLOWS_DIR / f"{prompt_name}.md"
                     if wf_path.exists():
                         with open(wf_path, "r", encoding="utf-8") as f:
-                            content = f.read()
+                            raw = f.read()
+                            know_name = os.path.basename(ki_utils.get_knowledge_root()) or ".ki-base"
+                            content = facade.render_instruction(raw, CURRENT_TOOL_MODE, know_name)
                     else:
                         content = f"Unknown prompt: {prompt_name}"
                 send({"messages": [{"role": "user", "content": {"type": "text", "text": content}}]})
@@ -1172,7 +1784,8 @@ def main():
                 
                 # Virtual resources
                 if uri == "ki://instructions.md":
-                    content = GLOBAL_INSTRUCTIONS
+                    know_name = os.path.basename(ki_utils.get_knowledge_root()) or ".ki-base"
+                    content = facade.render_instruction(GLOBAL_INSTRUCTIONS, CURRENT_TOOL_MODE, know_name)
                 elif uri == "ki://knowledge-items.md":
                     content = f"Knowledge Items for this project:\n\n{ki_utils.get_ki_list_table()}"
                 elif uri == "ki://adr-list.md":
@@ -1192,7 +1805,9 @@ def main():
                     wf_path = _WORKFLOWS_DIR / wf_name
                     if wf_path.exists():
                         with open(wf_path, "r", encoding="utf-8") as f:
-                            content = f.read()
+                            raw = f.read()
+                            know_name = os.path.basename(ki_utils.get_knowledge_root()) or ".ki-base"
+                            content = facade.render_instruction(raw, CURRENT_TOOL_MODE, know_name)
                 
                 # Physical resources in jail
                 elif jail and uri.startswith("ki://"):
@@ -1228,3 +1843,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
