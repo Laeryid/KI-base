@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- `ki_read` path resolution: resilient cascade resolving paths relative to knowledge root (`.ki-base` by default), project root, subfolder prefixes, or filename basenames across KI and ADR documents.
+- `ki_instructions` tool schema: aligned document list with active workflows (`scaffold-knowledge`, `expand-knowledge`, `sync-knowledge`, `create-adr`), removing deprecated `update-knowledge`.
+
+### Fixed
+- Fixed `KeyError: 'know_root'` in `ki_status` tool when checking active project status.
+
 ## [2.3.0.dev1] — 2026-10-05
 
 ### Added

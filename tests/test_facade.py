@@ -101,6 +101,18 @@ def test_ki_read_features(tmp_path, monkeypatch):
     assert "Main Title" in content
     assert "Different content." in content
 
+    # 1b. Test with jail set to .ki-base root and reading via various prefix forms
+    monkeypatch.setattr(server, "get_jail_dir", lambda: str(project_dir / ".ki-base"))
+    # (a) Basename lookup
+    content_base = server.handle_tool_call("ki_read", {"rel_path": "test_item.ki.md"})
+    assert "Main Title" in content_base
+    # (b) Path relative to jail
+    content_jail = server.handle_tool_call("ki_read", {"rel_path": "knowledge/test_item.ki.md"})
+    assert "Main Title" in content_jail
+    # (c) Path relative to project root with root folder prefix
+    content_proj = server.handle_tool_call("ki_read", {"rel_path": ".ki-base/knowledge/test_item.ki.md"})
+    assert "Main Title" in content_proj
+
     # 2. Section read
     sec_content = server.handle_tool_call("ki_read", {"rel_path": "test_item.ki.md", "section": "Architecture"})
     assert "Architecture Section" in sec_content

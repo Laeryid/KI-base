@@ -204,8 +204,8 @@ MCP_TOOLS = [
             "- 'knowledge-items' \u2014 table of registered KI files\n"
             "- 'create-adr' \u2014 workflow: document architectural decisions\n"
             "- 'expand-knowledge' \u2014 workflow: deep enrichment of KI files\n"
+            "- 'scaffold-knowledge' \u2014 workflow: bulk scaffold of uncovered modules\n"
             "- 'sync-knowledge' \u2014 workflow: sync KI after code changes\n"
-            "- 'update-knowledge' \u2014 workflow: update KI files\n"
             "Call this before starting any documentation workflow task."
         ),
         "inputSchema": {
@@ -1198,34 +1198,75 @@ def tool_read_file(args: dict) -> Any:
     jail = get_jail_dir()
 
     target = None
-    # 1. Try resolving within jail (knowledge root)
+    norm = ki_utils.normalize_path(rel_path, make_absolute=False)
+    base_name = os.path.basename(norm)
+
+    # 1. Try resolving within jail (knowledge root from config, default .ki-base)
     if jail:
+        # 1a. Direct path inside jail
         try:
-            cand = validate_path(rel_path)
-            if os.path.exists(cand):
+            cand = validate_path(norm)
+            if os.path.exists(cand) and os.path.isfile(cand):
                 target = cand
         except Exception:
             target = None
 
+        # 1b. Try inside jail/knowledge/ (standard structure: <jail>/knowledge/<file>)
+        if not target:
+            try:
+                cand = validate_path(os.path.join("knowledge", norm))
+                if os.path.exists(cand) and os.path.isfile(cand):
+                    target = cand
+            except Exception:
+                target = None
+
+        # 1c. If rel_path starts with the knowledge_root folder name itself (e.g. '.ki-base/...' or 'knowledge/...'),
+        # strip the prefix and resolve inside jail
+        if not target and project_root:
+            rel_to_proj = os.path.relpath(jail, project_root).replace("\\", "/")
+            if norm.startswith(rel_to_proj + "/"):
+                sub_path = norm[len(rel_to_proj) + 1:]
+                try:
+                    cand = validate_path(sub_path)
+                    if os.path.exists(cand) and os.path.isfile(cand):
+                        target = cand
+                except Exception:
+                    pass
+                if not target:
+                    try:
+                        cand = validate_path(os.path.join("knowledge", sub_path))
+                        if os.path.exists(cand) and os.path.isfile(cand):
+                            target = cand
+                    except Exception:
+                        pass
+
     # 2. Try resolving ADR or path relative to project_root
     if not target and project_root:
-        norm = ki_utils.normalize_path(rel_path, make_absolute=False)
         candidates = ki_utils.get_decisions_dirs(project_root, jail)
         # Check by basename in decisions dirs
         for d in candidates:
-            cand_p = os.path.abspath(os.path.join(d, os.path.basename(norm)))
-            if os.path.exists(cand_p) and cand_p.endswith(".md"):
+            cand_p = os.path.abspath(os.path.join(d, base_name))
+            if os.path.exists(cand_p) and cand_p.endswith(".md") and os.path.isfile(cand_p):
                 target = cand_p
                 break
         if not target:
             # Check relative to project root, ensuring it is within decisions or jail
             cand_p = os.path.abspath(os.path.join(project_root, norm))
-            if os.path.exists(cand_p) and cand_p.endswith(".md"):
+            if os.path.exists(cand_p) and cand_p.endswith(".md") and os.path.isfile(cand_p):
                 valid_prefixes = candidates + ([jail] if jail else [])
                 for vp in valid_prefixes:
                     if os.path.normcase(cand_p).startswith(os.path.normcase(vp)):
                         target = cand_p
                         break
+
+    # 3. Fallback: Search by basename in jail (knowledge root) and its subfolders
+    if not target and jail and os.path.exists(jail):
+        for root, _, files in os.walk(jail):
+            if base_name in files:
+                cand_p = os.path.abspath(os.path.join(root, base_name))
+                if cand_p.endswith(".md") and os.path.isfile(cand_p):
+                    target = cand_p
+                    break
 
     if not target or not os.path.exists(target):
         return f"File not found: '{rel_path}'."
@@ -1302,8 +1343,10 @@ def handle_tool_call(name: str, args: dict) -> Any:
             return "\n".join(f"- {v['name']}: {k}" for k, v in reg["projects"].items())
         if name == "ki_status":
             match = ki_utils.find_project_by_cwd(args.get("path"))
-            return (f"Active: {match['name']} at {match['know_root']}" if match
-                    else "No project active for current workspace.")
+            if match:
+                loc = get_jail_dir() or match.get("workspace", "")
+                return f"Active: {match['name']} at {loc}"
+            return "No project active for current workspace."
         if name == "ki_prune_registry":
             reg = ki_utils.load_registry()
             before = len(reg["projects"])

@@ -112,7 +112,7 @@ KI_READ_TOOL = {
         "properties": {
             "rel_path": {
                 "type": "string",
-                "description": "Relative path to file from knowledge root or project root (e.g. '_OVERVIEW.ki.md' or 'decisions/0001_some.md').",
+                "description": "Path or filename of the Knowledge Item or ADR (e.g. 'KI_architecture.md', 'knowledge/KI_architecture.md', or '001_some.md').",
             },
             "section": {
                 "type": "string",
