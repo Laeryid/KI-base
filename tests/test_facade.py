@@ -119,14 +119,26 @@ def test_ki_read_features(tmp_path, monkeypatch):
     assert "detailed architecture information" in sec_content
     assert "Different content." not in sec_content
 
-    # 3. max_chars truncation
+    # 3. max_chars truncation and offset
     trunc_content = server.handle_tool_call("ki_read", {"rel_path": "test_item.ki.md", "max_chars": 30})
-    assert len(trunc_content) < 80
+    assert len(trunc_content) < 120
     assert "truncated to 30" in trunc_content
+
+    offset_content = server.handle_tool_call("ki_read", {"rel_path": "test_item.ki.md", "offset": 10, "max_chars": 30})
+    assert offset_content.startswith(content[10:40])
 
     # 4. File not found
     not_found = server.handle_tool_call("ki_read", {"rel_path": "missing.ki.md"})
     assert "File not found" in not_found
+
+    # 5. ki_search through server.handle_tool_call (markdown and json formats)
+    search_md = server.handle_tool_call("ki_search", {"query": "Architecture"})
+    assert "Found 1 result(s)" in search_md
+    assert "test_item.ki.md" in search_md
+
+    search_json = server.handle_tool_call("ki_search", {"query": "Architecture", "format": "json"})
+    assert '"results": [' in search_json
+
 
 
 def test_compact_mode_via_cli():

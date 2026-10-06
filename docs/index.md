@@ -133,12 +133,31 @@ ki_register_project(
 
 ---
 
+## Tool Modes: Full vs. Compact Facade
+
+`ki-manager` supports two exposure modes for MCP tools:
+- **Full mode (`--tool-mode full`, default)**: Exposes all 33 granular tools.
+- **Compact mode (`--tool-mode compact` or `KI_TOOL_MODE=compact`)**: Exposes only **6 facade tools**, saving thousands of context tokens while keeping full functionality:
+  1. `ki_instructions` — workflow guidelines and AI rules.
+  2. `ki_search` — BM25 search across Knowledge Items & ADRs with concise Markdown output and pagination (`offset`).
+  3. `ki_read` — fast reading of KIs/ADRs with section filtering (`section`), character truncation (`max_chars`), and offset (`offset`).
+  4. `ki_tools` — inspect catalog and schemas of specific tools.
+  5. `ki_call` — execute read-only tools.
+  6. `ki_mutate` — execute state-modifying tools.
+
+---
+
 ### 3. Start documenting
 
 Use the available tools or slash commands:
 
 | Tool / Command | Action |
 |----------------|--------|
+| `ki_search` | BM25 search across KIs and ADRs with concise Markdown results and pagination (`offset`, `limit`) |
+| `ki_read` | Read KIs or ADRs with section filtering (`section`), length limit (`max_chars`), and offset (`offset`) |
+| `ki_instructions` | Access bundled workflow guides and agent navigation rules |
+| `ki_tools` | Inspect tool schemas and catalog (compact facade mode) |
+| `ki_call` / `ki_mutate` | Dispatch read-only or mutating operations through compact facade |
 | `ki_register_project` | Register project in global registry (supports `config_path` or `workspace` + `inline_config`) |
 | `ki_list_projects` | List all registered projects |
 | `ki_status` | Check active workspace and resolved paths |

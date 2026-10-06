@@ -196,7 +196,8 @@ def search_knowledge(
     query: str,
     project_root: Optional[str] = None,
     scope: str = "all",
-    limit: int = 10,
+    limit: int = 5,
+    offset: int = 0,
     k1: float = 1.5,
     b: float = 0.75,
 ) -> Dict[str, Any]:
@@ -206,7 +207,8 @@ def search_knowledge(
     :param query: Search string (e.g. "workspace detection" or "управление зависимостями")
     :param project_root: Root path of the project. If None, resolved via ki_utils.
     :param scope: "all", "ki", or "adr".
-    :param limit: Max number of results to return.
+    :param limit: Max number of results to return (default: 5).
+    :param offset: Offset index for pagination (default: 0).
     :param k1: BM25 k1 parameter.
     :param b: BM25 b parameter.
     """
@@ -296,10 +298,45 @@ def search_knowledge(
             })
 
     scored_results.sort(key=lambda x: x["score"], reverse=True)
-    final_results = scored_results[:limit]
+    safe_offset = max(0, offset)
+    final_results = scored_results[safe_offset : safe_offset + limit]
 
     return {
         "query": query,
         "total": len(scored_results),
+        "offset": safe_offset,
+        "limit": limit,
         "results": final_results,
     }
+
+
+def format_search_markdown(search_dict: Dict[str, Any]) -> str:
+    """Formats search results into a clean, compact Markdown summary."""
+    query = search_dict.get("query", "")
+    total = search_dict.get("total", 0)
+    results = search_dict.get("results", [])
+    offset = search_dict.get("offset", 0)
+    limit = search_dict.get("limit", 5)
+
+    if total == 0 or not results:
+        return f'No documentation matching "{query}" found.'
+
+    start_idx = offset + 1
+    end_idx = offset + len(results)
+    out = [f'Found {total} result(s) for "{query}" (showing {start_idx}-{end_idx}):\n']
+
+    for i, r in enumerate(results, start=start_idx):
+        doc_type = r.get("type", "ki").upper()
+        title = r.get("title", "")
+        path = r.get("path", "")
+        score = r.get("score", 0.0)
+        snippet = r.get("snippet", "").strip()
+
+        out.append(f"{i}. [{doc_type}] **{title}** (`{path}`, score: {score})")
+        if snippet:
+            out.append(f"   > {snippet}")
+
+    if end_idx < total:
+        out.append(f"\n*Showing {end_idx} of {total} results. Call ki_search(query='{query}', offset={end_idx}) to view more.*")
+
+    return "\n".join(out)

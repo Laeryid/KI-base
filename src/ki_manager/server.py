@@ -679,7 +679,11 @@ MCP_TOOLS = [
         ),
         "inputSchema": {
             "type": "object",
-            "properties": {"rel_path": {"type": "string", "description": "Path relative to knowledge root/"}},
+            "properties": {
+                "rel_path": {"type": "string", "description": "Path relative to knowledge root/"},
+                "max_chars": {"type": "integer", "description": "Optional maximum number of characters to return"},
+                "offset": {"type": "integer", "default": 0, "description": "Optional character offset to start reading from"},
+            },
             "required": ["rel_path"],
         },
         "annotations": {
@@ -1284,14 +1288,31 @@ def tool_read_file(args: dict) -> Any:
             return f"Section '{section}' not found in '{rel_path}'."
         content = sec_content
 
+    offset = 0
+    if args.get("offset") is not None:
+        try:
+            offset = max(0, int(args["offset"]))
+        except (ValueError, TypeError):
+            offset = 0
+
     max_chars = args.get("max_chars")
     if max_chars is not None:
         try:
             mc = int(max_chars)
-            if mc > 0 and len(content) > mc:
-                content = content[:mc] + f"\n\n... [truncated to {mc} characters]"
+            if mc > 0:
+                total_len = len(content)
+                chunk = content[offset : offset + mc]
+                if offset + mc < total_len:
+                    content = chunk + f"\n\n... [truncated to {mc} characters, offset {offset} of {total_len}]"
+                else:
+                    content = chunk
+            elif offset > 0:
+                content = content[offset:]
         except (ValueError, TypeError):
-            pass
+            if offset > 0:
+                content = content[offset:]
+    elif offset > 0:
+        content = content[offset:]
 
     return content
 
@@ -1444,7 +1465,28 @@ def handle_tool_call(name: str, args: dict) -> Any:
         # ─── File Ops ───
         if name == "read_know_file":
             with open(validate_path(args["rel_path"]), "r", encoding="utf-8") as f:
-                return f.read()
+                content = f.read()
+            offset = 0
+            if args.get("offset") is not None:
+                try:
+                    offset = max(0, int(args["offset"]))
+                except (ValueError, TypeError):
+                    offset = 0
+            max_chars = args.get("max_chars")
+            if max_chars is not None:
+                try:
+                    mc = int(max_chars)
+                    if mc > 0:
+                        total_len = len(content)
+                        chunk = content[offset : offset + mc]
+                        if offset + mc < total_len:
+                            return chunk + f"\n\n... [truncated to {mc} characters, offset {offset} of {total_len}]"
+                        return chunk
+                except (ValueError, TypeError):
+                    pass
+            if offset > 0:
+                return content[offset:]
+            return content
         if name == "write_know_file":
             p = validate_path(args["rel_path"], is_write=True)
             os.makedirs(os.path.dirname(p), exist_ok=True)
@@ -1497,9 +1539,13 @@ def handle_tool_call(name: str, args: dict) -> Any:
         if name == "ki_search":
             query = args.get("query", "").strip()
             scope = args.get("scope", "all")
-            limit = int(args.get("limit", 10))
-            res = ki_search.search_knowledge(query, project_root=get_project_root(), scope=scope, limit=limit)
-            return json.dumps(res, ensure_ascii=False, indent=2)
+            limit = int(args.get("limit", 5))
+            offset = int(args.get("offset", 0))
+            fmt = args.get("format", "markdown")
+            res = ki_search.search_knowledge(query, project_root=get_project_root(), scope=scope, limit=limit, offset=offset)
+            if fmt == "json":
+                return json.dumps(res, ensure_ascii=False, indent=2)
+            return ki_search.format_search_markdown(res)
 
         if name == "ki_read":
             return tool_read_file(args)

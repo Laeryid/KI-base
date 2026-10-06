@@ -96,3 +96,40 @@ def test_search_empty_query_and_corpus(tmp_path):
     res = ki_search.search_knowledge("", project_root=str(empty_dir))
     assert res["total"] == 0
     assert res["results"] == []
+
+
+def test_search_pagination_and_formatting(tmp_path):
+    project_dir = tmp_path / "proj"
+    project_dir.mkdir()
+    know_dir = project_dir / ".ki-base" / "knowledge"
+    know_dir.mkdir(parents=True)
+
+    for i in range(7):
+        (know_dir / f"item_{i}.ki.md").write_text(
+            f"# Item {i}\nInformation about architecture topic {i}.\n",
+            encoding="utf-8"
+        )
+
+    # Test limit=3, offset=0
+    res_page1 = ki_search.search_knowledge("architecture", project_root=str(project_dir), limit=3, offset=0)
+    assert res_page1["total"] == 7
+    assert len(res_page1["results"]) == 3
+    assert res_page1["offset"] == 0
+
+    # Test limit=3, offset=3
+    res_page2 = ki_search.search_knowledge("architecture", project_root=str(project_dir), limit=3, offset=3)
+    assert res_page2["total"] == 7
+    assert len(res_page2["results"]) == 3
+    assert res_page2["offset"] == 3
+    assert res_page1["results"][0]["path"] != res_page2["results"][0]["path"]
+
+    # Test markdown formatting
+    md = ki_search.format_search_markdown(res_page1)
+    assert "Found 7 result(s)" in md
+    assert "showing 1-3" in md
+    assert "to view more" in md
+
+    # Empty search markdown
+    empty_md = ki_search.format_search_markdown({"query": "unknown", "total": 0, "results": []})
+    assert "No documentation matching" in empty_md
+

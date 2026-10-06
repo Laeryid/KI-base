@@ -87,8 +87,19 @@ KI_SEARCH_TOOL = {
             },
             "limit": {
                 "type": "integer",
-                "default": 10,
-                "description": "Maximum number of results to return (default: 10).",
+                "default": 5,
+                "description": "Maximum number of results to return (default: 5).",
+            },
+            "offset": {
+                "type": "integer",
+                "default": 0,
+                "description": "Result offset for pagination (default: 0).",
+            },
+            "format": {
+                "type": "string",
+                "enum": ["markdown", "json"],
+                "default": "markdown",
+                "description": "Output format: 'markdown' (compact list, default) or 'json'.",
             },
         },
         "required": ["query"],
@@ -105,7 +116,7 @@ KI_READ_TOOL = {
     "name": "ki_read",
     "description": (
         "Read a Knowledge Item (KI) or ADR markdown file. "
-        "Supports optional section filtering (by markdown header) and character limits to save tokens."
+        "Supports optional section filtering (by markdown header), character limits, and offset."
     ),
     "inputSchema": {
         "type": "object",
@@ -121,6 +132,11 @@ KI_READ_TOOL = {
             "max_chars": {
                 "type": "integer",
                 "description": "Optional maximum number of characters to return (truncates if exceeded).",
+            },
+            "offset": {
+                "type": "integer",
+                "default": 0,
+                "description": "Optional character offset to start reading from (default: 0).",
             },
         },
         "required": ["rel_path"],

@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.0.dev2] — 2026-10-06
+
+### Added
+- `ki_search` output summarization & pagination: compact Markdown list formatting by default (saving up to 60% of context tokens and preventing MCP client disk dumping), reduced default result limit from 10 to 5, and added `offset` parameter for seamless result pagination.
+- `ki_search` format option: added `format: "markdown"|"json"` allowing clients to choose between compact human/LLM-readable lists or raw JSON.
+- `ki_read` and `read_know_file` character offset: added optional `offset` parameter enabling targeted reading from specific character positions without requiring repeated full reads.
+
 ### Changed
 - `ki_read` path resolution: resilient cascade resolving paths relative to knowledge root (`.ki-base` by default), project root, subfolder prefixes, or filename basenames across KI and ADR documents.
 - `ki_instructions` tool schema: aligned document list with active workflows (`scaffold-knowledge`, `expand-knowledge`, `sync-knowledge`, `create-adr`), removing deprecated `update-knowledge`.
