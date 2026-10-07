@@ -4,7 +4,7 @@ import argparse
 import io
 from typing import Dict, List, Optional
 
-# Добавляем путь к скриптам, чтобы импортировать ki_utils
+# Add path to scripts to import ki_utils
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ki_utils
 
@@ -17,7 +17,7 @@ def format_size(size_bytes: int) -> str:
         return f"{size_bytes / (1024 * 1024):.2f} MB"
 
 def get_tracked_files(config: Dict) -> Dict[str, str]:
-    """Возвращает мапу {путь_к_файлу: имя_KI}"""
+    """Returns a map {file_path: KI_name}"""
     tracked = {}
     ki_items = config.get("knowledge_items", {})
     for ki_name, ki_data in ki_items.items():
@@ -30,7 +30,7 @@ def analyze_path(target_path: str, recursive: bool = False):
     config = ki_utils.get_doc_config()
     tracked_map = get_tracked_files(config)
     
-    # Резолвим абсолютный путь
+    # Resolve absolute path
     abs_target = os.path.normpath(os.path.join(project_root, target_path))
 
     if not os.path.exists(abs_target):
@@ -87,7 +87,7 @@ def analyze_path(target_path: str, recursive: bool = False):
             continue
 
 def main():
-    # Исправление кодировки для Windows при прямом запуске
+    # Fix encoding for Windows when run directly
     if sys.platform == "win32":
         import io
         sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")

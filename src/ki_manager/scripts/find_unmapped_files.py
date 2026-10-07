@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import List
 
-# Добавляем путь к ki_utils
+# Add path to ki_utils
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ki_utils
 
@@ -17,7 +17,7 @@ def get_unmapped_files(target_path: str = ".") -> List[str]:
     if not project_root or not doc_config:
         return []
 
-    # 1. Собираем все файлы, которые уже замаплены в doc_config.json
+    # 1. Collect all files that are already mapped in doc_config.json
     mapped_paths = set()
     knowledge_items = doc_config.get("knowledge_items", {})
 
@@ -27,7 +27,7 @@ def get_unmapped_files(target_path: str = ".") -> List[str]:
             abs_p = os.path.abspath(os.path.join(project_root, p))
             mapped_paths.add(abs_p)
 
-    # 2. Сканируем целевую директорию
+    # 2. Scan the target directory
     abs_target = os.path.abspath(os.path.join(project_root, target_path))
     if not os.path.exists(abs_target):
         return []

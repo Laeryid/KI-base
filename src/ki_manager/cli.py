@@ -20,10 +20,10 @@ _WORKFLOWS_DIR = _PACKAGE_DIR / "workflows"
 
 
 def _parse_frontmatter(text: str) -> tuple[dict, str]:
-    """Парсит YAML frontmatter из маркдаун-файла.
+    """Parses YAML frontmatter from a markdown file.
     
-    Возвращает (meta_dict, body_text).
-    Если frontmatter нет — возвращает ({}, text).
+    Returns (meta_dict, body_text).
+    If there is no frontmatter, returns ({}, text).
     """
     if not text.startswith("---"):
         return {}, text

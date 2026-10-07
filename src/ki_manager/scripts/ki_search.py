@@ -204,7 +204,7 @@ def search_knowledge(
     """
     Searches Knowledge Items and ADRs with BM25 ranking.
 
-    :param query: Search string (e.g. "workspace detection" or "управление зависимостями")
+    :param query: Search string (e.g. "workspace detection" or "dependency management")
     :param project_root: Root path of the project. If None, resolved via ki_utils.
     :param scope: "all", "ki", or "adr".
     :param limit: Max number of results to return (default: 5).

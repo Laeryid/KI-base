@@ -37,7 +37,10 @@ It provides:
    {
      "mcpServers": {
        "ki-manager": {
-         "command": "ki-manager"
+         "command": "ki-manager",
+         "args": ["--tool-mode", "compact"],
+         "directTools": true,
+         "lifecycle": "eager"
        }
      }
    }

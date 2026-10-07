@@ -77,7 +77,7 @@ KI_SEARCH_TOOL = {
         "properties": {
             "query": {
                 "type": "string",
-                "description": "Search query keywords (Russian or English, e.g. 'workspace detection' or 'управление зависимостями').",
+                "description": "Search query keywords (e.g. 'workspace detection' or 'dependency management').",
             },
             "scope": {
                 "type": "string",
