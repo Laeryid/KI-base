@@ -486,3 +486,133 @@ def test_add_ki_to_config_cli_negative_invalid_json(monkeypatch):
     with pytest.raises(SystemExit) as excinfo:
         add_ki_to_config.main()
     assert excinfo.value.code == 1
+
+
+# ─── 5. Enhanced ADR Features Tests (Supersedes list, Invariants, Alternatives, Scope) ───
+
+def test_create_adr_with_supersedes_list(mock_ki_project):
+    proj_dir, ki_base = mock_ki_project
+    decisions_dir = ki_base / "decisions"
+
+    # 1. Create ADR 001
+    server.handle_tool_call("create_adr", {
+        "title": "Old Approach 1",
+        "status": "Accepted",
+        "context": "Context 1",
+        "decision": "Decision 1",
+        "consequences": "Consequences 1",
+        "topic_name": "old_one"
+    })
+    # 2. Create ADR 002
+    server.handle_tool_call("create_adr", {
+        "title": "Old Approach 2",
+        "status": "Accepted",
+        "context": "Context 2",
+        "decision": "Decision 2",
+        "consequences": "Consequences 2",
+        "topic_name": "old_two"
+    })
+
+    adr1_path = decisions_dir / "001_old_one.md"
+    adr2_path = decisions_dir / "002_old_two.md"
+    assert adr1_path.exists()
+    assert adr2_path.exists()
+
+    # 3. Create ADR 003 that supersedes both 001 and 002
+    res3 = server.handle_tool_call("create_adr", {
+        "title": "Consolidated New Architecture",
+        "status": "Accepted",
+        "context": "Both old approaches failed concurrency requirements.",
+        "decision": "Use Unified Engine.",
+        "consequences": "Much simpler architecture.",
+        "topic_name": "unified_engine",
+        "supersedes": ["001", "002"],
+        "rejected_alternatives": "- Polling queues: high latency\n- Raw threads: race conditions",
+        "invariants": "- [MUST] Use async I/O\n- [MUST NOT] Block event loop",
+        "verification": "pytest tests/test_engine.py"
+    })
+    msg3 = res3["content"][0]["text"]
+    assert "Created ADR 003_unified_engine.md" in msg3
+    assert "Updated superseded ADRs: 001_old_one.md, 002_old_two.md" in msg3
+
+    # Verify ADR 001 was updated
+    content1 = adr1_path.read_text(encoding="utf-8")
+    assert "<!-- status: Superseded by ADR 003 -->" in content1
+    assert "**Status**: Superseded by [ADR 003](./003_unified_engine.md)" in content1
+    assert "> [!WARNING]" in content1
+    assert "This ADR is superseded by [ADR 003: Consolidated New Architecture](./003_unified_engine.md)" in content1
+
+    # Verify ADR 002 was updated
+    content2 = adr2_path.read_text(encoding="utf-8")
+    assert "<!-- status: Superseded by ADR 003 -->" in content2
+    assert "**Status**: Superseded by [ADR 003](./003_unified_engine.md)" in content2
+    assert "> [!WARNING]" in content2
+
+    # Verify ADR 003 content
+    adr3_path = decisions_dir / "003_unified_engine.md"
+    assert adr3_path.exists()
+    content3 = adr3_path.read_text(encoding="utf-8")
+    assert "<!-- supersedes: 001, 002 -->" in content3
+    assert "**Supersedes**: [ADR 001](./001_old_one.md), [ADR 002](./002_old_two.md)" in content3
+    assert "**Environment**:" in content3
+    assert "## Alternatives Considered & Rejected" in content3
+    assert "Polling queues: high latency" in content3
+    assert "## Invariants & Rules for AI" in content3
+    assert "[MUST] Use async I/O" in content3
+    assert "## Verification" in content3
+    assert "pytest tests/test_engine.py" in content3
+
+    # Verify doc_config.json update
+    doc_cfg = ki_utils.get_doc_config()
+    for k, v in doc_cfg["knowledge_items"].items():
+        if "001_old_one.md" in k or "002_old_two.md" in k:
+            assert "(Superseded by ADR 003)" in v["description"]
+
+    # Verify parse_adr_file and get_adr_table
+    parsed = ki_utils.parse_adr_file(str(adr3_path), str(proj_dir))
+    assert parsed["supersedes"] == ["001", "002"]
+
+    adr_table = ki_utils.get_adr_table()
+    assert "Superseded by ADR 003" in adr_table
+
+
+def test_create_adr_affected_files_and_ki_mapping(mock_ki_project):
+    proj_dir, ki_base = mock_ki_project
+    doc_cfg_file = ki_base / "doc_config.json"
+    doc_data = json.loads(doc_cfg_file.read_text(encoding="utf-8"))
+    doc_data["knowledge_items"]["KI_storage.md"] = {
+        "summary": "Storage layer",
+        "covers": ["Storage"],
+        "depends_on": ["src/storage.py", "src/models/"]
+    }
+    doc_cfg_file.write_text(json.dumps(doc_data, indent=2), encoding="utf-8")
+
+    res = server.handle_tool_call("create_adr", {
+        "title": "Use Parquet for Cold Storage",
+        "context": "Need columnar format.",
+        "decision": "Adopt Parquet.",
+        "consequences": "Faster analytics.",
+        "topic_name": "parquet_storage",
+        "affected_files": ["src/storage.py", "src/extra.py"]
+    })
+    assert res.get("isError") is not True
+    msg = res["content"][0]["text"]
+    assert "Linked to Knowledge Items: KI_storage.md" in msg
+
+    # Verify file content
+    adr_path = ki_base / "decisions" / "001_parquet_storage.md"
+    content = adr_path.read_text(encoding="utf-8")
+    assert "## Scope & Affected Files" in content
+    assert "`src/storage.py` (Related KI: `KI_storage.md`)" in content
+    assert "- `src/extra.py`" in content
+
+    # Verify doc_config registered depends_on
+    updated_cfg = ki_utils.get_doc_config()
+    registered = None
+    for k, v in updated_cfg["knowledge_items"].items():
+        if "001_parquet_storage.md" in k:
+            registered = v
+            break
+    assert registered is not None
+    assert "KI_storage.md" in registered["depends_on"]
+

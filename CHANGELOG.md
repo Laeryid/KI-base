@@ -9,15 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.0.dev3] — 2026-10-09
+
 ### Added
+- `create_adr` batch `supersedes` support: accept a list of previous ADR IDs (`supersedes: ["001", "002"]`) to supersede multiple older records simultaneously; automatically updates deprecated ADR files with warning banners and `Superseded by ADR XXX` statuses, updates `doc_config.json`, and embeds bi-directional cross-links in the generated ADR.
+- Automated contextual provenance in `create_adr`: deterministically captures Git HEAD commit hash, current branch, and author, as well as an environment snapshot (operating system, Python runtime, and `ki-manager` version) without LLM overhead or prompt tokens.
+- Automated Scope & Knowledge Graph linking in `create_adr`: automatically discovers modified project files from Git or accepts explicit `affected_files`, correlates them with Knowledge Items in `doc_config.json`, and records them in the ADR's `depends_on` dependencies list.
+- Structured ADR quality sections: added support for `rejected_alternatives` (documenting abandoned paths and failed attempts to prevent regression loops), `invariants` (enforceable MUST / MUST NOT rules for future AI sessions), and `verification` (automated test commands or validation checklists).
 - `check_ki_drift` MCP tool & CLI script: automated discrepancy detection between Knowledge Items and the codebase, flagging dead symbols, unmapped public symbols, missing `depends_on` files, broken `[[KI_*.md]]` wiki-links, and Git date discrepancies against `last_verified`.
-- AST pre-enrichment in `generate_ki_scaffolds.py`: parses Python AST to pre-populate module docstrings into `## Overview`, class/function docstrings into the `Key Components` table, signatures, detected environment variables, and discovered test commands from `tests/`.
-- Canonical KI template (`src/ki_manager/templates/KI_template.md`) featuring `## Entry Points & Public API` and `## Testing & Verification` sections.
-- Integrated `check_ki_drift` into the `/sync-knowledge` workflow and the `coverage_analysis` tool group in `facade.py` for both full and compact tool modes.
+- AST pre-enrichment in `generate_ki_scaffolds`: parses Python AST to pre-populate module docstrings into `## Overview`, class/function docstrings into the `Key Components` table, signatures, detected environment variables, and discovered test commands from `tests/`.
+- Canonical KI template featuring `## Entry Points & Public API` and `## Testing & Verification` sections, along with an updated canonical ADR template.
+- Integrated `check_ki_drift` into the `/sync-knowledge` workflow and the `coverage_analysis` tool group in facade mode.
 
 ### Changed
-- Aligned KI structures across `scaffold-knowledge.md`, `expand-knowledge.md`, `sync-knowledge.md`, `scaffold.py`, and `generate_ki_scaffolds.py` to the canonical template.
-- Made `finalize_ki_scaffolds.py` summary extraction resilient and backwards-compatible with legacy `## Purpose` and `## What it Does` headers.
+- Updated `/create-adr` workflow instructions and tool schemas with the new ADR parameters across both full and compact tool modes.
+- Aligned KI structures across `scaffold-knowledge.md`, `expand-knowledge.md`, `sync-knowledge.md`, and scaffold generators to the canonical template.
+- Made `finalize_ki_scaffolds` summary extraction resilient and backwards-compatible with legacy `## Purpose` and `## What it Does` headers.
 - Cleaned up duplicate local `knowledge/KI_template.md` in favor of package template.
 
 ## [2.3.0.dev2] — 2026-10-06

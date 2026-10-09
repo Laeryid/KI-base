@@ -509,6 +509,18 @@ def parse_adr_file(filepath: str, project_root: str = None) -> dict:
             if len(summary) > 120:
                 summary = summary[:117] + "..."
 
+    # Parse supersedes
+    supersedes = []
+    m_sup = re.search(r"<!--\s*supersedes:\s*([^\n\r>]+?)\s*-->", content, re.IGNORECASE)
+    if not m_sup:
+        m_sup = re.search(r"\*\*Supersedes\*\*:\s*([^\n\r]+)", content, re.IGNORECASE)
+    if m_sup:
+        # Extract numeric IDs or file references
+        raw_sup = m_sup.group(1)
+        for s in re.findall(r"\b\d{3}\b|\b\d+\b", raw_sup):
+            if s not in supersedes:
+                supersedes.append(s.zfill(3) if s.isdigit() else s)
+
     return {
         "id": adr_id,
         "title": title,
@@ -517,7 +529,8 @@ def parse_adr_file(filepath: str, project_root: str = None) -> dict:
         "summary": summary,
         "file": filename,
         "rel_path": rel_path,
-        "abs_path": filepath
+        "abs_path": filepath,
+        "supersedes": supersedes
     }
 
 

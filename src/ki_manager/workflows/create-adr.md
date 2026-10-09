@@ -51,16 +51,18 @@ Before writing the document, the AI must analyze the context of recent changes t
 ## Step 1 — Create and Register ADR
 Use the dedicated `create_adr` tool. It automatically:
 - Assigns the next sequential numeric ID prefix (`XXX`).
-- Formats standard Markdown structure with date, context, decision, and impact.
-- Registers the ADR entry into `doc_config.json`.
-- Runs `sync_agents_md` to update the ADR index table in `AGENTS.md`.
+- Collects **Git Provenance** (commit, branch, author) and **Environment Snapshot** (OS, Python version).
+- Detects **Scope & Affected Files** and maps them to related Knowledge Items in `doc_config.json`.
+- If `supersedes` is specified, automatically updates the older ADRs with a warning banner, marks them as `Superseded by ADR XXX`, and updates `doc_config.json`.
+- Formats standard Markdown structure with date, context, decision, impact, and optional sections for rejected alternatives, invariants, and verification.
+- Registers the ADR entry into `doc_config.json` with linked dependencies and updates `AGENTS.md`.
 
 <!-- if-compact -->
 // turbo
-`ki_mutate(tool="create_adr", args={"title": "<Descriptive Title>", "topic_name": "<short_topic_slug>", "context": "<Context and Problem statement>", "decision": "<Specific architectural decision reached>", "consequences": "<Positive and negative trade-offs>"})`
+`ki_mutate(tool="create_adr", args={"title": "<Descriptive Title>", "topic_name": "<short_topic_slug>", "context": "<Context and Problem statement>", "decision": "<Specific architectural decision reached>", "consequences": "<Positive and negative trade-offs>", "supersedes": ["<optional_old_id_1>", "<optional_old_id_2>"], "rejected_alternatives": "<what failed and why>", "invariants": "- [MUST] <rule>\n- [MUST NOT] <antipattern>", "verification": "<pytest command or test>"})`
 <!-- else-compact -->
 // turbo
-`create_adr(title="<Descriptive Title>", topic_name="<short_topic_slug>", context="<Context and Problem statement>", decision="<Specific architectural decision reached>", consequences="<Positive and negative trade-offs>")`
+`create_adr(title="<Descriptive Title>", topic_name="<short_topic_slug>", context="<Context and Problem statement>", decision="<Specific architectural decision reached>", consequences="<Positive and negative trade-offs>", supersedes=["<optional_old_id_1>", "<optional_old_id_2>"], rejected_alternatives="<what failed and why>", invariants="- [MUST] <rule>\n- [MUST NOT] <antipattern>", verification="<pytest command or test>")`
 <!-- /if-compact -->
 
 ## Step 2 — Verify and Synchronize

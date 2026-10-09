@@ -679,6 +679,28 @@ MCP_TOOLS = [
                 "topic_name": {
                     "type": "string",
                     "description": "Short slug for the filename (e.g. 'sqlite_storage')"
+                },
+                "supersedes": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of previous ADR IDs superseded by this record (e.g. ['001', '002'])"
+                },
+                "rejected_alternatives": {
+                    "type": "string",
+                    "description": "Alternatives and failed attempts considered and rejected"
+                },
+                "invariants": {
+                    "type": "string",
+                    "description": "Hard architectural invariants and rules for future AI agents (e.g. MUST / MUST NOT)"
+                },
+                "verification": {
+                    "type": "string",
+                    "description": "Verification steps, test command, or validation procedure"
+                },
+                "affected_files": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of source files or modules affected by this decision (auto-detected if omitted)"
                 }
             },
             "required": ["title", "context", "decision", "consequences", "topic_name"]
@@ -1138,12 +1160,30 @@ def tool_create_adr(args: dict) -> dict:
     decision = args.get("decision", "").strip()
     consequences = args.get("consequences", "").strip()
     topic_name = args.get("topic_name", "").strip()
+    supersedes_input = args.get("supersedes")
+    rejected_alternatives = args.get("rejected_alternatives", "").strip()
+    invariants = args.get("invariants", "").strip()
+    verification = args.get("verification", "").strip()
+    affected_files_input = args.get("affected_files")
 
     if not title or not topic_name:
         return {"isError": True, "content": [{"type": "text", "text": "Error: 'title' and 'topic_name' are required."}]}
 
     import re
     topic_slug = re.sub(r"[^\w\-]+", "_", topic_name).strip("_").lower()
+
+    # Parse supersedes IDs
+    supersedes_list = []
+    if isinstance(supersedes_input, list):
+        for item in supersedes_input:
+            s_str = str(item).strip()
+            if s_str:
+                supersedes_list.append(s_str.zfill(3) if s_str.isdigit() else s_str)
+    elif isinstance(supersedes_input, str) and supersedes_input.strip():
+        for s in re.findall(r"\b\d+\b|\w+", supersedes_input):
+            s_str = s.strip()
+            if s_str:
+                supersedes_list.append(s_str.zfill(3) if s_str.isdigit() else s_str)
 
     decisions_candidates = ki_utils.get_decisions_dirs(project_root, jail)
     target_dir = None
@@ -1171,22 +1211,208 @@ def tool_create_adr(args: dict) -> dict:
     import datetime
     today = datetime.date.today().isoformat()
 
-    adr_content = f"""<!-- created: {today} -->
-<!-- status: {status} -->
-# ADR {next_id}: {title}
+    # Process superseded ADRs
+    superseded_links = []
+    updated_old_adrs = []
+    doc_cfg = ki_utils.get_doc_config() or {}
+    ki_entries = doc_cfg.get("knowledge_items", {})
+    doc_cfg_modified = False
 
-**Status**: {status}  
-**Date**: {today}  
+    for s_id in supersedes_list:
+        matched_old_path = None
+        matched_filename = None
+        for d in decisions_candidates:
+            if not os.path.exists(d):
+                continue
+            for f in os.listdir(d):
+                if f.endswith(".md"):
+                    m = re.match(r"^(\d+)", f)
+                    if m and (m.group(1) == s_id or m.group(1) == s_id.lstrip("0") or f.startswith(s_id)):
+                        matched_old_path = os.path.join(d, f)
+                        matched_filename = f
+                        break
+            if matched_old_path:
+                break
 
-## Context and Problem
-{context}
+        if matched_old_path and os.path.exists(matched_old_path):
+            try:
+                with open(matched_old_path, "r", encoding="utf-8") as f_old:
+                    old_content = f_old.read()
 
-## Decisions Made
-{decision}
+                new_status_str = f"Superseded by ADR {next_id}"
+                if re.search(r"<!--\s*status:\s*([^\n\r>]+?)\s*-->", old_content, re.IGNORECASE):
+                    old_content = re.sub(
+                        r"<!--\s*status:\s*([^\n\r>]+?)\s*-->",
+                        f"<!-- status: {new_status_str} -->",
+                        old_content,
+                        count=1,
+                        flags=re.IGNORECASE
+                    )
+                else:
+                    old_content = f"<!-- status: {new_status_str} -->\n" + old_content
 
-## Consequences
-{consequences}
-"""
+                if re.search(r"\*\*Status\*\*:\s*([^\n\r]+)", old_content, re.IGNORECASE):
+                    old_content = re.sub(
+                        r"\*\*Status\*\*:\s*([^\n\r]+)",
+                        f"**Status**: Superseded by [ADR {next_id}](./{adr_filename})",
+                        old_content,
+                        count=1,
+                        flags=re.IGNORECASE
+                    )
+
+                warning_banner = (
+                    f"> [!WARNING]\n"
+                    f"> **This ADR is superseded by [ADR {next_id}: {title}](./{adr_filename}).**\n"
+                )
+                if re.search(r"> \[!WARNING\]\s*\n>\s*\*\*This ADR is superseded[^\n\r]*\*\*", old_content):
+                    old_content = re.sub(
+                        r"> \[!WARNING\]\s*\n>\s*\*\*This ADR is superseded[^\n\r]*\*\*\n?",
+                        warning_banner,
+                        old_content
+                    )
+                else:
+                    title_match = re.search(r"(^#\s+[^\n\r]+\n+)", old_content, re.MULTILINE)
+                    if title_match:
+                        pos = title_match.end()
+                        old_content = old_content[:pos] + warning_banner + "\n" + old_content[pos:]
+                    else:
+                        old_content = warning_banner + "\n" + old_content
+
+                with open(matched_old_path, "w", encoding="utf-8") as f_old:
+                    f_old.write(old_content)
+                updated_old_adrs.append(matched_filename)
+
+                for k_path, k_data in ki_entries.items():
+                    if matched_filename in k_path:
+                        desc = k_data.get("description", "")
+                        if "(" in desc and ")" in desc:
+                            k_data["description"] = re.sub(r"\([^\)]+\)$", f"({new_status_str})", desc)
+                        else:
+                            k_data["description"] = f"{desc} ({new_status_str})"
+                        doc_cfg_modified = True
+
+                superseded_links.append(f"[ADR {s_id}](./{matched_filename})")
+            except Exception:
+                superseded_links.append(f"ADR {s_id}")
+        else:
+            superseded_links.append(f"ADR {s_id}")
+
+    if doc_cfg_modified:
+        ki_utils.save_doc_config(doc_cfg)
+
+    # 1. Automated Git Provenance
+    git_info = []
+    try:
+        c_res = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=project_root, capture_output=True, text=True, timeout=2)
+        if c_res.returncode == 0 and c_res.stdout.strip():
+            b_res = subprocess.run(["git", "branch", "--show-current"], cwd=project_root, capture_output=True, text=True, timeout=2)
+            branch_str = f" (branch: `{b_res.stdout.strip()}`)" if b_res.returncode == 0 and b_res.stdout.strip() else ""
+            git_info.append(f"**Git Commit**: `{c_res.stdout.strip()}`{branch_str}")
+        u_res = subprocess.run(["git", "config", "user.name"], cwd=project_root, capture_output=True, text=True, timeout=2)
+        if u_res.returncode == 0 and u_res.stdout.strip():
+            git_info.append(f"**Author**: {u_res.stdout.strip()}")
+    except Exception:
+        pass
+
+    # 2. Automated Environment Snapshot
+    import platform
+    pkg_ver = ""
+    try:
+        import ki_manager
+        pkg_ver = f" (ki-manager v{ki_manager.__version__})"
+    except Exception:
+        pass
+    env_str = f"Python {platform.python_version()}, {platform.system()} {platform.release()}{pkg_ver}"
+
+    # 3. Automated Scope & Affected Files + Related KIs
+    affected_files = []
+    if isinstance(affected_files_input, list):
+        affected_files = [str(x).strip().replace("\\", "/") for x in affected_files_input if str(x).strip()]
+    elif isinstance(affected_files_input, str) and affected_files_input.strip():
+        affected_files = [f.strip().replace("\\", "/") for f in affected_files_input.splitlines() if f.strip()]
+
+    if not affected_files:
+        try:
+            stat_res = subprocess.run(["git", "status", "--porcelain"], cwd=project_root, capture_output=True, text=True, timeout=2)
+            if stat_res.returncode == 0 and stat_res.stdout.strip():
+                for line in stat_res.stdout.splitlines():
+                    parts = line.strip().split(maxsplit=1)
+                    if len(parts) == 2:
+                        p = parts[1].replace("\\", "/").strip('"')
+                        if not p.endswith(".md"):
+                            affected_files.append(p)
+            if not affected_files:
+                diff_res = subprocess.run(["git", "diff", "--name-only", "HEAD~1"], cwd=project_root, capture_output=True, text=True, timeout=2)
+                if diff_res.returncode == 0 and diff_res.stdout.strip():
+                    for line in diff_res.stdout.splitlines():
+                        p = line.strip().replace("\\", "/").strip('"')
+                        if p and not p.endswith(".md"):
+                            affected_files.append(p)
+        except Exception:
+            pass
+
+    affected_files = affected_files[:15]
+
+    related_kis = set()
+    scope_details = []
+    for f in affected_files:
+        matched_ki_for_file = []
+        norm_f = f.lstrip("./")
+        for k_path, k_meta in ki_entries.items():
+            deps = k_meta.get("depends_on", [])
+            for dep in deps:
+                norm_dep = dep.lstrip("./")
+                if norm_dep.endswith("/") and norm_f.startswith(norm_dep):
+                    matched_ki_for_file.append(k_path)
+                    related_kis.add(k_path)
+                    break
+                elif norm_f == norm_dep or norm_f.endswith(norm_dep):
+                    matched_ki_for_file.append(k_path)
+                    related_kis.add(k_path)
+                    break
+        if matched_ki_for_file:
+            scope_details.append(f"- `{f}` (Related KI: {', '.join(f'`{k}`' for k in matched_ki_for_file)})")
+        else:
+            scope_details.append(f"- `{f}`")
+
+    # Build ADR document
+    meta_headers = [f"<!-- created: {today} -->", f"<!-- status: {status} -->"]
+    if supersedes_list:
+        meta_headers.append(f"<!-- supersedes: {', '.join(supersedes_list)} -->")
+
+    header_block = "\n".join(meta_headers)
+
+    header_info = [
+        f"**Status**: {status}  ",
+        f"**Date**: {today}  "
+    ]
+    if superseded_links:
+        header_info.append(f"**Supersedes**: {', '.join(superseded_links)}  ")
+    if git_info:
+        for g in git_info:
+            header_info.append(f"{g}  ")
+    header_info.append(f"**Environment**: {env_str}  ")
+
+    body_sections = [
+        f"## Context and Problem\n{context}",
+        f"## Decisions Made\n{decision}",
+        f"## Consequences\n{consequences}"
+    ]
+
+    if rejected_alternatives:
+        body_sections.append(f"## Alternatives Considered & Rejected\n{rejected_alternatives}")
+
+    if invariants:
+        body_sections.append(f"## Invariants & Rules for AI\n{invariants}")
+
+    if scope_details:
+        body_sections.append("## Scope & Affected Files\n" + "\n".join(scope_details))
+
+    if verification:
+        body_sections.append(f"## Verification\n{verification}")
+
+    adr_content = f"{header_block}\n# ADR {next_id}: {title}\n\n" + "\n".join(header_info) + "\n\n" + "\n\n".join(body_sections) + "\n"
+
     with open(adr_abs_path, "w", encoding="utf-8") as f:
         f.write(adr_content)
 
@@ -1200,17 +1426,25 @@ def tool_create_adr(args: dict) -> dict:
         ki_name=rel_doc_path,
         description=f"ADR {next_id}: {title} ({status})",
         covers=["Architecture Decisions"],
-        depends_on=[],
+        depends_on=sorted(list(related_kis)),
         summary=f"ADR {next_id}: {title}"
     )
 
     import sync_agents_md
     sync_res = sync_agents_md.sync_agents_md()
 
+    msg_lines = [f"Created ADR {adr_filename} at {adr_abs_path}"]
+    if updated_old_adrs:
+        msg_lines.append(f"Updated superseded ADRs: {', '.join(updated_old_adrs)}")
+    if related_kis:
+        msg_lines.append(f"Linked to Knowledge Items: {', '.join(sorted(related_kis))}")
+    msg_lines.append(reg_msg)
+    msg_lines.append(sync_res)
+
     return {
         "content": [{
             "type": "text",
-            "text": f"Created ADR {adr_filename} at {adr_abs_path}\n{reg_msg}\n{sync_res}"
+            "text": "\n".join(msg_lines)
         }]
     }
 
