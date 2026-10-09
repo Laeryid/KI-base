@@ -141,3 +141,44 @@ def test_print_scaffold_status(mock_stdout, tmp_path):
         
         assert "1 pending enrichment" in output
         assert "1 enriched scaffolds" in output
+
+
+def test_ast_pre_enrichment(tmp_path):
+    # Test rich metadata extraction with docstrings and env vars
+    mod_dir = tmp_path / "src" / "worker"
+    mod_dir.mkdir(parents=True)
+    py_file = mod_dir / "tasks.py"
+    py_file.write_text(
+        '"""Task processing worker module."""\n'
+        'import os\n\n'
+        'class TaskRunner:\n'
+        '    """Manages execution queue."""\n'
+        '    pass\n\n'
+        'def execute_job(job_id: str, retries: int = 3) -> bool:\n'
+        '    """Run a single background job."""\n'
+        '    token = os.getenv("API_TOKEN")\n'
+        '    return True\n',
+        encoding="utf-8"
+    )
+
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    test_file = tests_dir / "test_tasks.py"
+    test_file.write_text("def test_dummy(): pass\n", encoding="utf-8")
+
+    file_infos = scan_module(str(tmp_path), "src/worker")
+    assert len(file_infos) == 1
+    info = file_infos[0]
+    assert info["module_doc"] == "Task processing worker module."
+    assert "TaskRunner" in info["symbols"]
+    assert "execute_job" in info["symbols"]
+    assert "API_TOKEN" in info["env_vars"]
+
+    content = build_scaffold_content("src/worker", "Worker Module", file_infos, project_root=str(tmp_path))
+    assert "Task processing worker module." in content
+    assert "Manages execution queue." in content
+    assert "Run a single background job." in content
+    assert "API_TOKEN" in content
+    assert "test_tasks.py" in content
+    assert "## Entry Points & Public API" in content
+    assert "## Testing & Verification" in content

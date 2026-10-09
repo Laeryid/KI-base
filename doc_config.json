@@ -166,11 +166,6 @@
       "depends_on": [
         ".know/scripts/"
       ]
-    },
-    "KI_template.md": {
-      "path": "knowledge/KI_template.md",
-      "summary": "Standard template for creating new Knowledge Items with required sections.",
-      "depends_on": []
     }
   }
 }

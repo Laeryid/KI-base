@@ -149,11 +149,18 @@ Replace the stub with the enriched version:
 <Concise description in 1-2 sentences: what this module does and why it exists.
 This text will automatically become the summary in doc_config.json on finalization.>
 
+## Entry Points & Public API
+- `SymbolName`: <Primary interface, factory, or entry function for external consumers>
+
 ## Key Components
 | Class / Function | File | Purpose |
 |---|---|---|
 | `ClassName` | `path/to/file.py` | What it does |
 | `function_name` | `path/to/file.py` | What it does |
+
+## Testing & Verification
+- Test commands: `pytest tests/test_<module>.py`
+- Test files: `tests/test_<module>.py`
 
 ## Non-obvious Details
 - <Specific architectural rule, side-effect, initialization constraint, or env var>

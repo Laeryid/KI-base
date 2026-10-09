@@ -29,8 +29,8 @@ PENDING_MARKER = "<!-- scaffold: true -->"
 
 
 def extract_overview(content: str) -> str:
-    """Extract the first non-empty paragraph from the Overview section."""
-    match = re.search(r"## Overview\s*\n(.*?)(?=\n##|\Z)", content, re.DOTALL)
+    """Extract the first non-empty paragraph from the Overview section (or legacy Purpose / What it Does)."""
+    match = re.search(r"## (?:Overview|Purpose|What it Does)\s*\n(.*?)(?=\n##|\Z)", content, re.DOTALL)
     if not match:
         return ""
     text = match.group(1).strip()

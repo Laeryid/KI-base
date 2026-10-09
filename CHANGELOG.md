@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `check_ki_drift` MCP tool & CLI script: automated discrepancy detection between Knowledge Items and the codebase, flagging dead symbols, unmapped public symbols, missing `depends_on` files, broken `[[KI_*.md]]` wiki-links, and Git date discrepancies against `last_verified`.
+- AST pre-enrichment in `generate_ki_scaffolds.py`: parses Python AST to pre-populate module docstrings into `## Overview`, class/function docstrings into the `Key Components` table, signatures, detected environment variables, and discovered test commands from `tests/`.
+- Canonical KI template (`src/ki_manager/templates/KI_template.md`) featuring `## Entry Points & Public API` and `## Testing & Verification` sections.
+- Integrated `check_ki_drift` into the `/sync-knowledge` workflow and the `coverage_analysis` tool group in `facade.py` for both full and compact tool modes.
+
+### Changed
+- Aligned KI structures across `scaffold-knowledge.md`, `expand-knowledge.md`, `sync-knowledge.md`, `scaffold.py`, and `generate_ki_scaffolds.py` to the canonical template.
+- Made `finalize_ki_scaffolds.py` summary extraction resilient and backwards-compatible with legacy `## Purpose` and `## What it Does` headers.
+- Cleaned up duplicate local `knowledge/KI_template.md` in favor of package template.
+
 ## [2.3.0.dev2] — 2026-10-06
 
 ### Added

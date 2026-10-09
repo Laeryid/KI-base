@@ -45,7 +45,7 @@ KI_CONFIG_TEMPLATE = {
             "version": "2.0.0"
         }
     },
-    "required_sections": ["Purpose", "Key Components", "Related KIs"]
+    "required_sections": ["Overview", "Key Components", "Related KIs"]
 }
 
 OVERVIEW_KI_TEMPLATE = """\
@@ -54,7 +54,7 @@ OVERVIEW_KI_TEMPLATE = """\
 **Module**: `{project_name}` (entire project)
 **Last verified**: {date}
 
-## Purpose
+## Overview
 
 <!-- Describe the project's main purpose here -->
 
@@ -62,9 +62,13 @@ OVERVIEW_KI_TEMPLATE = """\
 
 <!-- List the main subsystems or modules -->
 
-## Entry Points
+## Entry Points & Public API
 
 <!-- Describe main entry points (CLI commands, API endpoints, etc.) -->
+
+## Testing & Verification
+
+<!-- Key test commands (e.g. pytest, npm test) and verification instructions -->
 
 ## Architecture Notes
 

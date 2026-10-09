@@ -7,7 +7,7 @@ metadata:
 <!-- if-compact -->
 allowed-tools: ki_instructions ki_read ki_search ki_tools ki_call ki_mutate
 <!-- else-compact -->
-allowed-tools: read_know_file write_know_file edit_know_file audit_coverage generate_dir_index ki_instructions ki_read git_diff_secured update_last_verified save_state analyze_dependencies git_checkpoint
+allowed-tools: read_know_file write_know_file edit_know_file audit_coverage check_ki_drift generate_dir_index ki_instructions ki_read git_diff_secured update_last_verified save_state analyze_dependencies git_checkpoint
 <!-- /if-compact -->
 ---
 
@@ -35,18 +35,27 @@ Triggered manually after completing significant work (refactoring, new feature, 
 > 
 > This ensures that documentation changes remain isolated within the knowledge sandbox and do not accidentally affect the project's source code.
 
-## Step 1 — Identify Changes
+## Step 1 — Identify Changes & Drift
 
-Run `git_diff_secured` to get a list of modified files:
-
-// turbo
+1. **Check Drift and Discrepancies**:
+   Run `check_ki_drift` to detect dead symbols, unmapped new symbols, missing files, or broken links:
+   // turbo
 <!-- if-compact -->
-`ki_call(tool="git_diff_secured")`
+   `ki_call(tool="check_ki_drift")`
 <!-- else-compact -->
-`git_diff_secured`
+   `check_ki_drift()`
 <!-- /if-compact -->
 
-Record the result. If there are no changes, terminate; everything is up to date.
+2. **Git Modified Files**:
+   Run `git_diff_secured` to get a list of modified files:
+   // turbo
+<!-- if-compact -->
+   `ki_call(tool="git_diff_secured")`
+<!-- else-compact -->
+   `git_diff_secured`
+<!-- /if-compact -->
+
+Record the results. If there are neither changes nor drift issues, terminate; everything is up to date.
 
 ## Step 2 — Update Affected Documentation Artifacts
 
@@ -60,9 +69,9 @@ Record the result. If there are no changes, terminate; everything is up to date.
 <!-- /if-compact -->
 
 2. **Manual Updates**:
-   For each artifact in `AFFECTED ARTIFACTS` that requires content changes (not just date):
+   For each artifact in `AFFECTED ARTIFACTS` or flagged in the drift report that requires content changes:
    - If it's `architecture.md` → read dependencies, update the section reflecting the changes.
-   - If it's `KI_*.md` → update only the outdated parts, maintaining the `KI_template.md` structure.
+   - If it's `KI_*.md` → update only the outdated parts, maintaining the canonical KI structure.
    - If it's `SKILL.md` → update description according to the new code behavior.
 
 ## Step 3 — Update DIR_INDEX.md

@@ -444,6 +444,29 @@ MCP_TOOLS = [
         },
     },
     {
+        "name": "check_ki_drift",
+        "description": (
+            "Detect discrepancies and drift between Knowledge Items (KI) and code: "
+            "dead symbols, unmapped public functions/classes, missing files, broken wiki-links, "
+            "and git date modifications."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "ki_name": {
+                    "type": "string",
+                    "description": "Optional specific KI filename (e.g. 'KI_server.md'). Omit to check all KIs.",
+                },
+            },
+        },
+        "annotations": {
+            "title": "Check Knowledge Drift",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+        },
+    },
+    {
         "name": "ki_scaffold",
         "description": (
             "Generate scaffold KI files for all uncovered modules in one pass (no AI required). "
@@ -1435,6 +1458,15 @@ def handle_tool_call(name: str, args: dict) -> Any:
             if args.get("recursive"):
                 cmd_args.append("--recursive")
             return run_script("analyze_module.py", cmd_args)
+        if name == "check_ki_drift":
+            cmd_args = []
+            if args.get("ki_name"):
+                cmd_args += ["--ki", args["ki_name"]]
+            elif args.get("ki"):
+                cmd_args += ["--ki", args["ki"]]
+            else:
+                cmd_args.append("--all")
+            return run_script("check_ki_drift.py", cmd_args)
         if name == "ki_scaffold":
             cmd_args = []
             if args.get("dry_run"):

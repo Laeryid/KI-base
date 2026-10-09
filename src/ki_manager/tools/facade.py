@@ -34,6 +34,7 @@ TOOL_GROUPS: Dict[str, List[str]] = {
         "find_unmapped_files",
         "analyze_module",
         "ki_graph_visualize",
+        "check_ki_drift",
     ],
     "scaffold": [
         "ki_scaffold",

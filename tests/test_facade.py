@@ -18,8 +18,9 @@ def test_tools_counts_and_compact_definition():
         "ki_call",
         "ki_mutate",
     ]
-    # MCP_TOOLS should have 33 tools (31 original + ki_search + ki_read)
-    assert len(server.MCP_TOOLS) == 33
+    # MCP_TOOLS should have 34 tools (31 original + ki_search + ki_read + check_ki_drift)
+    assert len(server.MCP_TOOLS) == 34
+    assert "check_ki_drift" in [t["name"] for t in server.MCP_TOOLS]
 
 
 def test_ki_tools_catalog():
@@ -171,7 +172,7 @@ def test_compact_mode_via_cli():
 
 
 def test_full_mode_via_cli():
-    # Test server in full mode returns all 31 tools
+    # Test server in full mode returns all 34 tools
     req = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}})
     cmd = [
         sys.executable,
@@ -191,4 +192,4 @@ def test_full_mode_via_cli():
     lines = [line.strip() for line in stdout.splitlines() if line.strip()]
     resp = json.loads(lines[0])
     tools = resp["result"]["tools"]
-    assert len(tools) == 33
+    assert len(tools) == 34

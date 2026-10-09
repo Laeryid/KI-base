@@ -27,7 +27,8 @@ import json
 import argparse
 from datetime import date
 from pathlib import Path
-from typing import List, Dict, Tuple, Optional
+import ast
+from typing import List, Dict, Tuple, Optional, Any
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ki_utils
@@ -52,7 +53,6 @@ _LANG_PATTERNS: Dict[str, List[Tuple[re.Pattern, int]]] = {
         (re.compile(r"^type\s+([A-Za-z_]\w*)\s+interface", re.MULTILINE), 1),
     ],
 }
-# Aliases: tsx → ts patterns, jsx → js (no explicit patterns → fallback)
 _LANG_PATTERNS[".tsx"] = _LANG_PATTERNS[".ts"]
 _LANG_PATTERNS[".jsx"] = _LANG_PATTERNS[".ts"]
 _LANG_PATTERNS[".js"] = _LANG_PATTERNS[".ts"]
@@ -61,29 +61,203 @@ _SOURCE_EXTENSIONS = {".py", ".ts", ".tsx", ".js", ".jsx", ".go"}
 _SKIP_DIRS = {"__pycache__", ".git", "node_modules", ".venv", "venv", "dist", "build", ".mypy_cache"}
 
 
-def extract_symbols(file_path: str) -> List[str]:
-    """Extract top-level symbols from a source file via regex. Returns list of symbol names."""
-    ext = Path(file_path).suffix.lower()
-    patterns = _LANG_PATTERNS.get(ext)
-    if not patterns:
-        return []
-
-    try:
-        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
-            content = f.read()
-    except OSError:
-        return []
-
+def _extract_regex_symbols(content: str, ext: str) -> List[str]:
+    patterns = _LANG_PATTERNS.get(ext, [])
     symbols = []
     for pattern, group in patterns:
         for m in pattern.finditer(content):
             name = m.group(group)
-            # Skip dunder methods and private names in Python
             if ext == ".py" and name.startswith("__"):
                 continue
             if name not in symbols:
                 symbols.append(name)
     return symbols
+
+
+def extract_python_metadata(file_path: str, content: str) -> Tuple[str, List[Dict[str, Any]], List[str]]:
+    """Parses Python file using ast. Returns (module_doc, symbols, env_vars)."""
+    try:
+        tree = ast.parse(content, filename=file_path)
+    except Exception:
+        return "", [], []
+
+    module_doc = (ast.get_docstring(tree) or "").strip()
+    symbols: List[Dict[str, Any]] = []
+    env_vars = set()
+
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef):
+            if node.name.startswith("__"):
+                continue
+            doc = (ast.get_docstring(node) or "").strip()
+            first_line = doc.splitlines()[0].strip() if doc else ""
+            symbols.append({
+                "name": node.name,
+                "kind": "class",
+                "signature": f"class {node.name}",
+                "doc": first_line,
+            })
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if node.name.startswith("__"):
+                continue
+            doc = (ast.get_docstring(node) or "").strip()
+            first_line = doc.splitlines()[0].strip() if doc else ""
+            
+            args = []
+            for arg in node.args.args:
+                arg_name = arg.arg
+                if arg.annotation:
+                    try:
+                        arg_name += f": {ast.unparse(arg.annotation)}"
+                    except Exception:
+                        pass
+                args.append(arg_name)
+            sig = f"{node.name}({', '.join(args)})"
+            if node.returns:
+                try:
+                    sig += f" -> {ast.unparse(node.returns)}"
+                except Exception:
+                    pass
+            symbols.append({
+                "name": node.name,
+                "kind": "async function" if isinstance(node, ast.AsyncFunctionDef) else "function",
+                "signature": sig,
+                "doc": first_line,
+            })
+
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Call):
+            if isinstance(n.func, ast.Attribute) and n.func.attr in ("getenv", "get"):
+                if n.args and isinstance(n.args[0], ast.Constant) and isinstance(n.args[0].value, str):
+                    env_vars.add(n.args[0].value)
+        elif isinstance(n, ast.Subscript):
+            if isinstance(n.value, ast.Attribute) and n.value.attr == "environ":
+                if isinstance(n.slice, ast.Constant) and isinstance(n.slice.value, str):
+                    env_vars.add(n.slice.value)
+
+    return module_doc, symbols, sorted(list(env_vars))
+
+
+def extract_ts_metadata(content: str) -> Tuple[str, List[Dict[str, Any]], List[str]]:
+    """Extract TypeScript/JavaScript symbols with JSDoc comments and env vars."""
+    symbols = []
+    env_vars = set()
+    pattern = re.compile(
+        r"(?:/\*\*\s*([\s\S]*?)\*/\s*)?"
+        r"^export\s+(?:default\s+)?(?:abstract\s+)?(?:async\s+)?(class|function|const|let|var|type|interface)\s+([A-Za-z_]\w*)",
+        re.MULTILINE
+    )
+    for m in pattern.finditer(content):
+        jsdoc = m.group(1) or ""
+        kind = m.group(2)
+        name = m.group(3)
+        doc = ""
+        if jsdoc:
+            clean_lines = [re.sub(r"^\s*\*?\s*", "", line).strip() for line in jsdoc.splitlines()]
+            non_empty = [l for l in clean_lines if l and not l.startswith("@")]
+            if non_empty:
+                doc = non_empty[0]
+        symbols.append({
+            "name": name,
+            "kind": kind,
+            "signature": f"{kind} {name}",
+            "doc": doc
+        })
+    for m in re.finditer(r"process\.env\.([A-Z0-9_]+)", content):
+        env_vars.add(m.group(1))
+
+    return "", symbols, sorted(list(env_vars))
+
+
+def extract_go_metadata(content: str) -> Tuple[str, List[Dict[str, Any]], List[str]]:
+    """Extract Go symbols with leading comments."""
+    symbols = []
+    pattern = re.compile(
+        r"(?:((?://[^\n]*\n)+)\s*)?"
+        r"^(func\s+(?:\([^)]+\)\s+)?([A-Z][A-Za-z_]\w*)|type\s+([A-Za-z_]\w*)\s+(struct|interface))",
+        re.MULTILINE
+    )
+    for m in pattern.finditer(content):
+        comment = m.group(1) or ""
+        func_name = m.group(3)
+        type_name = m.group(4)
+        type_kind = m.group(5)
+        name = func_name or type_name
+        kind = "function" if func_name else (type_kind or "type")
+        doc = ""
+        if comment:
+            lines = [l.strip().lstrip("/").strip() for l in comment.splitlines()]
+            non_empty = [l for l in lines if l]
+            if non_empty:
+                doc = non_empty[0]
+        if name:
+            symbols.append({
+                "name": name,
+                "kind": kind,
+                "signature": f"{kind} {name}",
+                "doc": doc
+            })
+    return "", symbols, []
+
+
+def extract_symbol_details(file_path: str) -> Dict[str, Any]:
+    """Extract rich symbol metadata, module docstring, and environment variables."""
+    ext = Path(file_path).suffix.lower()
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read()
+    except OSError:
+        return {"symbols": [], "module_doc": "", "env_vars": []}
+
+    if ext == ".py":
+        module_doc, symbols, env_vars = extract_python_metadata(file_path, content)
+        if not symbols:
+            symbols = [{"name": s, "kind": "symbol", "signature": s, "doc": ""} for s in _extract_regex_symbols(content, ext)]
+        return {"symbols": symbols, "module_doc": module_doc, "env_vars": env_vars}
+    elif ext in (".ts", ".tsx", ".js", ".jsx"):
+        module_doc, symbols, env_vars = extract_ts_metadata(content)
+        if not symbols:
+            symbols = [{"name": s, "kind": "symbol", "signature": s, "doc": ""} for s in _extract_regex_symbols(content, ext)]
+        return {"symbols": symbols, "module_doc": module_doc, "env_vars": env_vars}
+    elif ext == ".go":
+        module_doc, symbols, env_vars = extract_go_metadata(content)
+        if not symbols:
+            symbols = [{"name": s, "kind": "symbol", "signature": s, "doc": ""} for s in _extract_regex_symbols(content, ext)]
+        return {"symbols": symbols, "module_doc": module_doc, "env_vars": env_vars}
+
+    return {"symbols": [], "module_doc": "", "env_vars": []}
+
+
+def extract_symbols(file_path: str) -> List[str]:
+    """Extract top-level symbols from a source file. Returns list of symbol names."""
+    details = extract_symbol_details(file_path)
+    return [sym["name"] for sym in details["symbols"]]
+
+
+def find_module_tests(project_root: Optional[str], module_path: str, file_infos: List[Dict]) -> Tuple[List[str], str]:
+    """Find tests related to the module or its files."""
+    if not project_root or not os.path.isdir(project_root):
+        return [], "pytest tests/"
+
+    tests_dir = os.path.join(project_root, "tests")
+    if not os.path.isdir(tests_dir):
+        return [], "pytest"
+
+    stems = {Path(fi.get("fname") or fi.get("rel_path", "")).stem for fi in file_infos if fi.get("fname") or fi.get("rel_path")}
+    stems.add(Path(module_path).name)
+
+    matched = []
+    for root, _, files in os.walk(tests_dir):
+        for f in sorted(files):
+            f_stem = Path(f).stem
+            for s in stems:
+                if s and (f_stem == f"test_{s}" or f_stem == f"{s}_test" or s in f_stem):
+                    rel = os.path.relpath(os.path.join(root, f), project_root).replace(os.sep, "/")
+                    if rel not in matched:
+                        matched.append(rel)
+
+    test_cmd = f"pytest {' '.join(matched)}" if matched else "pytest tests/"
+    return matched, test_cmd
 
 
 def scan_module(project_root: str, module_path: str) -> List[Dict]:
@@ -97,8 +271,8 @@ def scan_module(project_root: str, module_path: str) -> List[Dict]:
             ext = Path(fname).suffix.lower()
             if ext not in _SOURCE_EXTENSIONS:
                 continue
-            if fname.startswith("__") and fname.endswith("__.py"):
-                continue  # skip __init__.py etc. from symbol table (often empty)
+            if fname.startswith("__") and fname.endswith("__.py") and fname != "__init__.py":
+                continue
 
             abs_file = os.path.join(root, fname)
             rel_file = os.path.relpath(abs_file, project_root).replace(os.sep, "/")
@@ -108,13 +282,16 @@ def scan_module(project_root: str, module_path: str) -> List[Dict]:
             except OSError:
                 pass
 
-            symbols = extract_symbols(abs_file)
+            details = extract_symbol_details(abs_file)
             results.append({
                 "rel_path": rel_file,
                 "fname": fname,
                 "ext": ext,
                 "size": size,
-                "symbols": symbols,
+                "symbols": [s["name"] for s in details["symbols"]],
+                "rich_symbols": details["symbols"],
+                "module_doc": details["module_doc"],
+                "env_vars": details["env_vars"],
             })
 
     return results
@@ -129,10 +306,56 @@ def ki_filename_from_module(module_path: str) -> str:
     return f"KI_{slug}.md"
 
 
-def build_scaffold_content(module_path: str, label: str, file_infos: List[Dict]) -> str:
-    """Build a scaffold KI markdown file content."""
+def build_scaffold_content(
+    module_path: str,
+    label: str,
+    file_infos: List[Dict],
+    project_root: Optional[str] = None
+) -> str:
+    """Build a scaffold KI markdown file content with AST pre-enrichment."""
     today = date.today().isoformat()
     module_name = label or module_path.split("/")[-1].replace("_", " ").title()
+
+    if not project_root:
+        project_root = ki_utils.get_project_root()
+
+    # 1. Overview from module docstrings
+    overview_text = ""
+    for fi in file_infos:
+        doc = fi.get("module_doc", "")
+        if doc:
+            first_p = doc.strip().split("\n\n")[0].strip().replace("\n", " ")
+            if first_p and len(first_p) > 10:
+                overview_text = first_p
+                break
+
+    overview_section = overview_text if overview_text else (
+        "<!-- TODO: describe this module (filled by /scaffold-knowledge enrichment phase) -->"
+    )
+
+    # 2. Entry points (first 3 public classes / functions)
+    entry_points = []
+    for fi in file_infos:
+        symbols_source = fi.get("rich_symbols") or fi.get("symbols", [])
+        for sym in symbols_source:
+            s_name = sym["name"] if isinstance(sym, dict) else str(sym)
+            s_kind = sym.get("kind", "") if isinstance(sym, dict) else ""
+            s_doc = sym.get("doc", "") if isinstance(sym, dict) else ""
+            if not s_name.startswith("_"):
+                desc = s_doc or f"Primary {s_kind or 'symbol'} in `{fi['rel_path']}`"
+                entry_points.append(f"- `{s_name}`: {desc}")
+                if len(entry_points) >= 3:
+                    break
+        if len(entry_points) >= 3:
+            break
+
+    # 3. Tests
+    matched_tests, test_cmd = find_module_tests(project_root, module_path, file_infos)
+
+    # 4. Environment variables
+    all_env = set()
+    for fi in file_infos:
+        all_env.update(fi.get("env_vars", []))
 
     lines = [
         "<!-- scaffold: true -->",
@@ -140,34 +363,62 @@ def build_scaffold_content(module_path: str, label: str, file_infos: List[Dict])
         f"# KI: {module_name}",
         "",
         "## Overview",
-        "<!-- TODO: describe this module (filled by /scaffold-knowledge enrichment phase) -->",
+        overview_section,
+        "",
+        "## Entry Points & Public API",
+    ]
+
+    if entry_points:
+        lines.extend(entry_points)
+    else:
+        lines.append("- `SymbolName`: <!-- Primary interface / entry function -->")
+
+    lines.extend([
         "",
         "## Key Components",
         "| Class / Function | File | Purpose |",
         "|---|---|---|",
-    ]
+    ])
 
     if file_infos:
         for info in file_infos:
             rel = info["rel_path"]
-            if info["symbols"]:
-                for sym in info["symbols"]:
-                    lines.append(f"| `{sym}` | `{rel}` | <!-- TODO --> |")
+            symbols_source = info.get("rich_symbols") or info.get("symbols", [])
+            if symbols_source:
+                for sym in symbols_source:
+                    sym_name = sym["name"] if isinstance(sym, dict) else str(sym)
+                    sym_doc = sym.get("doc", "") if isinstance(sym, dict) else ""
+                    purpose = sym_doc if sym_doc else "<!-- TODO -->"
+                    lines.append(f"| `{sym_name}` | `{rel}` | {purpose} |")
             else:
-                # No symbols extracted — add the file itself as a row
                 size_kb = round(info["size"] / 1024, 1) if info["size"] else 0
                 lines.append(f"| *(file)* | `{rel}` | {size_kb} KB |")
     else:
         lines.append("| — | — | *(no source files found)* |")
 
-    lines += [
+    lines.extend([
+        "",
+        "## Testing & Verification",
+        f"- Test commands: `{test_cmd}`",
+    ])
+    if matched_tests:
+        lines.append(f"- Test files: {', '.join(f'`{t}`' for t in matched_tests)}")
+
+    lines.extend([
         "",
         "## Non-obvious Details",
+    ])
+    if all_env:
+        lines.append(f"- Environment variables: {', '.join(f'`{v}`' for v in sorted(all_env))}")
+    lines.extend([
         "<!-- TODO -->",
         "",
         "## Common Pitfalls",
         "<!-- TODO -->",
-    ]
+        "",
+        "## Related KIs",
+        "<!-- Populated by analyze_all_dependencies -->",
+    ])
 
     return "\n".join(lines) + "\n"
 
@@ -372,7 +623,7 @@ def generate_scaffolds(
         print(f"           module: {module_path}  ({len(file_infos)} files, {symbol_count} symbols, langs: {langs_str})")
 
         if not dry_run:
-            content = build_scaffold_content(module_path, label, file_infos)
+            content = build_scaffold_content(module_path, label, file_infos, project_root=project_root)
             with open(ki_path, "w", encoding="utf-8") as f:
                 f.write(content)
             register_ki_in_config(doc_config, ki_name, label, module_path, file_infos)

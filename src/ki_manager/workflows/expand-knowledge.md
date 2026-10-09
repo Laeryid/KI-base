@@ -111,15 +111,25 @@ Write the file using `write_know_file` or `edit_know_file`:
 ## Overview
 <Purpose in 1-2 sentences>
 
+## Entry Points & Public API
+- `SymbolName`: <Primary interface, factory, or entry function for external consumers>
+
 ## Key Components
 | Class / Function | File | Purpose |
 |---|---|---|
+
+## Testing & Verification
+- Test commands: `pytest tests/test_<module>.py`
+- Test files: `tests/test_<module>.py`
 
 ## Non-obvious Details
 - <A fact not visible from function signatures>
 
 ## Common Pitfalls
 - **<Symptom>**: <Solution>
+
+## Related KIs
+<!-- Populated by analyze_dependencies -->
 ```
 
 ---
