@@ -13,6 +13,7 @@ Usage:
 import sys
 import json
 import os
+import re
 import subprocess
 import importlib.metadata
 from pathlib import Path
@@ -158,6 +159,175 @@ def validate_path(rel_path: str, is_write: bool = False) -> str:
             raise PermissionError(f"Access Denied: use dedicated tools to modify this file.")
 
     return target
+
+
+def resolve_know_path(rel_path: str, is_write: bool = False, must_exist: bool = False) -> str:
+    """
+    Resolves a relative knowledge/ADR path using smart cascading, security validation,
+    and tolerance for prefixes like 'ADR_'.
+
+    If must_exist is True: raises FileNotFoundError if not found.
+    If must_exist is False and file doesn't exist: returns the target creation path
+    (defaulting flat KI files to <jail>/knowledge/<norm>).
+    """
+    jail = get_jail_dir()
+    if not jail:
+        raise PermissionError(
+            "✖ No active workspace detected. "
+            "Call ki_status({\"path\": \"/absolute/path/to/project\"}) to set it."
+        )
+
+    norm = ki_utils.normalize_path(rel_path, make_absolute=False)
+    if not norm:
+        raise ValueError("rel_path cannot be empty.")
+
+    if not os.path.isabs(norm) and norm.startswith(".."):
+        raise PermissionError(f"Access Denied: path '{rel_path}' escapes sandbox.")
+
+    project_root = get_project_root()
+    base_name = os.path.basename(norm)
+    dir_name = os.path.dirname(norm)
+
+    # Name variants (tolerance for ADR_ / adr_ prefixes)
+    name_variants = [base_name]
+    m_adr = re.match(r"^(?:ADR|adr)[_\-](.*)", base_name)
+    if m_adr:
+        name_variants.append(m_adr.group(1))
+    elif re.match(r"^\d+", base_name):
+        name_variants.append(f"ADR_{base_name}")
+        name_variants.append(f"adr_{base_name}")
+
+    target = None
+
+    # 1. Direct path inside jail
+    try:
+        cand = validate_path(norm)
+        if os.path.exists(cand) and os.path.isfile(cand):
+            target = cand
+    except Exception:
+        target = None
+
+    # 1b. If base_name had ADR_ prefix, try direct path with stripped name in same directory inside jail
+    if not target and m_adr and dir_name:
+        try:
+            cand = validate_path(os.path.join(dir_name, m_adr.group(1)))
+            if os.path.exists(cand) and os.path.isfile(cand):
+                target = cand
+        except Exception:
+            target = None
+
+    # 2. Inside jail/knowledge/ (standard structure: <jail>/knowledge/<file>)
+    if not target and jail:
+        for nv in name_variants:
+            sub = os.path.join(dir_name, nv) if dir_name else nv
+            try:
+                cand = validate_path(os.path.join("knowledge", sub))
+                if os.path.exists(cand) and os.path.isfile(cand):
+                    target = cand
+                    break
+            except Exception:
+                pass
+
+    # 3. If rel_path starts with the knowledge_root folder name itself (e.g. '.ki-base/...' or 'knowledge/...'),
+    # strip prefix and resolve inside jail
+    if not target and jail and project_root:
+        rel_to_proj = os.path.relpath(jail, project_root).replace("\\", "/")
+        if norm.startswith(rel_to_proj + "/"):
+            sub_path = norm[len(rel_to_proj) + 1:]
+            try:
+                cand = validate_path(sub_path)
+                if os.path.exists(cand) and os.path.isfile(cand):
+                    target = cand
+            except Exception:
+                pass
+            if not target:
+                try:
+                    cand = validate_path(os.path.join("knowledge", sub_path))
+                    if os.path.exists(cand) and os.path.isfile(cand):
+                        target = cand
+                except Exception:
+                    pass
+
+    # 4. Decisions directories (ADR resolution)
+    if not target and project_root:
+        candidates = ki_utils.get_decisions_dirs(project_root, jail)
+        for d in candidates:
+            if not os.path.exists(d):
+                continue
+            # Try by name variants
+            for nv in name_variants:
+                cand_p = os.path.abspath(os.path.join(d, nv))
+                if os.path.exists(cand_p) and cand_p.endswith(".md") and os.path.isfile(cand_p):
+                    target = cand_p
+                    break
+            if target:
+                break
+
+            # If still not found, match by ADR ID prefix (e.g. '002' or '2')
+            m_id = re.match(r"^(?:ADR[_\-]?)?(\d+)", base_name, re.IGNORECASE)
+            if m_id:
+                target_id = m_id.group(1)
+                for f in os.listdir(d):
+                    if f.endswith(".md"):
+                        m_f = re.match(r"^(?:ADR[_\-]?)?(\d+)", f, re.IGNORECASE)
+                        if m_f and (m_f.group(1) == target_id or m_f.group(1).lstrip("0") == target_id.lstrip("0")):
+                            target = os.path.abspath(os.path.join(d, f))
+                            break
+            if target:
+                break
+
+        # Also check relative to project root directly if within decisions or jail
+        if not target:
+            cand_p = os.path.abspath(os.path.join(project_root, norm))
+            if os.path.exists(cand_p) and cand_p.endswith(".md") and os.path.isfile(cand_p):
+                valid_prefixes = candidates + ([jail] if jail else [])
+                for vp in valid_prefixes:
+                    if os.path.normcase(cand_p).startswith(os.path.normcase(vp)):
+                        target = cand_p
+                        break
+
+    # 5. Fallback: Search by basename variants in jail and its subfolders
+    if not target and jail and os.path.exists(jail):
+        for root, _, files in os.walk(jail):
+            for nv in name_variants:
+                if nv in files:
+                    cand_p = os.path.abspath(os.path.join(root, nv))
+                    if cand_p.endswith(".md") and os.path.isfile(cand_p):
+                        target = cand_p
+                        break
+            if target:
+                break
+
+    # Security check on resolved existing target
+    if target:
+        valid_roots = [jail]
+        if project_root:
+            valid_roots.extend(ki_utils.get_decisions_dirs(project_root, jail))
+        is_safe = any(os.path.normcase(target).startswith(os.path.normcase(vr)) for vr in valid_roots if vr)
+        if not is_safe:
+            raise PermissionError("Access Denied: jail breach detected.")
+
+        if is_write:
+            ext = os.path.splitext(target)[1].lower()
+            if ext in _FORBIDDEN_WRITE_EXT:
+                raise PermissionError(f"Access Denied: modifying {ext} files is forbidden.")
+            if os.path.basename(target).lower() in _FORBIDDEN_WRITE_FILES:
+                raise PermissionError("Access Denied: use dedicated tools to modify this file.")
+
+        return target
+
+    # Target not found
+    if must_exist:
+        raise FileNotFoundError(f"Knowledge file '{rel_path}' not found.")
+
+    # Target does not exist, but we are resolving path for creation (e.g. write_know_file)
+    # If path is flat (no dir specified) and jail has knowledge folder, default to knowledge/
+    if not dir_name:
+        know_dir = os.path.join(jail, "knowledge")
+        if os.path.exists(know_dir) or base_name.startswith("KI_") or base_name.endswith(".ki.md"):
+            return validate_path(os.path.join("knowledge", base_name), is_write=is_write)
+
+    return validate_path(norm, is_write=is_write)
 
 
 # â”€â”€â”€ Script runner â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1455,82 +1625,12 @@ def tool_read_file(args: dict) -> Any:
     if not rel_path:
         return "Error: 'rel_path' is required."
 
-    project_root = get_project_root()
-    jail = get_jail_dir()
-
-    target = None
-    norm = ki_utils.normalize_path(rel_path, make_absolute=False)
-    base_name = os.path.basename(norm)
-
-    # 1. Try resolving within jail (knowledge root from config, default .ki-base)
-    if jail:
-        # 1a. Direct path inside jail
-        try:
-            cand = validate_path(norm)
-            if os.path.exists(cand) and os.path.isfile(cand):
-                target = cand
-        except Exception:
-            target = None
-
-        # 1b. Try inside jail/knowledge/ (standard structure: <jail>/knowledge/<file>)
-        if not target:
-            try:
-                cand = validate_path(os.path.join("knowledge", norm))
-                if os.path.exists(cand) and os.path.isfile(cand):
-                    target = cand
-            except Exception:
-                target = None
-
-        # 1c. If rel_path starts with the knowledge_root folder name itself (e.g. '.ki-base/...' or 'knowledge/...'),
-        # strip the prefix and resolve inside jail
-        if not target and project_root:
-            rel_to_proj = os.path.relpath(jail, project_root).replace("\\", "/")
-            if norm.startswith(rel_to_proj + "/"):
-                sub_path = norm[len(rel_to_proj) + 1:]
-                try:
-                    cand = validate_path(sub_path)
-                    if os.path.exists(cand) and os.path.isfile(cand):
-                        target = cand
-                except Exception:
-                    pass
-                if not target:
-                    try:
-                        cand = validate_path(os.path.join("knowledge", sub_path))
-                        if os.path.exists(cand) and os.path.isfile(cand):
-                            target = cand
-                    except Exception:
-                        pass
-
-    # 2. Try resolving ADR or path relative to project_root
-    if not target and project_root:
-        candidates = ki_utils.get_decisions_dirs(project_root, jail)
-        # Check by basename in decisions dirs
-        for d in candidates:
-            cand_p = os.path.abspath(os.path.join(d, base_name))
-            if os.path.exists(cand_p) and cand_p.endswith(".md") and os.path.isfile(cand_p):
-                target = cand_p
-                break
-        if not target:
-            # Check relative to project root, ensuring it is within decisions or jail
-            cand_p = os.path.abspath(os.path.join(project_root, norm))
-            if os.path.exists(cand_p) and cand_p.endswith(".md") and os.path.isfile(cand_p):
-                valid_prefixes = candidates + ([jail] if jail else [])
-                for vp in valid_prefixes:
-                    if os.path.normcase(cand_p).startswith(os.path.normcase(vp)):
-                        target = cand_p
-                        break
-
-    # 3. Fallback: Search by basename in jail (knowledge root) and its subfolders
-    if not target and jail and os.path.exists(jail):
-        for root, _, files in os.walk(jail):
-            if base_name in files:
-                cand_p = os.path.abspath(os.path.join(root, base_name))
-                if cand_p.endswith(".md") and os.path.isfile(cand_p):
-                    target = cand_p
-                    break
-
-    if not target or not os.path.exists(target):
+    try:
+        target = resolve_know_path(rel_path, must_exist=True)
+    except FileNotFoundError:
         return f"File not found: '{rel_path}'."
+    except Exception as e:
+        return f"Error: {e}"
 
     try:
         with open(target, "r", encoding="utf-8", errors="replace") as f:
@@ -1584,7 +1684,11 @@ def handle_tool_call(name: str, args: dict) -> Any:
             if doc == "overview":
                 return facade.render_instruction(GLOBAL_INSTRUCTIONS, CURRENT_TOOL_MODE, know_name)
             elif doc == "knowledge-items":
-                return f"Knowledge Items for this project:\n\n{ki_utils.get_ki_list_table()}"
+                ki_table = ki_utils.get_ki_list_table()
+                adr_table = ki_utils.get_adr_table()
+                if adr_table and not adr_table.startswith("No ADRs found"):
+                    return f"Knowledge Items for this project:\n\n{ki_table}\n\nArchitecture Decision Records (ADRs):\n\n{adr_table}"
+                return f"Knowledge Items for this project:\n\n{ki_table}"
             else:
                 wf_path = _WORKFLOWS_DIR / f"{doc}.md"
                 if wf_path.exists():
@@ -1730,7 +1834,8 @@ def handle_tool_call(name: str, args: dict) -> Any:
 
         # ─── File Ops ───
         if name == "read_know_file":
-            with open(validate_path(args["rel_path"]), "r", encoding="utf-8") as f:
+            p = resolve_know_path(args["rel_path"], must_exist=True)
+            with open(p, "r", encoding="utf-8") as f:
                 content = f.read()
             offset = 0
             if args.get("offset") is not None:
@@ -1754,7 +1859,7 @@ def handle_tool_call(name: str, args: dict) -> Any:
                 return content[offset:]
             return content
         if name == "write_know_file":
-            p = validate_path(args["rel_path"], is_write=True)
+            p = resolve_know_path(args["rel_path"], is_write=True, must_exist=False)
             os.makedirs(os.path.dirname(p), exist_ok=True)
             import tempfile
             fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(p), text=True)
@@ -1768,7 +1873,7 @@ def handle_tool_call(name: str, args: dict) -> Any:
                 raise e
             return "File written."
         if name == "edit_know_file":
-            p = validate_path(args["rel_path"], is_write=True)
+            p = resolve_know_path(args["rel_path"], is_write=True, must_exist=True)
             with open(p, "r", encoding="utf-8") as f:
                 content = f.read()
             old_text = args["old_text"].replace("\r\n", "\n")
@@ -2079,7 +2184,12 @@ def main():
                     if not match:
                         content = "No registered project. Run ki_init_project first."
                     else:
-                        content = f"Knowledge Items for this project:\n\n{ki_utils.get_ki_list_table()}"
+                        ki_table = ki_utils.get_ki_list_table()
+                        adr_table = ki_utils.get_adr_table()
+                        if adr_table and not adr_table.startswith("No ADRs found"):
+                            content = f"Knowledge Items for this project:\n\n{ki_table}\n\nArchitecture Decision Records (ADRs):\n\n{adr_table}"
+                        else:
+                            content = f"Knowledge Items for this project:\n\n{ki_table}"
                 else:
                     wf_path = _WORKFLOWS_DIR / f"{prompt_name}.md"
                     if wf_path.exists():
@@ -2142,7 +2252,12 @@ def main():
                     know_name = os.path.basename(ki_utils.get_knowledge_root()) or ".ki-base"
                     content = facade.render_instruction(GLOBAL_INSTRUCTIONS, CURRENT_TOOL_MODE, know_name)
                 elif uri == "ki://knowledge-items.md":
-                    content = f"Knowledge Items for this project:\n\n{ki_utils.get_ki_list_table()}"
+                    ki_table = ki_utils.get_ki_list_table()
+                    adr_table = ki_utils.get_adr_table()
+                    if adr_table and not adr_table.startswith("No ADRs found"):
+                        content = f"Knowledge Items for this project:\n\n{ki_table}\n\nArchitecture Decision Records (ADRs):\n\n{adr_table}"
+                    else:
+                        content = f"Knowledge Items for this project:\n\n{ki_table}"
                 elif uri == "ki://adr-list.md":
                     content = get_adr_list(get_project_root(), jail) if jail else "No active project."
                 elif uri in ("ki://workflows/", "ki://workflows"):

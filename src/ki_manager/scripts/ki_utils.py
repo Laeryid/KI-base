@@ -409,10 +409,30 @@ def get_ki_list_table() -> str:
     items = doc_config.get("knowledge_items", {})
     if not items:
         return "No Knowledge Items registered yet."
+    jail = get_knowledge_root()
+    proj = get_project_root()
+    dec_dirs = get_decisions_dirs(proj, jail)
+
     rows = ["| File | Topic / Summary |", "|------|-----------------|"]
     for name, info in sorted(items.items()):
         summary = info.get("summary", info.get("description", "—"))
-        rows.append(f"| `{name}` | {summary} |")
+        display_name = name
+        if "path" in info and info["path"]:
+            display_name = info["path"]
+        elif jail or proj:
+            # Check if name exists literally
+            exists_literal = False
+            for root_cand in ([jail] if jail else []) + dec_dirs:
+                if os.path.exists(os.path.join(root_cand, name)) or os.path.exists(os.path.join(root_cand, "knowledge", name)):
+                    exists_literal = True
+                    break
+            if not exists_literal and re.match(r"^(?:ADR|adr)[_\-]", name):
+                stripped = re.sub(r"^(?:ADR|adr)[_\-]", "", name)
+                for d in dec_dirs:
+                    if os.path.exists(os.path.join(d, stripped)):
+                        display_name = stripped
+                        break
+        rows.append(f"| `{display_name}` | {summary} |")
     return "\n".join(rows)
 
 

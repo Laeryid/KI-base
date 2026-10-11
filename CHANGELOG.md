@@ -9,7 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.3.0.dev3] — 2026-10-09
+## [2.3.0] — 2026-10-11
+
+### Added
+- **Unified Cascade Path Resolution (`resolve_know_path`)**: `read_know_file`, `write_know_file`, and `edit_know_file` now share `ki_read`'s smart cascade resolver. AI agents can access and edit Knowledge Items using flat basenames (e.g. `KI_data_persistence.md`) without requiring explicit `knowledge/` directory prefixes.
+- **Smart Directory Placement for New KIs**: `write_know_file` now updates existing files in place across `knowledge/` rather than creating duplicates in the sandbox root, and automatically routes newly created flat KI files (`KI_*.md`, `*.ki.md`) into `<jail>/knowledge/`.
+- **ADR Name & Prefix Tolerance**: `resolve_know_path` and `ki_read` gracefully handle variations with or without `ADR_`/`adr_`/`ADR-` prefixes (e.g., resolving `ADR_002_node_status_queue_and_ui_feedback.md` to `002_node_status_queue_and_ui_feedback.md`) as well as numeric ADR IDs.
+- **Accurate Document Listings**: `get_ki_list_table()` dynamically reconciles registered entries in `doc_config.json` against filesystem reality, outputting exact on-disk filenames in document overviews.
+- **Comprehensive Project Overview**: `ki_instructions(document="knowledge-items")`, prompts, and `ki://knowledge-items.md` now present both Knowledge Items and Architecture Decision Records (ADRs) tables together when ADRs exist.
+
+### Highlights from 2.3.0 Development Cycle
+- Compact Facade Mode (`--tool-mode compact`) reducing MCP tools footprint from 34 schemas to 6 tools (`ki_instructions`, `ki_search`, `ki_read`, `ki_tools`, `ki_call`, `ki_mutate`), saving thousands of context tokens.
+- Native BM25 search engine (`ki_search`) with bilingual EN/RU stemming and field-weighted ranking.
+- Token-efficient reader with section filtering and character offset pagination (`ki_read`, `read_know_file`).
+- Batch ADR superseding (`create_adr`) with automatic status transitions, warning banners, git/environment snapshots, and quality sections (`rejected_alternatives`, `invariants`, `verification`).
+- Automated drift analysis (`check_ki_drift`) and Python AST pre-enrichment during scaffolding.
 
 ### Added
 - `create_adr` batch `supersedes` support: accept a list of previous ADR IDs (`supersedes: ["001", "002"]`) to supersede multiple older records simultaneously; automatically updates deprecated ADR files with warning banners and `Superseded by ADR XXX` statuses, updates `doc_config.json`, and embeds bi-directional cross-links in the generated ADR.
