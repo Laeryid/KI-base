@@ -286,7 +286,7 @@ def run_drift_check(
         return [check_single_ki(target_name, target_path, doc_config, project_root, knowledge_dir)]
 
     results = []
-    for f in sorted(knowledge_dir.glob("KI_*.md")):
+    for f in sorted(f for f in knowledge_dir.glob("*.md") if ki_utils.is_ki_filename(f.name)):
         results.append(check_single_ki(f.name, f, doc_config, project_root, knowledge_dir))
 
     return results

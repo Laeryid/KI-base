@@ -16,12 +16,16 @@ import ki_utils
 
 
 def resolve_agents_path(agents_path: str = None) -> str:
-    """Finds the AGENTS.md file in the project."""
     if agents_path:
         p = ki_utils.normalize_path(agents_path)
-        if os.path.exists(p):
-            return p
-        return p  # let caller handle not found
+        pr = ki_utils.get_project_root()
+        kr = ki_utils.get_knowledge_root()
+        allowed = [pr] if pr else []
+        if kr and kr not in allowed:
+            allowed.append(kr)
+        if allowed and not any(ki_utils.is_subpath(p, r) for r in allowed):
+            return ""
+        return p
 
     pr = ki_utils.get_project_root()
     kr = ki_utils.get_knowledge_root()

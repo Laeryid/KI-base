@@ -193,3 +193,36 @@ def test_full_mode_via_cli():
     resp = json.loads(lines[0])
     tools = resp["result"]["tools"]
     assert len(tools) == 34
+
+
+def test_sync_dispatch_schemas_dynamic():
+    dummy_tools = [
+        {"name": "tool_read", "description": "Read something", "annotations": {"readOnlyHint": True}},
+        {"name": "tool_write", "description": "Write something", "annotations": {"readOnlyHint": False}},
+        {"name": "ki_call", "description": "Facade", "annotations": {"readOnlyHint": True}},
+        {"name": "ki_mutate", "description": "Facade", "annotations": {"readOnlyHint": False}},
+    ]
+    facade.sync_dispatch_schemas(dummy_tools)
+    
+    call_enum = facade.KI_CALL_TOOL["inputSchema"]["properties"]["tool"]["enum"]
+    mutate_enum = facade.KI_MUTATE_TOOL["inputSchema"]["properties"]["tool"]["enum"]
+    
+    assert "tool_read" in call_enum
+    assert "tool_write" not in call_enum
+    assert "ki_call" not in call_enum  # Dispatchers must never be in their own enums
+    assert "tool_write" in mutate_enum
+    assert "tool_read" not in mutate_enum
+    assert "ki_mutate" not in mutate_enum
+    
+    # Toggle flag and verify automatic update
+    dummy_tools[0]["annotations"]["readOnlyHint"] = False
+    facade.sync_dispatch_schemas(dummy_tools)
+    assert "tool_read" in facade.KI_MUTATE_TOOL["inputSchema"]["properties"]["tool"]["enum"]
+    assert "tool_read" not in facade.KI_CALL_TOOL["inputSchema"]["properties"]["tool"]["enum"]
+    
+    # Resync with actual server tools to leave clean state
+    facade.sync_dispatch_schemas(server.MCP_TOOLS)
+    real_call_enum = facade.KI_CALL_TOOL["inputSchema"]["properties"]["tool"]["enum"]
+    assert "generate_dir_index" in real_call_enum
+    assert "analyze_dependencies" in real_call_enum
+    assert "analyze_all_dependencies" in real_call_enum

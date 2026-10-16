@@ -65,7 +65,7 @@ def load_ki_files() -> list:
     ki_dir = os.path.join(get_knowledge_root(), "knowledge")
     if not os.path.isdir(ki_dir):
         return []
-    return [f for f in os.listdir(ki_dir) if f.startswith("KI_") and f.endswith(".md")]
+    return [f for f in os.listdir(ki_dir) if ki_utils.is_ki_filename(f)]
 
 
 # ─── Metrics ──────────────────────────────────────────────────────────────────

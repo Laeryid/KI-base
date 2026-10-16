@@ -32,6 +32,9 @@ def analyze_path(target_path: str, recursive: bool = False):
     
     # Resolve absolute path
     abs_target = os.path.normpath(os.path.join(project_root, target_path))
+    if not ki_utils.is_subpath(abs_target, project_root):
+        print(f"Error: Path '{target_path}' escapes project root.")
+        return
 
     if not os.path.exists(abs_target):
         print(f"Error: Path {target_path} not found.")

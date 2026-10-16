@@ -218,7 +218,7 @@ def search_knowledge(
         return {"error": "No project root found. Run ki_init_project or specify workspace.", "results": []}
 
     knowledge_root = ki_utils.get_knowledge_root()
-    if not knowledge_root or not os.path.exists(knowledge_root) or not os.path.normcase(os.path.abspath(knowledge_root)).startswith(os.path.normcase(os.path.abspath(project_root))):
+    if not knowledge_root or not os.path.exists(knowledge_root) or not ki_utils.is_subpath(knowledge_root, project_root):
         for cand in [
             os.path.join(project_root, ".ki-base", "knowledge"),
             os.path.join(project_root, "knowledge"),

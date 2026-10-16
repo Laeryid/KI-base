@@ -244,6 +244,46 @@ KI_MUTATE_TOOL = {
 }
 
 
+# Direct facade tools that cannot be called recursively via ki_call / ki_mutate
+DIRECT_FACADE_TOOLS = {"ki_instructions", "ki_search", "ki_read", "ki_tools", "ki_call", "ki_mutate"}
+
+
+def sync_dispatch_schemas(all_tools: List[Dict[str, Any]]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Dynamically binds KI_CALL_TOOL and KI_MUTATE_TOOL schemas and descriptions
+    directly to the readOnlyHint annotations of all registered tools."""
+    ro_tools = []
+    mut_tools = []
+
+    for t in all_tools:
+        name = t.get("name")
+        if not name or name in DIRECT_FACADE_TOOLS:
+            continue
+        is_ro = t.get("annotations", {}).get("readOnlyHint", False)
+        if is_ro:
+            ro_tools.append(name)
+        else:
+            mut_tools.append(name)
+
+    ro_tools.sort()
+    mut_tools.sort()
+
+    KI_CALL_TOOL["description"] = (
+        "Execute a read-only ki-manager tool. "
+        f"Available tools: {', '.join(ro_tools)}. "
+        "Use ki_tools(name=...) to check arguments. For mutating operations, use ki_mutate."
+    )
+    KI_CALL_TOOL["inputSchema"]["properties"]["tool"]["enum"] = ro_tools
+
+    KI_MUTATE_TOOL["description"] = (
+        "Execute a state-modifying ki-manager tool. "
+        f"Available tools: {', '.join(mut_tools)}. "
+        "Use ki_tools(name=...) to check arguments."
+    )
+    KI_MUTATE_TOOL["inputSchema"]["properties"]["tool"]["enum"] = mut_tools
+
+    return KI_CALL_TOOL, KI_MUTATE_TOOL
+
+
 # ─── Helper Functions ────────────────────────────────────────────────────────
 
 def format_tools_catalog(all_tools: List[Dict[str, Any]], group_filter: Optional[str] = None) -> str:
@@ -280,7 +320,7 @@ def format_tools_catalog(all_tools: List[Dict[str, Any]], group_filter: Optional
 
 
 def validate_args_against_schema(schema: Dict[str, Any], args: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
-    """Simple schema validator checking required fields and basic types."""
+    """Simple schema validator checking required fields, enum choices, and basic types."""
     properties = schema.get("properties", {})
     required = schema.get("required", [])
 
@@ -307,6 +347,10 @@ def validate_args_against_schema(schema: Dict[str, Any], args: Dict[str, Any]) -
                     return False, f"Parameter '{key}' must be integer, got boolean."
                 if not isinstance(val, expected_type):
                     return False, f"Parameter '{key}' must be of type {expected_type_str}, got {type(val).__name__}."
+            if "enum" in properties[key]:
+                allowed = properties[key]["enum"]
+                if val not in allowed:
+                    return False, f"Parameter '{key}' value '{val}' is not one of {allowed}."
 
     return True, None
 

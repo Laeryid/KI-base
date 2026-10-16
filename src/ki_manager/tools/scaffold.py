@@ -42,13 +42,14 @@ KI_CONFIG_TEMPLATE = {
     "knowledge_system": {
         "mcp_server": {
             "name": "ki-manager",
-            "version": "2.0.0"
+            "version": "2.3.0"
         }
     },
     "required_sections": ["Overview", "Key Components", "Related KIs"]
 }
 
 OVERVIEW_KI_TEMPLATE = """\
+<!-- last_verified: {date} -->
 # _OVERVIEW — Project Overview
 
 **Module**: `{project_name}` (entire project)
@@ -126,10 +127,10 @@ def write_text(path: Path, content: str):
         f.write(content)
 
 
-def update_gitignore(project_root: Path):
-    """Append .ki-base/config.json to the project .gitignore if not already present."""
+def update_gitignore(project_root: Path, know_name: str = ".ki-base"):
+    """Append <know_name>/config.json to the project .gitignore if not already present."""
     gitignore = project_root / ".gitignore"
-    line = ".ki-base/config.json"
+    line = f"{know_name}/config.json"
     if gitignore.exists():
         content = gitignore.read_text(encoding="utf-8")
         if line in content:
@@ -221,7 +222,7 @@ def init_project(args: dict) -> str:
         log.append(f"[+] Created {know_name}/knowledge/_OVERVIEW.ki.md")
 
     if cfg_loc != "root":
-        update_gitignore(project_path)
+        update_gitignore(project_path, know_name=know_name)
     
     success, msg = ki_utils.register_project(config_path=str(ki_config_path), workspace=str(project_path))
     if success:
@@ -290,7 +291,7 @@ def migrate_project(project_root: str) -> str:
     overview_path = knowledge_dir / "_OVERVIEW.ki.md"
     if not overview_path.exists():
         try:
-            today = datetime.date.today().isoformat()
+            today = datetime.now().strftime("%Y-%m-%d")
             project_name = root.name
             if doc_config_path.exists():
                 try:

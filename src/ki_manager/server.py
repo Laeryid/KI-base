@@ -47,7 +47,11 @@ _LOG_DIR = Path.home() / ".ki_base" / "logs"
 def safe_log(msg: str):
     try:
         _LOG_DIR.mkdir(parents=True, exist_ok=True)
-        log_file = _LOG_DIR / f"mcp_{os.getpid()}.log"
+        import datetime
+        today_str = datetime.date.today().isoformat()
+        log_file = _LOG_DIR / f"mcp_{today_str}.log"
+        if len(msg) > 2000:
+            msg = msg[:1997] + "..."
         with open(log_file, "a", encoding="utf-8") as lf:
             lf.write(msg + "\n")
     except Exception:
@@ -115,15 +119,20 @@ def get_adr_list(project_root: str, jail: str) -> str:
 
 # â”€â”€â”€ Security â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-_FORBIDDEN_WRITE_EXT = {".py", ".pyc", ".bat", ".ps1", ".sh", ".exe", ".cmd", ".dll"}
-_FORBIDDEN_WRITE_FILES = {"doc_config.json"}  # can only be modified via dedicated tools
+_FORBIDDEN_WRITE_EXT = {
+    ".py", ".pyc", ".bat", ".ps1", ".sh", ".exe", ".cmd", ".dll",
+    ".js", ".mjs", ".cjs", ".ts", ".vbs", ".wsf", ".bash", ".zsh"
+}
+_FORBIDDEN_WRITE_FILES = {
+    "doc_config.json", "ki_config.json", "config.json", "doc_state.json"
+}  # can only be modified via dedicated tools
 
 NO_WORKSPACE_ERROR = {
     "isError": True,
     "content": [{
         "type": "text",
         "text": (
-            "âťŚ No active workspace detected.\n\n"
+            "✖ No active workspace detected.\n\n"
             "To fix, call ki_status with explicit path:\n"
             "  ki_status({\"path\": \"/absolute/path/to/project\"})\n\n"
             "Or ensure the MCP client passes workspaceUri in _meta.io.modelcontextprotocol/clientInfo."
@@ -136,7 +145,7 @@ def validate_path(rel_path: str, is_write: bool = False) -> str:
     jail = get_jail_dir()
     if not jail:
         raise PermissionError(
-            "âťŚ No active workspace detected. "
+            "✖ No active workspace detected. "
             "Call ki_status({\"path\": \"/absolute/path/to/project\"}) to set it."
         )
 
@@ -148,7 +157,7 @@ def validate_path(rel_path: str, is_write: bool = False) -> str:
     else:
         target = os.path.abspath(normalized)
 
-    if not os.path.normcase(target).startswith(os.path.normcase(jail)):
+    if not ki_utils.is_subpath(target, jail):
         raise PermissionError("Access Denied: jail breach detected.")
 
     if is_write:
@@ -156,7 +165,7 @@ def validate_path(rel_path: str, is_write: bool = False) -> str:
         if ext in _FORBIDDEN_WRITE_EXT:
             raise PermissionError(f"Access Denied: modifying {ext} files is forbidden.")
         if os.path.basename(target).lower() in _FORBIDDEN_WRITE_FILES:
-            raise PermissionError(f"Access Denied: use dedicated tools to modify this file.")
+            raise PermissionError("Access Denied: use dedicated tools to modify this file.")
 
     return target
 
@@ -303,7 +312,7 @@ def resolve_know_path(rel_path: str, is_write: bool = False, must_exist: bool = 
         valid_roots = [jail]
         if project_root:
             valid_roots.extend(ki_utils.get_decisions_dirs(project_root, jail))
-        is_safe = any(os.path.normcase(target).startswith(os.path.normcase(vr)) for vr in valid_roots if vr)
+        is_safe = any(ki_utils.is_subpath(target, vr) for vr in valid_roots if vr)
         if not is_safe:
             raise PermissionError("Access Denied: jail breach detected.")
 
@@ -514,7 +523,7 @@ MCP_TOOLS = [
         "inputSchema": {"type": "object", "properties": {}},
         "annotations": {
             "title": "Generate Dir Index",
-            "readOnlyHint": False,
+            "readOnlyHint": True,
             "destructiveHint": False,
             "idempotentHint": True,
         },
@@ -531,7 +540,7 @@ MCP_TOOLS = [
         },
         "annotations": {
             "title": "Analyze Dependencies",
-            "readOnlyHint": False,
+            "readOnlyHint": True,
             "destructiveHint": False,
             "idempotentHint": True,
         },
@@ -542,7 +551,7 @@ MCP_TOOLS = [
         "inputSchema": {"type": "object", "properties": {}},
         "annotations": {
             "title": "Analyze All Dependencies",
-            "readOnlyHint": False,
+            "readOnlyHint": True,
             "destructiveHint": False,
             "idempotentHint": True,
         },
@@ -1033,6 +1042,9 @@ MCP_TOOLS = [
     facade.KI_SEARCH_TOOL,
     facade.KI_READ_TOOL,
 ]
+
+# Dynamically bind ki_call and ki_mutate schemas to readOnlyHint annotations
+facade.sync_dispatch_schemas(MCP_TOOLS)
 
 _INSTRUCTIONS_TOOL = next(t for t in MCP_TOOLS if t["name"] == "ki_instructions")
 COMPACT_TOOLS = [
@@ -1690,8 +1702,8 @@ def handle_tool_call(name: str, args: dict) -> Any:
                     return f"Knowledge Items for this project:\n\n{ki_table}\n\nArchitecture Decision Records (ADRs):\n\n{adr_table}"
                 return f"Knowledge Items for this project:\n\n{ki_table}"
             else:
-                wf_path = _WORKFLOWS_DIR / f"{doc}.md"
-                if wf_path.exists():
+                wf_path = (_WORKFLOWS_DIR / f"{doc}.md").resolve()
+                if ki_utils.is_subpath(str(wf_path), str(_WORKFLOWS_DIR)) and wf_path.exists():
                     with open(wf_path, "r", encoding="utf-8") as f:
                         raw = f.read()
                         return facade.render_instruction(raw, CURRENT_TOOL_MODE, know_name)
@@ -1708,15 +1720,19 @@ def handle_tool_call(name: str, args: dict) -> Any:
             from scaffold import init_project
             return init_project(args)
 
-        # â”€â”€ Registry â”€â”€
+        # ─── Registry ───
         if name == "ki_migrate_project":
+            sys.path.insert(0, str(_PACKAGE_DIR / "tools"))
+            import scaffold
             return scaffold.migrate_project(str(get_project_root()))
         if name == "ki_register_project":
             config_path = args.get("config_path", "")
+            workspace = args.get("workspace")
+            inline_config = args.get("inline_config")
             # Accept directory too
             if config_path and os.path.isdir(ki_utils.normalize_path(config_path)):
                 config_path = os.path.join(ki_utils.normalize_path(config_path), "ki_config.json")
-            ok, msg = ki_utils.register_project(config_path)
+            ok, msg = ki_utils.register_project(config_path=config_path, workspace=workspace, inline_config=inline_config)
             return msg
         if name == "ki_list_projects":
             reg = ki_utils.load_registry()
@@ -1732,37 +1748,85 @@ def handle_tool_call(name: str, args: dict) -> Any:
         if name == "ki_prune_registry":
             reg = ki_utils.load_registry()
             before = len(reg["projects"])
-            reg["projects"] = {k: v for k, v in reg["projects"].items()
-                               if os.path.exists(v["config_path"])}
+            surviving = {}
+            for k, v in reg["projects"].items():
+                cfg_p = v.get("config_path")
+                if cfg_p and os.path.exists(cfg_p):
+                    surviving[k] = v
+                elif not cfg_p and os.path.exists(k):
+                    surviving[k] = v
+            reg["projects"] = surviving
             ki_utils.save_registry(reg)
             return f"Pruned {before - len(reg['projects'])} stale project(s)."
 
-        # â”€â”€ Coverage / Analysis â”€â”€
+        # ─── Coverage / Analysis ───
         if name == "audit_coverage":
             return run_script("audit_coverage.py")
 
         if name == "generate_dir_index":
             return run_script("generate_dir_index.py")
         if name == "update_last_verified":
-            import datetime, glob, re as re_mod
+            import datetime
             jail = get_jail_dir()
-            if not jail: return "Error: No project."
+            if not jail:
+                return "Error: No project."
             today = datetime.datetime.now().strftime("%Y-%m-%d")
             count = 0
-            for filepath in glob.glob(os.path.join(jail, "knowledge", "*.md")):
-                with open(filepath, "r", encoding="utf-8") as f:
-                    content = f.read()
-                new_content = re_mod.sub(r'^(last_verified:\s*)"?\d{4}-\d{2}-\d{2}"?', rf'\g<1>"{today}"', content, flags=re_mod.MULTILINE)
-                if new_content != content:
-                    import tempfile
-                    fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(filepath), text=True)
-                    try:
-                        with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
-                            f.write(new_content)
-                        os.replace(tmp_path, filepath)
-                        count += 1
-                    except Exception:
-                        if os.path.exists(tmp_path): os.remove(tmp_path)
+            know_dir = os.path.join(jail, "knowledge")
+            if os.path.exists(know_dir):
+                for fname in os.listdir(know_dir):
+                    if not ki_utils.is_ki_filename(fname, include_overview=True):
+                        continue
+                    filepath = os.path.join(know_dir, fname)
+                    if not os.path.isfile(filepath):
+                        continue
+                    with open(filepath, "r", encoding="utf-8") as f:
+                        content = f.read()
+
+                    new_content = content
+                    new_content = re.sub(
+                        r'<!--\s*last_verified:\s*"?\d{4}-\d{2}-\d{2}"?\s*-->',
+                        f'<!-- last_verified: {today} -->',
+                        new_content,
+                        flags=re.IGNORECASE
+                    )
+                    new_content = re.sub(
+                        r'^(last_verified:\s*)"?\d{4}-\d{2}-\d{2}"?',
+                        rf'\g<1>"{today}"',
+                        new_content,
+                        flags=re.MULTILINE
+                    )
+                    new_content = re.sub(
+                        r'(\*\*Last verified\*\*:\s*)"?\d{4}-\d{2}-\d{2}"?',
+                        rf'\g<1>{today}',
+                        new_content,
+                        flags=re.IGNORECASE
+                    )
+
+                    if new_content == content:
+                        lines = content.splitlines(keepends=True)
+                        res_lines = []
+                        inserted = False
+                        for line in lines:
+                            res_lines.append(line)
+                            if not inserted and line.startswith("# "):
+                                res_lines.append(f"\n<!-- last_verified: {today} -->\n")
+                                inserted = True
+                        if not inserted:
+                            res_lines.insert(0, f"<!-- last_verified: {today} -->\n\n")
+                        new_content = "".join(res_lines)
+
+                    if new_content != content:
+                        import tempfile
+                        fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(filepath), text=True)
+                        try:
+                            with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
+                                f.write(new_content)
+                            os.replace(tmp_path, filepath)
+                            count += 1
+                        except Exception:
+                            if os.path.exists(tmp_path):
+                                os.remove(tmp_path)
             return f"Updated last_verified in {count} files."
         if name == "analyze_all_dependencies":
             return run_script("ki_dependency_analyzer.py", ["--all"])
@@ -2009,6 +2073,15 @@ def _write_ide_instructions() -> None:
                 instructions_path.write_text(content, encoding="utf-8")
                 safe_log(f"Wrote instructions.md → {instructions_path}")
 
+                active_tool_names = {t["name"] for t in tools_to_write}
+                for existing_json in target_dir.glob("*.json"):
+                    if existing_json.stem not in active_tool_names:
+                        try:
+                            existing_json.unlink()
+                            safe_log(f"Removed inactive tool schema: {existing_json.name}")
+                        except Exception:
+                            pass
+
                 # Sync tool schema JSON files if target is an IDE mcp tool directory
                 for tool in tools_to_write:
                     try:
@@ -2026,7 +2099,7 @@ def _write_ide_instructions() -> None:
 
 
 def _extract_workspace_from_meta(params: dict) -> Optional[str]:
-    """ĐĐ·Đ˛Đ»ĐµĐşĐ°ĐµŃ‚ workspace URI Đ¸Đ· _meta Đ˝ĐľĐ˛ĐľĐłĐľ ĐżŃ€ĐľŃ‚ĐľĐşĐľĐ»Đ° (2026-07-28)."""
+    """Извлекает workspace URI из _meta нового протокола (2026-07-28)."""
     meta = params.get("_meta", {})
     client_info = meta.get("io.modelcontextprotocol/clientInfo", {})
     return client_info.get("workspaceUri") or client_info.get("rootUri")
@@ -2069,6 +2142,7 @@ def main():
                     root_uri = roots[0].get("uri")
                     if root_uri:
                         ki_utils.ACTIVE_WORKSPACE_PATH = ki_utils.normalize_path(root_uri)
+                        ki_utils._CACHE.clear()
                         safe_log(f"SET workspace via roots/list: {ki_utils.ACTIVE_WORKSPACE_PATH}")
                 continue
 
@@ -2076,24 +2150,22 @@ def main():
             method = req.get("method")
             params = req.get("params", {})
 
-            # ĐťĐľĐ˛Ń‹Đą ĐżŃ€ĐľŃ‚ĐľĐşĐľĐ»: Đ¸Đ·Đ˛Đ»ĐµĐşĐ°ĐµĐĽ workspace Đ¸Đ· _meta ĐżŃ€Đ¸ ĐşĐ°Đ¶Đ´ĐľĐĽ Đ·Đ°ĐżŃ€ĐľŃĐµ
-            if not ki_utils.ACTIVE_WORKSPACE_PATH:
-                _ws = _extract_workspace_from_meta(params)
-                if _ws:
-                    ki_utils.ACTIVE_WORKSPACE_PATH = ki_utils.normalize_path(_ws)
+            # Извлекаем workspace из _meta при каждом запросе
+            _ws = _extract_workspace_from_meta(params)
+            if _ws:
+                norm_ws = ki_utils.normalize_path(_ws)
+                if norm_ws != ki_utils.ACTIVE_WORKSPACE_PATH:
+                    ki_utils.ACTIVE_WORKSPACE_PATH = norm_ws
+                    ki_utils._CACHE.clear()
                     safe_log(f"SET workspace via _meta: {ki_utils.ACTIVE_WORKSPACE_PATH}")
 
             def send(result_data):
                 resp = json.dumps({"jsonrpc": "2.0", "id": rid, "result": result_data})
-                safe_log(f"DEBUG: Before write RESP")
                 safe_log(f"RESP: {resp}")
                 sys.stdout.write(resp + "\n")
-                safe_log(f"DEBUG: Before flush RESP")
                 sys.stdout.flush()
-                safe_log(f"DEBUG: After flush RESP")
 
             if method in ("initialize", "server/discover"):
-                safe_log(f"DEBUG: Inside method {method}")
                 # Extract workspace URI from any location in params
                 root_uri = params.get("rootUri")
                 if not root_uri:
@@ -2117,20 +2189,16 @@ def main():
                             return d
                     root_uri = _find_uri(params)
 
-                safe_log(f"DEBUG: After _find_uri. root_uri={root_uri}")
                 if root_uri:
                     ki_utils.ACTIVE_WORKSPACE_PATH = ki_utils.normalize_path(root_uri)
+                    ki_utils._CACHE.clear()
                     safe_log(f"SET workspace via initialize: {ki_utils.ACTIVE_WORKSPACE_PATH}")
 
-                safe_log(f"DEBUG: Before importlib")
                 try:
-                    server_version = importlib.metadata.version("ki-manager")
-                except importlib.metadata.PackageNotFoundError:
-                    server_version = "2.0.11"
-                except Exception as ex:
-                    safe_log(f"DEBUG: importlib EXCEPTION: {ex}")
-                    server_version = "2.0.11"
-                safe_log(f"DEBUG: After importlib. version={server_version}")
+                    import ki_manager
+                    server_version = getattr(ki_manager, "__version__", importlib.metadata.version("ki-manager"))
+                except Exception:
+                    server_version = "2.3.0"
 
                 know_name = os.path.basename(ki_utils.get_knowledge_root()) or ".ki-base"
                 resp = {
@@ -2142,7 +2210,6 @@ def main():
                 if method == "server/discover":
                     resp["versions"] = ["2026-07-28", "2025-11-25", "2024-11-05"]
                 send(resp)
-                safe_log(f"DEBUG: After send() for {method}")
 
             elif method == "notifications/initialized":
                 # Request roots from client for workspace detection
@@ -2152,17 +2219,18 @@ def main():
                 sys.stdout.flush()
 
             elif method == "tools/list":
+                facade.sync_dispatch_schemas(MCP_TOOLS)
                 tools_list = COMPACT_TOOLS if tool_mode == "compact" else MCP_TOOLS
                 send({"tools": tools_list, "ttlMs": 300000, "cacheScope": "global"})
 
             elif method == "tools/call":
                 tool_name = params["name"]
                 tool_args = params.get("arguments", {})
-                # Fallback: ĐżŃ€ĐľĐ±ŃĐµĐĽ Đ˛Đ·ŃŹŃ‚ŃŚ workspace Đ¸Đ· Đ°Ń€ĐłŃĐĽĐµĐ˝Ń‚ĐľĐ˛ Đ¸Đ˝ŃŃ‚Ń€ŃĐĽĐµĐ˝Ń‚Đ°
                 if not ki_utils.ACTIVE_WORKSPACE_PATH:
                     _ws_arg = tool_args.get("path") or tool_args.get("project_path")
                     if _ws_arg:
                         ki_utils.ACTIVE_WORKSPACE_PATH = ki_utils.normalize_path(_ws_arg)
+                        ki_utils._CACHE.clear()
                         safe_log(f"SET workspace via tool args: {ki_utils.ACTIVE_WORKSPACE_PATH}")
                 result = handle_tool_call(tool_name, tool_args)
                 if isinstance(result, dict) and "content" in result:
@@ -2191,8 +2259,8 @@ def main():
                         else:
                             content = f"Knowledge Items for this project:\n\n{ki_table}"
                 else:
-                    wf_path = _WORKFLOWS_DIR / f"{prompt_name}.md"
-                    if wf_path.exists():
+                    wf_path = (_WORKFLOWS_DIR / f"{prompt_name}.md").resolve()
+                    if ki_utils.is_subpath(str(wf_path), str(_WORKFLOWS_DIR)) and wf_path.exists():
                         with open(wf_path, "r", encoding="utf-8") as f:
                             raw = f.read()
                             know_name = os.path.basename(ki_utils.get_knowledge_root()) or ".ki-base"
@@ -2272,8 +2340,8 @@ def main():
                     wf_name = uri.replace("ki://workflows/", "")
                     if not wf_name.endswith(".md"):
                         wf_name += ".md"
-                    wf_path = _WORKFLOWS_DIR / wf_name
-                    if wf_path.exists():
+                    wf_path = (_WORKFLOWS_DIR / wf_name).resolve()
+                    if ki_utils.is_subpath(str(wf_path), str(_WORKFLOWS_DIR)) and wf_path.exists():
                         with open(wf_path, "r", encoding="utf-8") as f:
                             raw = f.read()
                             know_name = os.path.basename(ki_utils.get_knowledge_root()) or ".ki-base"
@@ -2282,10 +2350,13 @@ def main():
                 # Physical resources in jail
                 elif jail and uri.startswith("ki://"):
                     fname = uri.replace("ki://", "")
-                    fpath = os.path.join(jail, fname)
-                    if os.path.exists(fpath):
-                        with open(fpath, "r", encoding="utf-8") as f:
-                            content = f.read()
+                    try:
+                        fpath = validate_path(fname, is_write=False)
+                        if os.path.exists(fpath) and os.path.isfile(fpath):
+                            with open(fpath, "r", encoding="utf-8") as f:
+                                content = f.read()
+                    except Exception:
+                        content = None
                 
                 if content is not None:
                     send({"contents": [{"uri": uri, "mimeType": "text/plain", "text": content}]})

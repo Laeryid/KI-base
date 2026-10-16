@@ -44,3 +44,60 @@ def test_tool_schemas_valid():
         if "rel_path" in schema["properties"]:
             assert "description" in schema["properties"]["rel_path"], f"Tool {tool['name']} rel_path is missing description"
 
+
+def test_update_last_verified_all_formats(monkeypatch, tmp_path):
+    from datetime import datetime
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    project_dir = tmp_path / "my_project"
+    project_dir.mkdir()
+    know_dir = project_dir / ".ki-base" / "knowledge"
+    know_dir.mkdir(parents=True)
+
+    monkeypatch.setattr('ki_manager.scripts.ki_utils.ACTIVE_WORKSPACE_PATH', str(project_dir))
+    monkeypatch.setattr('ki_manager.server.get_jail_dir', lambda: str(project_dir / ".ki-base"))
+    monkeypatch.setattr('ki_manager.server.get_project_root', lambda: str(project_dir))
+
+    # 1. HTML comment format
+    f1 = know_dir / "item1.ki.md"
+    f1.write_text("# Item 1\n<!-- last_verified: 2020-01-01 -->\nContent", encoding="utf-8")
+
+    # 2. YAML frontmatter format
+    f2 = know_dir / "item2.ki.md"
+    f2.write_text("---\nlast_verified: 2020-01-01\n---\n# Item 2", encoding="utf-8")
+
+    # 3. Markdown bold format
+    f3 = know_dir / "item3.ki.md"
+    f3.write_text("# Item 3\n**Last verified**: 2020-01-01\nContent", encoding="utf-8")
+
+    # 4. No tag format (should insert)
+    f4 = know_dir / "item4.ki.md"
+    f4.write_text("# Item 4\n\n## Section\nContent", encoding="utf-8")
+
+    res = handle_tool_call("update_last_verified", {})
+    assert "in 4 files" in res
+
+    assert f"<!-- last_verified: {today} -->" in f1.read_text(encoding="utf-8")
+    assert today in f2.read_text(encoding="utf-8")
+    assert f"**Last verified**: {today}" in f3.read_text(encoding="utf-8")
+    assert f"<!-- last_verified: {today} -->" in f4.read_text(encoding="utf-8")
+
+
+def test_git_diff_secured_guards(monkeypatch, tmp_path):
+    from ki_manager.scripts import git_diff_secured
+
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+
+    monkeypatch.setattr('ki_manager.scripts.ki_utils.ACTIVE_WORKSPACE_PATH', str(project_dir))
+    monkeypatch.setattr('ki_manager.scripts.ki_utils.get_project_root', lambda: str(project_dir))
+
+    res_flag = git_diff_secured.git_diff_secured(["--output=evil.txt"])
+    assert "Suspicious argument" in res_flag
+
+    res_shell = git_diff_secured.git_diff_secured(["file.txt; rm -rf /"])
+    assert "Suspicious argument" in res_shell
+
+    res_escape = git_diff_secured.git_diff_secured(["../outside.txt"])
+    assert "Access Denied" in res_escape
+

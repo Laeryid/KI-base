@@ -139,10 +139,10 @@ Write the file using `write_know_file` or `edit_know_file`:
 Register the new KI in `doc_config.json`:
 <!-- if-compact -->
 // turbo
-`ki_mutate(tool="add_ki_to_config", args={"ki_name": "<filename>.ki.md", "files": ["path/to/tracked/file.py"], "summary": "<Concise summary>"})`
+`ki_mutate(tool="add_ki_to_config", args={"ki_name": "<filename>.ki.md", "description": "<Full description>", "depends_on": ["path/to/tracked/file.py"], "summary": "<Concise summary>"})`
 <!-- else-compact -->
 // turbo
-`add_ki_to_config(ki_name="<filename>.ki.md", files=["path/to/tracked/file.py"], summary="<Concise summary>")`
+`add_ki_to_config(ki_name="<filename>.ki.md", description="<Full description>", depends_on=["path/to/tracked/file.py"], summary="<Concise summary>")`
 <!-- /if-compact -->
 
 ---
@@ -155,7 +155,7 @@ Automatically identify and link related KIs based on code imports:
 <!-- if-compact -->
 `ki_call(tool="analyze_dependencies", args={"ki_name": "<filename>.ki.md", "only_changed": false})`
 <!-- else-compact -->
-`analyze_dependencies(args={"ki_name": "<filename>.ki.md", "only_changed": false})`
+`analyze_dependencies(ki_name="<filename>.ki.md", only_changed=false)`
 <!-- /if-compact -->
 
 ---
@@ -188,7 +188,7 @@ Finalize the expansion by creating a git snapshot of the knowledge state.
 <!-- if-compact -->
 `ki_mutate(tool="git_checkpoint", args={"message": "Expand knowledge base: new KI registration"})`
 <!-- else-compact -->
-`git_checkpoint(args={"message": "Expand knowledge base: new KI registration"})`
+`git_checkpoint(message="Expand knowledge base: new KI registration")`
 <!-- /if-compact -->
 
 ---

@@ -99,3 +99,31 @@ def test_should_exclude():
     assert ki_utils.should_exclude("file.txt", "logs/file.txt", patterns) is True
     assert ki_utils.should_exclude("main.py", "src/main.py", patterns) is False
 
+
+@pytest.mark.positive
+def test_is_subpath(tmp_path):
+    """is_subpath correctly determines directory containment and guards against prefix traversal."""
+    import ki_utils
+    root = tmp_path / "project"
+    root.mkdir()
+    child = root / "sub" / "file.txt"
+    sibling_evil = tmp_path / "project_evil" / "file.txt"
+
+    assert ki_utils.is_subpath(str(child), str(root)) is True
+    assert ki_utils.is_subpath(str(root), str(root)) is True
+    assert ki_utils.is_subpath(str(tmp_path), str(root)) is False
+    assert ki_utils.is_subpath(str(sibling_evil), str(root)) is False
+
+
+@pytest.mark.positive
+def test_is_ki_filename():
+    """is_ki_filename correctly recognizes valid KI files and handles _OVERVIEW."""
+    import ki_utils
+    assert ki_utils.is_ki_filename("auth.ki.md") is True
+    assert ki_utils.is_ki_filename("user_service.ki.md") is True
+    assert ki_utils.is_ki_filename("_OVERVIEW.ki.md", include_overview=False) is False
+    assert ki_utils.is_ki_filename("_OVERVIEW.ki.md", include_overview=True) is True
+    assert ki_utils.is_ki_filename("notes.md") is False
+    assert ki_utils.is_ki_filename("ki.md") is False
+    assert ki_utils.is_ki_filename("something.txt") is False
+

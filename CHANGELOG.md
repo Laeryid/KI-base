@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.1.dev1] — 2026-10-16
+
+### Security & Hardening
+- **Path Traversal Protection**: Enforced strict directory boundary containment across all file discovery and inspection tools (`find_unmapped_files`, `analyze_module`, `ki_search`, and custom agent paths) to prevent prefix-based sandbox traversal attacks.
+- **Secured Git Operations (`git_diff_secured`)**: Added hardened diff inspection tool protecting against flag injection (`--output`, etc.), shell command chaining, and repository boundary escapes.
+- **Restricted File Modifications**: Extended write protection to block direct modifications of shell/executable scripts (`.sh`, `.bash`, `.zsh`, `.js`, `.ts`, `.vbs`, `.wsf`) and internal system state files (`doc_config.json`, `ki_config.json`, `config.json`, `doc_state.json`) via direct file editing tools.
+
+### Changed
+- **Unified Tool Dispatch Schema**: In compact facade mode, dynamically bind `ki_call` and `ki_mutate` tool validation schemas (`enum` and `description`) directly to tool `readOnlyHint` annotations, eliminating dispatch conflicts and preventing model confusion.
+- **Date Format Resilience in `update_last_verified`**: Extended `update_last_verified` to automatically detect and update all supported date notation variants (HTML comment `<!-- last_verified: YYYY-MM-DD -->`, YAML frontmatter `last_verified: "YYYY-MM-DD"`, and Markdown bold `**Last verified**: YYYY-MM-DD`), and automatically insert the verification tag if missing.
+- **Workflow Instructions Alignment**: Synchronized tool arguments and signatures across `/expand-knowledge` and `/sync-knowledge` instructions, ensuring seamless execution in both compact facade and full tool modes.
+- **Daily MCP Log Rotation**: Server diagnostics now rotate daily (`mcp_YYYY-MM-DD.log`) with payload truncation to prevent runaway disk usage during high-frequency sessions.
+
 ## [2.3.0] — 2026-10-11
 
 ### Added

@@ -29,3 +29,6 @@ posts/
 
 # Private plans (moved to KI-enterprise)
 plans/
+
+# Agent/MCP state
+.serena/

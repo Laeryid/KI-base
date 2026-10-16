@@ -201,11 +201,11 @@ class KnowledgeEngine:
         if not knowledge_dir.exists():
             return "Knowledge directory not found"
 
-        path_pattern = re.compile(r"`((?:app|ui|extensions|\.know|\.agent|scripts|tests)/[a-zA-Z0-9_\-\./]+)`")
+        path_pattern = re.compile(r"`([a-zA-Z0-9_\-\.]+/[a-zA-Z0-9_\-\./]+)`")
         
         updated_count = 0
         for filename in os.listdir(knowledge_dir):
-            if not filename.endswith(".md"):
+            if not ki_utils.is_ki_filename(filename, include_overview=True):
                 continue
                 
             ki_path = knowledge_dir / filename
@@ -215,8 +215,9 @@ class KnowledgeEngine:
             mentioned = path_pattern.findall(content)
             valid_paths = set()
             for p in mentioned:
-                p = p.rstrip(".,")
-                if (self.project_root / p).exists():
+                p = p.rstrip(".,;:)")
+                target_file = (self.project_root / p).resolve()
+                if ki_utils.is_subpath(str(target_file), str(self.project_root)) and target_file.exists():
                     valid_paths.add(p.replace("\\", "/"))
 
             if filename not in ki_items:

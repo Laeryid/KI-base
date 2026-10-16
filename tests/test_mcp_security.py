@@ -62,3 +62,19 @@ def test_write_markdown_allowed(setup_mcp):
     # Should NOT raise
     result = validate_path("knowledge/new_ki.md", is_write=True)
     assert result.endswith("new_ki.md")
+
+
+@pytest.mark.negative
+@pytest.mark.parametrize("ext", [".js", ".mjs", ".cjs", ".ts", ".sh", ".bash", ".zsh", ".vbs", ".wsf"])
+def test_write_script_extensions_blocked(setup_mcp, ext):
+    validate_path = setup_mcp.validate_path
+    with pytest.raises(PermissionError):
+        validate_path(f"knowledge/evil{ext}", is_write=True)
+
+
+@pytest.mark.negative
+@pytest.mark.parametrize("fname", ["doc_config.json", "ki_config.json", "config.json", "doc_state.json"])
+def test_write_config_files_blocked(setup_mcp, fname):
+    validate_path = setup_mcp.validate_path
+    with pytest.raises(PermissionError):
+        validate_path(f"knowledge/{fname}", is_write=True)

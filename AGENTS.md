@@ -178,7 +178,7 @@ ki-manager-skills install-skills --path ~/.gemini/config/skills/
 ki_instructions({"document": "create-adr"})
 ```
 
-Доступные документы: `overview`, `knowledge-items`, `create-adr`, `expand-knowledge`, `sync-knowledge`, `update-knowledge`.
+Доступные документы: `overview`, `knowledge-items`, `create-adr`, `expand-knowledge`, `sync-knowledge`, `scaffold-knowledge`.
 
 ---
 

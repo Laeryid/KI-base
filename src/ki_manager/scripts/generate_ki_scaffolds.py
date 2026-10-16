@@ -514,7 +514,7 @@ def print_scaffold_status() -> None:
     enriched_count = 0
     
     for fname in sorted(os.listdir(ki_dir)):
-        if not (fname.startswith("KI_") and fname.endswith(".md")):
+        if not ki_utils.is_ki_filename(fname):
             continue
             
         ki_path = os.path.join(ki_dir, fname)

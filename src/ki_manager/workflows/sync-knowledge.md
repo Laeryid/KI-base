@@ -100,7 +100,7 @@ Update inter-KI links ONLY for modified KIs to minimize Git noise.
 <!-- if-compact -->
 `ki_call(tool="analyze_dependencies", args={"only_changed": true})`
 <!-- else-compact -->
-`analyze_dependencies(args={"only_changed": true})`
+`analyze_dependencies(only_changed=true)`
 <!-- /if-compact -->
 
 > [!NOTE]
@@ -114,5 +114,5 @@ Finalize the synchronization by creating a git snapshot of the knowledge state.
 <!-- if-compact -->
 `ki_mutate(tool="git_checkpoint", args={"message": "Sync knowledge system state"})`
 <!-- else-compact -->
-`git_checkpoint(args={"message": "Sync knowledge system state"})`
+`git_checkpoint(message="Sync knowledge system state")`
 <!-- /if-compact -->

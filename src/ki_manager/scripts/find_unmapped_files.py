@@ -29,6 +29,8 @@ def get_unmapped_files(target_path: str = ".") -> List[str]:
 
     # 2. Scan the target directory
     abs_target = os.path.abspath(os.path.join(project_root, target_path))
+    if not ki_utils.is_subpath(abs_target, project_root):
+        return []
     if not os.path.exists(abs_target):
         return []
 

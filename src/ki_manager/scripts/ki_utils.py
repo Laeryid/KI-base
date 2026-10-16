@@ -58,6 +58,28 @@ def normalize_path(path_str: str, make_absolute: bool = True) -> str:
     return path_str
 
 
+def is_subpath(target: str, root: str) -> bool:
+    """Checks whether target path is strictly within or equal to root directory."""
+    if not target or not root:
+        return False
+    try:
+        norm_t = os.path.normcase(os.path.abspath(target))
+        norm_r = os.path.normcase(os.path.abspath(root))
+        return os.path.commonpath([norm_t, norm_r]) == norm_r
+    except (ValueError, OSError):
+        return False
+
+
+def is_ki_filename(name: str, include_overview: bool = False) -> bool:
+    """Checks if a file name matches Knowledge Item convention (KI_*.md or *.ki.md)."""
+    if not name or not name.endswith(".md"):
+        return False
+    base = os.path.basename(name)
+    if not include_overview and base in ("_OVERVIEW.ki.md", "_OVERVIEW.md"):
+        return False
+    return base.startswith("KI_") or base.endswith(".ki.md")
+
+
 # ─── Registry Management ─────────────────────────────────────────────────────
 
 def get_registry_path() -> Path:
@@ -139,7 +161,7 @@ def find_project_by_cwd(cwd=None) -> dict:
 
     for proj_root, data in registry["projects"].items():
         norm_proj = normalize_path(proj_root)
-        if os.path.normcase(cwd).startswith(os.path.normcase(norm_proj)):
+        if is_subpath(cwd, norm_proj):
             if len(norm_proj) > max_len:
                 max_len = len(norm_proj)
                 best_match = data
