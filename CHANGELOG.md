@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.3.1.dev1] — 2026-10-16
+## [2.3.1] — 2026-10-18
 
 ### Security & Hardening
 - **Path Traversal Protection**: Enforced strict directory boundary containment across all file discovery and inspection tools (`find_unmapped_files`, `analyze_module`, `ki_search`, and custom agent paths) to prevent prefix-based sandbox traversal attacks.

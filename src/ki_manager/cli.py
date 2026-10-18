@@ -144,11 +144,14 @@ def main():
     if command == "install-skills":
         install_skills(sys.argv[2:])
     elif command in ("--version", "-v"):
-        import importlib.metadata
         try:
-            v = importlib.metadata.version("ki-manager")
+            from . import __version__ as v
         except Exception:
-            v = "unknown"
+            import importlib.metadata
+            try:
+                v = importlib.metadata.version("ki-manager")
+            except Exception:
+                v = "unknown"
         print(f"ki-manager {v}")
         sys.exit(0)
     else:
