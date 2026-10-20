@@ -105,3 +105,16 @@ def test_instructions_parity_across_all_access_methods(monkeypatch):
             assert 'Use `git_checkpoint` to save' in overview_text
             assert 'ki_call' not in overview_text
 
+
+
+def test_agent_rules_workflow_and_resource(monkeypatch):
+    for mode in ("compact", "full"):
+        monkeypatch.setattr(server, "CURRENT_TOOL_MODE", mode)
+        rules_text = server.handle_tool_call("ki_instructions", {"document": "agent-rules"})
+        assert "AI Rules & Guidelines for Project Harnesses" in rules_text
+        assert "NOT a system file or magical hook" in rules_text
+        assert "STRICTLY ALL Knowledge Items (*.ki.md) live HERE!" in rules_text
+        if mode == "compact":
+            assert "ki_mutate(tool=\"sync_agents_md\")" in rules_text
+        else:
+            assert "sync_agents_md()" in rules_text

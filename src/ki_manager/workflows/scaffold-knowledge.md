@@ -135,6 +135,10 @@ Replace the stub with the enriched version:
 `write_know_file(rel_path="<filename>.ki.md", content="...")`
 <!-- /if-compact -->
 
+> [!NOTE]
+> All Knowledge Items live in `{{KI_DIR}}/knowledge/`. Calling `write_know_file(rel_path="<filename>.ki.md", ...)` automatically targets `{{KI_DIR}}/knowledge/<filename>.ki.md`.
+> **Never** write `.ki.md` files to the root of `{{KI_DIR}}/`, and **never** delete `{{KI_DIR}}/knowledge/` (including `_OVERVIEW.ki.md`, which is the project bootstrap stub).
+
 > [!IMPORTANT]
 > The **first line must be `<!-- scaffold: enriched -->`**. This marker tells `ki_finalize_scaffolds` to process the file in Phase 3 (clean markers, update doc_config summary). The `Related KIs` section is left empty — it will be populated automatically in Phase 3.
 

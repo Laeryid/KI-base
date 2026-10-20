@@ -80,12 +80,33 @@ CURRENT_TOOL_MODE: str = os.environ.get("KI_TOOL_MODE", "full").lower()
 GLOBAL_INSTRUCTIONS = """\
 # Global AI Instructions for ki-manager
 
-## 1. Project Navigation
+## 1. Project Navigation & Architecture
+`{{KI_DIR}}` (knowledge_root) is the **system container** for the entire knowledge infrastructure (analogous to `.git/` in Git).
+
+```
+<project_root>/
+├── {{KI_DIR}}/                 ← SYSTEM CONTAINER (do not pollute with .ki.md)
+│   ├── config.json             ← Machine-specific environment config (venv path, etc.)
+│   ├── ki_config.json          ← Project knowledge configuration
+│   ├── doc_config.json         ← Manifest of tracked modules and Knowledge Items
+│   ├── DIR_INDEX.md            ← Auto-generated project directory tree
+│   ├── coverage_matrix.md      ← Audit report (from audit_coverage)
+│   ├── knowledge/              ← STRICTLY ALL Knowledge Items (*.ki.md) live HERE!
+│   │   ├── _OVERVIEW.ki.md     ← Project overview stub (MUST NOT be deleted)
+│   │   └── <module>.ki.md      ← Module Knowledge Items
+│   └── decisions/              ← Architectural Decision Records (*.md ADRs)
+├── AGENTS.md                   ← Project instructions for AI agents in harness
+└── CLAUDE.md                   ← Instructions for Claude Code / Anthropic
+```
+
 - **`DIR_INDEX.md`** (`{{KI_DIR}}/DIR_INDEX.md`) — project directory tree.
 - **`doc_config.json`** (`{{KI_DIR}}/doc_config.json`) — manifest of tracked artifacts.
-- All Knowledge Items (KI) live in `{{KI_DIR}}/knowledge/`.
-- Architecture Decision Records (ADR) live in `{{KI_DIR}}/decisions/` or `decisions/`.
-- Start here: `{{KI_DIR}}/knowledge/_OVERVIEW.ki.md`
+- **`_OVERVIEW.ki.md`** (`{{KI_DIR}}/knowledge/_OVERVIEW.ki.md`) — start here for high-level architecture.
+- **Harness & Agent Instructions Guide**: see `ki://agent-rules.md` or `ki_instructions(document="agent-rules")` for recommended snippets for `AGENTS.md` and `CLAUDE.md`.
+
+> [!CAUTION]
+> 1. NEVER place `*.ki.md` files directly in the root of `{{KI_DIR}}/`. All Knowledge Items must reside in `{{KI_DIR}}/knowledge/`.
+> 2. NEVER delete `{{KI_DIR}}/knowledge/`. The initial `_OVERVIEW.ki.md` (~640 bytes) is a bootstrap stub, not a duplicate. Deleting `knowledge/` breaks audit, scaffolding, and dependency analysis.
 
 ## 2. Forced Efficiency (Anti-Hallucinations)
 1. **Mandatory Planning Template**:
@@ -2273,6 +2294,7 @@ def main():
                 jail = get_jail_dir()
                 resources = [
                     {"uri": "ki://instructions.md", "name": "instructions.md (Global AI Rules)", "mimeType": "text/markdown"},
+                    {"uri": "ki://agent-rules.md", "name": "agent-rules.md (Harness & Agent Instructions Guide)", "mimeType": "text/markdown"},
                     {"uri": "ki://knowledge-items.md", "name": "knowledge-items.md (Dynamic KI List)", "mimeType": "text/markdown"},
                     {"uri": "ki://adr-list.md", "name": "adr-list.md (Dynamic ADR List)", "mimeType": "text/markdown"},
                 ]
@@ -2319,6 +2341,15 @@ def main():
                 if uri == "ki://instructions.md":
                     know_name = os.path.basename(ki_utils.get_knowledge_root()) or ".ki-base"
                     content = facade.render_instruction(GLOBAL_INSTRUCTIONS, CURRENT_TOOL_MODE, know_name)
+                elif uri == "ki://agent-rules.md":
+                    wf_path = (_WORKFLOWS_DIR / "agent-rules.md").resolve()
+                    if wf_path.exists():
+                        with open(wf_path, "r", encoding="utf-8") as f:
+                            raw = f.read()
+                        know_name = os.path.basename(ki_utils.get_knowledge_root()) or ".ki-base"
+                        content = facade.render_instruction(raw, CURRENT_TOOL_MODE, know_name)
+                    else:
+                        content = "agent-rules.md not found."
                 elif uri == "ki://knowledge-items.md":
                     ki_table = ki_utils.get_ki_list_table()
                     adr_table = ki_utils.get_adr_table()

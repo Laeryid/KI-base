@@ -54,7 +54,9 @@ Select **one** target with the highest priority in the following order:
 
 ## Safety & Tooling Rules (Mandatory)
 > [!IMPORTANT]
-> When working with this workflow, it is **STRICTLY PROHIBITED** to use general file editing tools (e.g., `filesystem.edit_file`) for files inside the <knowledge_root> directory.
+> - `{{KI_DIR}}` (knowledge_root) is the system container. All Knowledge Items (`*.ki.md`) live strictly in `{{KI_DIR}}/knowledge/`.
+> - **NEVER** write `.ki.md` files directly into `{{KI_DIR}}/` root, and **NEVER** delete `{{KI_DIR}}/knowledge/`.
+> - When working with this workflow, it is **STRICTLY PROHIBITED** to use general file editing tools (e.g., `filesystem.edit_file`) for files inside the `{{KI_DIR}}` directory.
 > 
 <!-- if-compact -->
 > You **MUST** use the following MCP tools from the `ki-manager` server:
@@ -94,7 +96,7 @@ Select **one** target with the highest priority in the following order:
 
 ## Step 4 — Create or Update a KI File
 
-Write the file using `write_know_file` or `edit_know_file`:
+Write the file using `write_know_file` or `edit_know_file` (passing `rel_path="<filename>.ki.md"` automatically writes inside `{{KI_DIR}}/knowledge/`):
 <!-- if-compact -->
 // turbo
 `ki_mutate(tool="write_know_file", args={"rel_path": "<filename>.ki.md", "content": "..."})`
