@@ -94,3 +94,75 @@ def test_format_drift_markdown_clean():
     clean_results = [{"ki": "KI_clean.md", "drift_count": 0}]
     md = format_drift_markdown(clean_results)
     assert "No drift detected" in md
+
+
+
+def test_parse_ki_file_skips_table_without_file_column(tmp_path):
+    """Verifies that tables lacking a File/Path column (e.g. Tool | Access | Purpose) are ignored."""
+    ki_file = tmp_path / "KI_facade.md"
+    ki_file.write_text(
+        "# KI: Facade\n\n"
+        "## Key Components\n"
+        "| Tool | Access | Purpose |\n"
+        "|---|---|---|\n"
+        "| `ki_read` | read-only | Reads content |\n"
+        "| `ki_mutate` | mutating | Updates content |\n",
+        encoding="utf-8"
+    )
+
+    data = parse_ki_file(ki_file)
+    assert len(data["table_symbols"]) == 0
+
+
+def test_check_single_ki_no_spurious_missing_file_for_access_table(tmp_path):
+    """Verifies that check_single_ki does NOT report 'Missing file: Access' or 'Missing file: read-only'."""
+    project_root = tmp_path / "project"
+    knowledge_dir = project_root / ".ki-base" / "knowledge"
+    knowledge_dir.mkdir(parents=True)
+
+    ki_path = knowledge_dir / "KI_facade.md"
+    ki_path.write_text(
+        "# KI: Facade\n\n"
+        "## Key Components\n"
+        "| Tool | Access | Purpose |\n"
+        "|---|---|---|\n"
+        "| `ki_read` | read-only | Reads content |\n"
+        "| `ki_mutate` | mutating | Updates content |\n",
+        encoding="utf-8"
+    )
+
+    doc_config = {
+        "knowledge_items": {
+            "KI_facade.md": {
+                "depends_on": []
+            }
+        }
+    }
+
+    result = check_single_ki(
+        "KI_facade.md",
+        ki_path,
+        doc_config,
+        str(project_root),
+        knowledge_dir
+    )
+
+    assert result["missing_files"] == []
+    assert result["dead_symbols"] == []
+
+
+def test_parse_ki_file_with_custom_file_column_position(tmp_path):
+    """Verifies that column ordering with File Path in 3rd column is correctly extracted."""
+    ki_file = tmp_path / "KI_custom.md"
+    ki_file.write_text(
+        "# KI: Custom\n\n"
+        "## Key Components\n"
+        "| Method | Description | File Path |\n"
+        "|:---|:---|:---|\n"
+        "| `execute_task` | Runs the task | `src/executor.py` |\n",
+        encoding="utf-8"
+    )
+
+    data = parse_ki_file(ki_file)
+    assert len(data["table_symbols"]) == 1
+    assert data["table_symbols"][0] == {"symbol": "execute_task", "file": "src/executor.py"}

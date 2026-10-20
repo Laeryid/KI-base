@@ -76,31 +76,87 @@ def parse_ki_file(ki_path: Path) -> Dict[str, Any]:
 
     # Extract Key Components table symbols
     # Expected table format: | `SymbolName` | `rel/path/file.ext` | Purpose |
+    # Only tables that explicitly contain a File/Path column header are inspected.
     table_symbols: List[Dict[str, str]] = []
     in_key_components = False
-    table_row_pattern = re.compile(r"\|\s*`?([A-Za-z0-9_]+)`?\s*\|\s*`?([^`|\s]+)`?\s*\|")
+    pending_header: Optional[List[str]] = None
+    current_table_active = False
+    sym_idx = -1
+    file_idx = -1
 
     for line in lines:
         if line.startswith("## Key Components"):
             in_key_components = True
+            pending_header = None
+            current_table_active = False
             continue
         elif in_key_components and line.startswith("## "):
             in_key_components = False
+            pending_header = None
+            current_table_active = False
             continue
 
-        if in_key_components and line.strip().startswith("|"):
-            lower = line.lower()
-            if any(k in lower for k in ["class / function", "component", "|---", "|:---", "| — |", "| - |"]):
-                continue
-            m = table_row_pattern.search(line)
-            if m:
-                sym_name = m.group(1).strip()
-                file_rel = m.group(2).strip()
-                header_keywords = {"component", "file", "purpose", "class", "function", "description"}
-                if sym_name.lower() in header_keywords or file_rel.lower() in header_keywords:
-                    continue
-                if sym_name and file_rel and not file_rel.startswith("—"):
-                    table_symbols.append({"symbol": sym_name, "file": file_rel})
+        if not in_key_components:
+            continue
+
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            pending_header = None
+            current_table_active = False
+            continue
+
+        raw_cells = [c.strip() for c in stripped.strip("|").split("|")]
+        # Check if separator row (e.g. |---|---| or |:---|---:|)
+        is_separator = (
+            len(raw_cells) > 0
+            and all(re.match(r"^:?-{2,}:?$", c) for c in raw_cells if c)
+        )
+
+        if is_separator:
+            if pending_header:
+                file_idx = -1
+                for i, col in enumerate(pending_header):
+                    col_lower = col.lower()
+                    if any(w in col_lower for w in ["file", "path", "source", "location"]):
+                        file_idx = i
+                        break
+
+                sym_idx = -1
+                for i, col in enumerate(pending_header):
+                    if i == file_idx:
+                        continue
+                    col_lower = col.lower()
+                    if any(w in col_lower for w in ["class", "function", "symbol", "component", "name", "element", "method", "tool"]):
+                        sym_idx = i
+                        break
+
+                if sym_idx == -1 and file_idx != -1:
+                    sym_idx = 0 if file_idx != 0 else 1
+
+                current_table_active = (file_idx != -1 and sym_idx != -1)
+                pending_header = None
+            continue
+
+        if pending_header is None and not current_table_active:
+            # Possible header row
+            pending_header = raw_cells
+            continue
+
+        if current_table_active:
+            if len(raw_cells) > max(sym_idx, file_idx):
+                sym_val = raw_cells[sym_idx].strip(" `").strip()
+                file_val = raw_cells[file_idx].strip(" `").strip()
+                header_keywords = {"component", "file", "path", "purpose", "class", "function", "description", "tool", "access"}
+                if (
+                    sym_val
+                    and file_val
+                    and not sym_val.startswith("—")
+                    and not file_val.startswith("—")
+                    and not file_val.startswith("-")
+                    and sym_val.lower() not in header_keywords
+                    and file_val.lower() not in header_keywords
+                ):
+                    table_symbols.append({"symbol": sym_val, "file": file_val})
 
     # Extract wiki-links [[KI_*.md]]
     wiki_links = []

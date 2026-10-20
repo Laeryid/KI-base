@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.2.dev1] — 2026-10-20
+
+### Fixed
+- **`find_unmapped_files` Traversal & Scoping**:
+  - Automatically loads and enforces `.gitignore` patterns and `doc_config.json` `exclude` rules (in addition to `exclude_patterns`) during repository discovery.
+  - When scanning repository root by default, scopes file discovery to root segments of configured `tracked_modules`, avoiding timeouts and runaway directory walks across large external data trees.
+  - Made the CLI `path` argument optional, defaulting to root / tracked modules.
+- **`check_ki_drift` Markdown Table Header Validation**:
+  - Validates Markdown table headers explicitly for file path columns (`File`, `Path`, `Source`, `Location`) before inspecting cells for broken paths.
+  - Tables without file columns (e.g. `| Tool | Access | Purpose |`) are cleanly bypassed, eliminating false-positive `Missing file: Access` errors.
+
 ## [2.3.1] — 2026-10-18
 
 ### Security & Hardening

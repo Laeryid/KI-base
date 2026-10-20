@@ -335,6 +335,34 @@ def get_local_config() -> dict:
     return {}
 
 
+def load_gitignore_patterns(project_root: str = None) -> set:
+    """Parses .gitignore file in project_root if present, returning a set of pattern strings."""
+    if not project_root:
+        project_root = get_project_root()
+    if not project_root or not os.path.isdir(project_root):
+        return set()
+
+    gitignore_path = os.path.join(project_root, ".gitignore")
+    if not os.path.isfile(gitignore_path):
+        return set()
+
+    patterns = set()
+    try:
+        with open(gitignore_path, "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or line.startswith("!"):
+                    continue
+                norm = line.replace("\\", "/").rstrip("/")
+                if norm.startswith("/"):
+                    norm = norm.lstrip("/")
+                if norm:
+                    patterns.add(norm)
+    except Exception:
+        pass
+    return patterns
+
+
 DEFAULT_EXCLUDED_DIRS = {
     ".git", "__pycache__", "node_modules", ".venv", "venv", "dist", "build",
     ".mypy_cache", ".pytest_cache", ".ruff_cache",
@@ -344,33 +372,45 @@ DEFAULT_EXCLUDED_DIRS = {
 def get_exclude_patterns() -> set:
     """
     Returns the set of directory/file exclude patterns.
-    Combines default excluded dirs with exclude_patterns from:
+    Combines default excluded dirs with exclude_patterns and exclude from:
     1. config.json (machine-specific)
-    2. doc_config.json (coverage_settings.exclude_patterns or top-level exclude_patterns)
+    2. doc_config.json (coverage_settings.exclude_patterns, coverage_settings.exclude,
+       top-level exclude_patterns, top-level exclude)
     3. ki_config.json
+    4. .gitignore in project root
     """
     patterns = set(DEFAULT_EXCLUDED_DIRS)
 
+    def _add_from_cfg(cfg_dict, key):
+        val = cfg_dict.get(key, [])
+        if isinstance(val, list):
+            for p in val:
+                if p:
+                    patterns.add(str(p))
+        elif isinstance(val, str) and val:
+            patterns.add(val)
+
     # 1. config.json
     local_cfg = get_local_config()
-    for p in local_cfg.get("exclude_patterns", []):
-        if p:
-            patterns.add(str(p))
+    _add_from_cfg(local_cfg, "exclude_patterns")
+    _add_from_cfg(local_cfg, "exclude")
 
     # 2. doc_config.json
     doc_cfg = get_doc_config()
-    for p in doc_cfg.get("exclude_patterns", []):
-        if p:
-            patterns.add(str(p))
-    for p in doc_cfg.get("coverage_settings", {}).get("exclude_patterns", []):
-        if p:
-            patterns.add(str(p))
+    _add_from_cfg(doc_cfg, "exclude_patterns")
+    _add_from_cfg(doc_cfg, "exclude")
+    cov_cfg = doc_cfg.get("coverage_settings", {})
+    if isinstance(cov_cfg, dict):
+        _add_from_cfg(cov_cfg, "exclude_patterns")
+        _add_from_cfg(cov_cfg, "exclude")
 
     # 3. ki_config.json
     ki_cfg = get_ki_cfg()
-    for p in ki_cfg.get("exclude_patterns", []):
-        if p:
-            patterns.add(str(p))
+    _add_from_cfg(ki_cfg, "exclude_patterns")
+    _add_from_cfg(ki_cfg, "exclude")
+
+    # 4. .gitignore
+    patterns.update(load_gitignore_patterns())
 
     return patterns
 
@@ -389,15 +429,17 @@ def should_exclude(name: str, rel_path: str = "", patterns: set = None) -> bool:
     norm_rel = rel_path.replace("\\", "/").strip("/") if rel_path else ""
 
     for pat in patterns:
-        if fnmatch.fnmatch(name, pat):
+        norm_pat = pat.replace("\\", "/").strip("/")
+        if not norm_pat:
+            continue
+        if fnmatch.fnmatch(name, norm_pat):
             return True
         if norm_rel:
-            norm_pat = pat.replace("\\", "/").strip("/")
             if norm_rel == norm_pat or norm_rel.startswith(norm_pat + "/"):
                 return True
             if fnmatch.fnmatch(norm_rel, norm_pat):
                 return True
-            if any(fnmatch.fnmatch(comp, pat) for comp in norm_rel.split("/")):
+            if any(fnmatch.fnmatch(comp, norm_pat) for comp in norm_rel.split("/")):
                 return True
 
     return False
