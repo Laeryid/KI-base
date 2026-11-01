@@ -198,6 +198,7 @@ def search_knowledge(
     scope: str = "all",
     limit: int = 5,
     offset: int = 0,
+    page: Optional[int] = None,
     k1: float = 1.5,
     b: float = 0.75,
 ) -> Dict[str, Any]:
@@ -209,6 +210,7 @@ def search_knowledge(
     :param scope: "all", "ki", or "adr".
     :param limit: Max number of results to return (default: 5).
     :param offset: Offset index for pagination (default: 0).
+    :param page: 1-based page number for pagination (calculates offset if provided).
     :param k1: BM25 k1 parameter.
     :param b: BM25 b parameter.
     """
@@ -216,6 +218,14 @@ def search_knowledge(
         project_root = ki_utils.get_project_root()
     if not project_root:
         return {"error": "No project root found. Run ki_init_project or specify workspace.", "results": []}
+
+    if page is not None:
+        try:
+            p = int(page)
+            if p > 0:
+                offset = (p - 1) * limit
+        except (ValueError, TypeError):
+            pass
 
     knowledge_root = ki_utils.get_knowledge_root()
     if not knowledge_root or not os.path.exists(knowledge_root) or not ki_utils.is_subpath(knowledge_root, project_root):
@@ -231,7 +241,7 @@ def search_knowledge(
 
     q_tokens = tokenize(query)
     if not q_tokens:
-        return {"query": query, "total": 0, "results": []}
+        return {"query": query, "total": 0, "offset": offset, "limit": limit, "page": 1, "total_pages": 1, "results": []}
 
     docs: List[Dict[str, Any]] = []
 
@@ -261,7 +271,7 @@ def search_knowledge(
 
     total_docs = len(docs)
     if total_docs == 0:
-        return {"query": query, "total": 0, "results": []}
+        return {"query": query, "total": 0, "offset": offset, "limit": limit, "page": 1, "total_pages": 1, "results": []}
 
     avg_dl = sum(d["weighted_len"] for d in docs) / total_docs
 
@@ -298,14 +308,19 @@ def search_knowledge(
             })
 
     scored_results.sort(key=lambda x: x["score"], reverse=True)
+    total_count = len(scored_results)
     safe_offset = max(0, offset)
     final_results = scored_results[safe_offset : safe_offset + limit]
+    current_page = (safe_offset // limit) + 1 if limit > 0 else 1
+    total_pages = max(1, math.ceil(total_count / limit)) if limit > 0 else 1
 
     return {
         "query": query,
-        "total": len(scored_results),
+        "total": total_count,
         "offset": safe_offset,
         "limit": limit,
+        "page": current_page,
+        "total_pages": total_pages,
         "results": final_results,
     }
 
@@ -317,13 +332,24 @@ def format_search_markdown(search_dict: Dict[str, Any]) -> str:
     results = search_dict.get("results", [])
     offset = search_dict.get("offset", 0)
     limit = search_dict.get("limit", 5)
+    page = search_dict.get("page")
+    total_pages = search_dict.get("total_pages")
 
     if total == 0 or not results:
         return f'No documentation matching "{query}" found.'
 
+    if page is None and limit > 0:
+        page = (offset // limit) + 1
+    if total_pages is None and limit > 0:
+        total_pages = max(1, math.ceil(total / limit))
+
     start_idx = offset + 1
     end_idx = offset + len(results)
-    out = [f'Found {total} result(s) for "{query}" (showing {start_idx}-{end_idx}):\n']
+    out = [f'Found {total} result(s) for "{query}" [Page {page}/{total_pages} (showing {start_idx}-{end_idx})]:\n']
+
+    if end_idx < total:
+        next_page = (page or 1) + 1
+        out.append(f'> 💡 **Next page**: `ki_search(query="{query}", page={next_page})` (or `offset={end_idx}`)\n')
 
     for i, r in enumerate(results, start=start_idx):
         doc_type = r.get("type", "ki").upper()
@@ -337,6 +363,7 @@ def format_search_markdown(search_dict: Dict[str, Any]) -> str:
             out.append(f"   > {snippet}")
 
     if end_idx < total:
-        out.append(f"\n*Showing {end_idx} of {total} results. Call ki_search(query='{query}', offset={end_idx}) to view more.*")
+        next_page = (page or 1) + 1
+        out.append(f"\n*Showing {end_idx} of {total} results. Call `ki_search(query='{query}', page={next_page})` (or `offset={end_idx}`) to view more.*")
 
     return "\n".join(out)

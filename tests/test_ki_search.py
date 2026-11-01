@@ -123,10 +123,24 @@ def test_search_pagination_and_formatting(tmp_path):
     assert res_page2["offset"] == 3
     assert res_page1["results"][0]["path"] != res_page2["results"][0]["path"]
 
-    # Test markdown formatting
+    # Test page=1 and page=2
+    res_p1 = ki_search.search_knowledge("architecture", project_root=str(project_dir), limit=3, page=1)
+    assert res_p1["page"] == 1
+    assert res_p1["total_pages"] == 3
+    assert res_p1["offset"] == 0
+
+    res_p2 = ki_search.search_knowledge("architecture", project_root=str(project_dir), limit=3, page=2)
+    assert res_p2["page"] == 2
+    assert res_p2["offset"] == 3
+    assert res_p1["results"][0]["path"] != res_p2["results"][0]["path"]
+
+    # Test markdown formatting with page hints
     md = ki_search.format_search_markdown(res_page1)
     assert "Found 7 result(s)" in md
     assert "showing 1-3" in md
+    assert "Page 1/3" in md
+    assert "Next page" in md
+    assert "page=2" in md
     assert "to view more" in md
 
     # Empty search markdown

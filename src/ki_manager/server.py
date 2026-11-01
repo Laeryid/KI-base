@@ -118,12 +118,12 @@ GLOBAL_INSTRUCTIONS = """\
 2. **Strict Adherence**:
    - Always read relevant KIs before modifying a module.
 <!-- if-compact -->
-   - Use `ki_search(query="...")` and `ki_read(rel_path="...")` to discover and read documentation.
+   - Use `ki_list()` to view all documented items, `ki_search(query="...")` to find topics, and `ki_read(rel_path="...")` to read documentation.
    - For read-only analysis tools (`audit_coverage`, `generate_dir_index`, `ki_scaffold_status`, `git_diff_secured`), call `ki_call(tool="...")`.
    - For state-modifying operations (`git_checkpoint`, `write_know_file`, `edit_know_file`, `ki_scaffold`, `create_adr`), call `ki_mutate(tool="...", args={...})`.
    - To inspect schemas of available tools, call `ki_tools(name="<tool_name>")`.
 <!-- else-compact -->
-   - Use `ki_search(query="...")` and `ki_read(rel_path="...")` or `read_know_file(rel_path="...")` to explore documentation.
+   - Use `ki_list()` to view all documented items, `ki_search(query="...")` to find topics, and `ki_read(rel_path="...")` or `read_know_file(rel_path="...")` to explore documentation.
    - After significant changes, run `audit_coverage` via MCP.
    - Use `git_checkpoint` to save knowledge snapshots.
 <!-- /if-compact -->
@@ -1059,7 +1059,8 @@ MCP_TOOLS = [
             "idempotentHint": True,
         },
     },
-    # ─── Search & Read ───
+    # ─── Navigation, Search & Read ───
+    facade.KI_LIST_TOOL,
     facade.KI_SEARCH_TOOL,
     facade.KI_READ_TOOL,
 ]
@@ -1070,6 +1071,7 @@ facade.sync_dispatch_schemas(MCP_TOOLS)
 _INSTRUCTIONS_TOOL = next(t for t in MCP_TOOLS if t["name"] == "ki_instructions")
 COMPACT_TOOLS = [
     _INSTRUCTIONS_TOOL,
+    facade.KI_LIST_TOOL,
     facade.KI_SEARCH_TOOL,
     facade.KI_READ_TOOL,
     facade.KI_TOOLS_TOOL,
@@ -1991,14 +1993,29 @@ def handle_tool_call(name: str, args: dict) -> Any:
                 return ke.restore_mapping()
             return str(ke.save_state(ke.capture_full_state()))
 
-        # ─── Search & Read ───
+        # ─── Navigation, Search & Read ───
+        if name == "ki_list":
+            scope = args.get("scope", "all")
+            fmt = args.get("format", "markdown")
+            flt = args.get("filter")
+            data = ki_utils.get_ki_list_data(scope=scope, filter_query=flt)
+            if fmt == "json":
+                return json.dumps(data, ensure_ascii=False, indent=2)
+            return ki_utils.format_ki_list_markdown(data)
+
         if name == "ki_search":
             query = args.get("query", "").strip()
             scope = args.get("scope", "all")
             limit = int(args.get("limit", 5))
             offset = int(args.get("offset", 0))
+            page = args.get("page")
+            if page is not None:
+                try:
+                    page = int(page)
+                except (ValueError, TypeError):
+                    page = None
             fmt = args.get("format", "markdown")
-            res = ki_search.search_knowledge(query, project_root=get_project_root(), scope=scope, limit=limit, offset=offset)
+            res = ki_search.search_knowledge(query, project_root=get_project_root(), scope=scope, limit=limit, offset=offset, page=page)
             if fmt == "json":
                 return json.dumps(res, ensure_ascii=False, indent=2)
             return ki_search.format_search_markdown(res)

@@ -8,18 +8,20 @@ from ki_manager.tools import facade
 
 
 def test_tools_counts_and_compact_definition():
-    assert len(server.COMPACT_TOOLS) == 6
+    assert len(server.COMPACT_TOOLS) == 7
     compact_names = [t["name"] for t in server.COMPACT_TOOLS]
     assert compact_names == [
         "ki_instructions",
+        "ki_list",
         "ki_search",
         "ki_read",
         "ki_tools",
         "ki_call",
         "ki_mutate",
     ]
-    # MCP_TOOLS should have 34 tools (31 original + ki_search + ki_read + check_ki_drift)
-    assert len(server.MCP_TOOLS) == 34
+    # MCP_TOOLS should have 35 tools (34 previous + ki_list)
+    assert len(server.MCP_TOOLS) == 35
+    assert "ki_list" in [t["name"] for t in server.MCP_TOOLS]
     assert "check_ki_drift" in [t["name"] for t in server.MCP_TOOLS]
 
 
@@ -143,7 +145,7 @@ def test_ki_read_features(tmp_path, monkeypatch):
 
 
 def test_compact_mode_via_cli():
-    # Test server in compact mode returns only 6 tools
+    # Test server in compact mode returns only 7 tools
     req = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}})
     cmd = [
         sys.executable,
@@ -163,8 +165,9 @@ def test_compact_mode_via_cli():
     lines = [line.strip() for line in stdout.splitlines() if line.strip()]
     resp = json.loads(lines[0])
     tools = resp["result"]["tools"]
-    assert len(tools) == 6
+    assert len(tools) == 7
     names = [t["name"] for t in tools]
+    assert "ki_list" in names
     assert "ki_call" in names
     assert "ki_mutate" in names
     assert "ki_tools" in names
@@ -172,7 +175,7 @@ def test_compact_mode_via_cli():
 
 
 def test_full_mode_via_cli():
-    # Test server in full mode returns all 34 tools
+    # Test server in full mode returns all 35 tools
     req = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}})
     cmd = [
         sys.executable,
@@ -192,7 +195,8 @@ def test_full_mode_via_cli():
     lines = [line.strip() for line in stdout.splitlines() if line.strip()]
     resp = json.loads(lines[0])
     tools = resp["result"]["tools"]
-    assert len(tools) == 34
+    assert len(tools) == 35
+    assert 'ki_list' in [t['name'] for t in tools]
 
 
 def test_sync_dispatch_schemas_dynamic():
@@ -226,3 +230,62 @@ def test_sync_dispatch_schemas_dynamic():
     assert "generate_dir_index" in real_call_enum
     assert "analyze_dependencies" in real_call_enum
     assert "analyze_all_dependencies" in real_call_enum
+
+
+def test_ki_list_tool(tmp_path, monkeypatch):
+    project_dir = tmp_path / "proj"
+    project_dir.mkdir()
+    ki_dir = project_dir / ".ki-base"
+    ki_dir.mkdir()
+    dec_dir = project_dir / "decisions"
+    dec_dir.mkdir()
+
+    cfg_file = ki_dir / "doc_config.json"
+    cfg_data = {
+        "knowledge_items": {
+            "KI_storage.md": {
+                "summary": "Storage layer architecture",
+                "covers": ["storage", "db"]
+            },
+            "KI_api.md": {
+                "summary": "HTTP API routes",
+                "covers": ["api"]
+            }
+        }
+    }
+    cfg_file.write_text(json.dumps(cfg_data), encoding="utf-8")
+
+    adr_file = dec_dir / "0001_use_sqlite.md"
+    adr_file.write_text("# ADR 001: Use SQLite\n\n## Context\nWe choose SQLite for simplicity.\n", encoding="utf-8")
+
+    monkeypatch.setattr(server.ki_utils, "get_project_root", lambda: str(project_dir))
+    monkeypatch.setattr(server.ki_utils, "get_knowledge_root", lambda: str(ki_dir))
+    monkeypatch.setattr(server.ki_utils, "get_doc_config", lambda: cfg_data)
+    monkeypatch.setattr(server.ki_utils, "get_decisions_dirs", lambda proj=None, jail=None: [str(dec_dir)])
+    monkeypatch.setattr(server, "get_project_root", lambda: str(project_dir))
+    monkeypatch.setattr(server, "get_jail_dir", lambda: str(ki_dir))
+    server.ki_utils._CACHE.clear()
+
+    # 1. Default markdown list
+    res_md = server.handle_tool_call("ki_list", {})
+    assert "Knowledge Items (2)" in res_md
+    assert "KI_storage.md" in res_md
+    assert "Architecture Decision Records (1)" in res_md
+    assert "0001_use_sqlite.md" in res_md
+
+    # 2. Scope filter: ki only
+    res_ki = server.handle_tool_call("ki_list", {"scope": "ki"})
+    assert "Knowledge Items (2)" in res_ki
+    assert "Architecture Decision Records" not in res_ki
+
+    # 3. Text filter
+    res_flt = server.handle_tool_call("ki_list", {"filter": "storage"})
+    assert "KI_storage.md" in res_flt
+    assert "KI_api.md" not in res_flt
+
+    # 4. JSON format
+    res_json = server.handle_tool_call("ki_list", {"format": "json"})
+    data = json.loads(res_json)
+    assert data["total_ki"] == 2
+    assert data["total_adr"] == 1
+    assert data["knowledge_items"][0]["name"] in ("KI_api.md", "KI_storage.md")

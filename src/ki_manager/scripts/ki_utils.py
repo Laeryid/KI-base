@@ -18,6 +18,7 @@ import tempfile
 import argparse
 import fnmatch
 from pathlib import Path
+from typing import Optional, Dict, Any, List, Union
 
 # Global state — set by MCP server on initialize
 ACTIVE_WORKSPACE_PATH = None
@@ -304,15 +305,20 @@ def get_project_root() -> str:
 
 def get_doc_config_path() -> str:
     root = get_knowledge_root()
-    return os.path.join(root, "doc_config.json") if root else ""
+    cand = os.path.join(root, "doc_config.json") if root else ""
+    if cand and os.path.exists(cand):
+        return cand
+    proj = get_project_root()
+    if proj:
+        for p in [os.path.join(proj, ".ki-base", "doc_config.json"), os.path.join(proj, "doc_config.json")]:
+            if os.path.exists(p):
+                return p
+    return cand
 
 
 def get_doc_config() -> dict:
-    root = get_knowledge_root()
-    if not root:
-        return {}
-    path = os.path.join(root, "doc_config.json")
-    if os.path.exists(path):
+    path = get_doc_config_path()
+    if path and os.path.exists(path):
         try:
             with open(path, "r", encoding="utf-8") as f:
                 return json.load(f)
@@ -498,6 +504,122 @@ def get_ki_list_table() -> str:
                         break
         rows.append(f"| `{display_name}` | {summary} |")
     return "\n".join(rows)
+
+
+def get_ki_list_data(scope: str = "all", filter_query: Optional[str] = None) -> Dict[str, Any]:
+    """Collects structured list of Knowledge Items and ADRs with optional filtering."""
+    jail = get_knowledge_root()
+    proj = get_project_root()
+    dec_dirs = get_decisions_dirs(proj, jail)
+    doc_config = get_doc_config() or {}
+    items = doc_config.get("knowledge_items", {})
+
+    flt = filter_query.lower().strip() if filter_query else None
+
+    ki_list = []
+    if scope in ("all", "ki"):
+        for name, info in sorted(items.items()):
+            summary = info.get("summary", info.get("description", "—"))
+            covers = info.get("covers", [])
+            display_name = name
+            if "path" in info and info["path"]:
+                display_name = info["path"]
+
+            if flt:
+                covers_str = " ".join(covers).lower() if isinstance(covers, list) else str(covers).lower()
+                if flt not in name.lower() and flt not in summary.lower() and flt not in covers_str and flt not in display_name.lower():
+                    continue
+
+            ki_list.append({
+                "name": name,
+                "path": display_name,
+                "summary": summary,
+                "covers": covers,
+                "type": "ki",
+            })
+
+    adr_list = []
+    if scope in ("all", "adr"):
+        adr_records = []
+        seen_files = set()
+        for c in dec_dirs:
+            if os.path.exists(c) and os.path.isdir(c):
+                for f in sorted(os.listdir(c)):
+                    if f.endswith(".md") and f not in seen_files:
+                        seen_files.add(f)
+                        full_p = os.path.join(c, f)
+                        adr_records.append(parse_adr_file(full_p, proj))
+
+        def _sort_key(r):
+            num = int(r["id"]) if r["id"].isdigit() else 999999
+            return (num, r["file"])
+        adr_records.sort(key=_sort_key)
+
+        for r in adr_records:
+            if flt:
+                target_text = f"{r['id']} {r['title']} {r['summary']} {r['file']} {r['status']}".lower()
+                if flt not in target_text:
+                    continue
+            adr_list.append({
+                "id": r["id"],
+                "title": r["title"],
+                "status": r["status"],
+                "date": r["date"],
+                "summary": r["summary"],
+                "file": r["file"],
+                "rel_path": r["rel_path"],
+                "type": "adr",
+            })
+
+    return {
+        "scope": scope,
+        "filter": filter_query,
+        "total_ki": len(ki_list),
+        "total_adr": len(adr_list),
+        "knowledge_items": ki_list,
+        "adrs": adr_list,
+    }
+
+
+def format_ki_list_markdown(data: Dict[str, Any]) -> str:
+    """Formats KI and ADR list into clean Markdown tables."""
+    scope = data.get("scope", "all")
+    flt = data.get("filter")
+    ki_list = data.get("knowledge_items", [])
+    adr_list = data.get("adrs", [])
+
+    sections = []
+    flt_msg = f" matching '{flt}'" if flt else ""
+
+    if scope in ("all", "ki"):
+        if ki_list:
+            rows = [
+                f"### Knowledge Items ({len(ki_list)}){flt_msg}\n",
+                "| File | Summary / Topic | Covered Modules |",
+                "|------|-----------------|-----------------|"
+            ]
+            for item in ki_list:
+                covers_str = ", ".join(f"`{c}`" for c in item.get("covers", [])) if item.get("covers") else "—"
+                rows.append(f"| `{item['path']}` | {item['summary']} | {covers_str} |")
+            sections.append("\n".join(rows))
+        else:
+            sections.append(f"No Knowledge Items{flt_msg} found.")
+
+    if scope in ("all", "adr"):
+        if adr_list:
+            rows = [
+                f"### Architecture Decision Records ({len(adr_list)}){flt_msg}\n",
+                "| ID | Title | Status | Date | File |",
+                "|----|-------|--------|------|------|"
+            ]
+            for r in adr_list:
+                link = f"[{r['file']}]({r['rel_path']})"
+                rows.append(f"| {r['id']} | {r['title']} | {r['status']} | {r['date']} | {link} |")
+            sections.append("\n".join(rows))
+        elif scope == "adr":
+            sections.append(f"No ADRs{flt_msg} found.")
+
+    return "\n\n".join(sections)
 
 
 def save_doc_config(config: dict) -> str:

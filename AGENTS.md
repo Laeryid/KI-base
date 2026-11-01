@@ -56,17 +56,18 @@ src/ki_manager/
 ## Режимы работы (`--tool-mode`)
 
 Сервер поддерживает два режима экспозиции инструментов:
-- `--tool-mode full` (по умолчанию, или `KI_TOOL_MODE=full`): возвращает все 34 инструмента.
-- `--tool-mode compact` (или `KI_TOOL_MODE=compact`): возвращает всего 6 фасадных инструментов, экономя тысячи токенов контекста.
+- `--tool-mode full` (по умолчанию, или `KI_TOOL_MODE=full`): возвращает все 35 инструментов.
+- `--tool-mode compact` (или `KI_TOOL_MODE=compact`): возвращает 7 фасадных инструментов, экономя тысячи токенов контекста.
 
 ### Компактный режим (Compact Facade)
 В режиме `compact` в `tools/list` видны только:
 1. `ki_instructions` — доступ к воркфло-инструкциям.
-2. `ki_search` — BM25-поиск по KI и ADR (названия, заголовки, сниппеты).
-3. `ki_read` — быстрое чтение KI или ADR (с опциональным `section` и `max_chars`).
-4. `ki_tools` — просмотр каталога инструментов (`ki_tools()`) или схемы конкретного инструмента (`ki_tools({"name": "..."})`).
-5. `ki_call` — диспетчер вызова read-only инструментов (`ki_call({"tool": "...", "args": {...}})`).
-6. `ki_mutate` — диспетчер вызова мутирующих инструментов (`ki_mutate({"tool": "...", "args": {...}})`).
+2. `ki_list` — структурированный список всех KI и ADR проекта (с поддержкой `scope`, `format`, `filter`).
+3. `ki_search` — BM25-поиск по KI и ADR (названия, заголовки, сниппеты, пагинация через `page`).
+4. `ki_read` — быстрое чтение KI или ADR (с опциональным `section` и `max_chars`).
+5. `ki_tools` — просмотр каталога инструментов (`ki_tools()`) или схемы конкретного инструмента (`ki_tools({"name": "..."})`).
+6. `ki_call` — диспетчер вызова read-only инструментов (`ki_call({"tool": "...", "args": {...}})`).
+7. `ki_mutate` — диспетчер вызова мутирующих инструментов (`ki_mutate({"tool": "...", "args": {...}})`).
 
 ---
 
@@ -77,7 +78,7 @@ src/ki_manager/
 | Группа | Инструменты |
 |--------|-------------|
 | Инструкции | `ki_instructions` |
-| Поиск и чтение | `ki_search`, `ki_read` |
+| Навигация, поиск и чтение | `ki_list`, `ki_search`, `ki_read` |
 | Инициализация | `ki_init_project`, `ki_migrate_project` |
 | Реестр | `ki_register_project`, `ki_list_projects`, `ki_status`, `ki_prune_registry` |
 | Покрытие | `audit_coverage`, `generate_dir_index`, `analyze_dependencies`, `analyze_all_dependencies`, `find_unmapped_files`, `analyze_module`, `ki_graph_visualize`, `check_ki_drift` |

@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.2.dev2] — 2026-11-01
+
+### Added
+- **`ki_list` Navigation Tool**:
+  - Direct navigation tool to list registered Knowledge Items and Architecture Decision Records (ADRs) with summaries and covered modules without filesystem scans.
+  - Supports filtering by type (`scope: "all" | "ki" | "adr"`), output formats (`format: "markdown" | "json"`), and search query (`filter: "<text>"`).
+  - Available as a direct top-level tool in both full mode (35 tools) and compact facade mode (7 tools).
+- **BM25 Search Pagination (`ki_search`)**:
+  - Added 1-based `page` parameter for intuitive result pagination alongside `offset`.
+  - Prominent pagination header and next-page action hints (`[Page X/Y]`, `Next page: ki_search(query="...", page=X+1)`) in search outputs to prevent AI models from getting stuck in repeat queries.
+
 ## [2.3.2.dev1] — 2026-10-20
 
 ### Fixed

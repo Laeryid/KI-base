@@ -49,6 +49,7 @@ TOOL_GROUPS: Dict[str, List[str]] = {
         "create_adr",
     ],
     "files": [
+        "ki_list",
         "read_know_file",
         "write_know_file",
         "edit_know_file",
@@ -65,6 +66,41 @@ TOOL_GROUPS: Dict[str, List[str]] = {
 
 
 # ─── Tool Schemas ─────────────────────────────────────────────────────────────
+
+KI_LIST_TOOL = {
+    "name": "ki_list",
+    "description": (
+        "List Knowledge Items (KI) and Architecture Decision Records (ADRs) registered in the active project. "
+        "Provides a structured overview of all documented modules, topics, and architectural decisions."
+    ),
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "scope": {
+                "type": "string",
+                "enum": ["all", "ki", "adr"],
+                "default": "all",
+                "description": "Filter by document type: 'all' (default), 'ki' (Knowledge Items), or 'adr' (Architecture Decision Records).",
+            },
+            "format": {
+                "type": "string",
+                "enum": ["markdown", "json"],
+                "default": "markdown",
+                "description": "Output format: 'markdown' (structured tables, default) or 'json'.",
+            },
+            "filter": {
+                "type": "string",
+                "description": "Optional substring to filter by filename, title, summary, or covered module.",
+            },
+        },
+    },
+    "annotations": {
+        "title": "List Knowledge Items & ADRs",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+    },
+}
 
 KI_SEARCH_TOOL = {
     "name": "ki_search",
@@ -95,6 +131,12 @@ KI_SEARCH_TOOL = {
                 "type": "integer",
                 "default": 0,
                 "description": "Result offset for pagination (default: 0).",
+            },
+            "page": {
+                "type": "integer",
+                "minimum": 1,
+                "default": 1,
+                "description": "Page number for pagination (1-based, alternative to offset).",
             },
             "format": {
                 "type": "string",
@@ -245,7 +287,7 @@ KI_MUTATE_TOOL = {
 
 
 # Direct facade tools that cannot be called recursively via ki_call / ki_mutate
-DIRECT_FACADE_TOOLS = {"ki_instructions", "ki_search", "ki_read", "ki_tools", "ki_call", "ki_mutate"}
+DIRECT_FACADE_TOOLS = {"ki_instructions", "ki_list", "ki_search", "ki_read", "ki_tools", "ki_call", "ki_mutate"}
 
 
 def sync_dispatch_schemas(all_tools: List[Dict[str, Any]]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
