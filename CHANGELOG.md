@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.3.2.dev2] — 2026-11-01
+## [2.3.2] — 2026-11-07
 
 ### Added
 - **`ki_list` Navigation Tool**:
@@ -19,8 +19,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BM25 Search Pagination (`ki_search`)**:
   - Added 1-based `page` parameter for intuitive result pagination alongside `offset`.
   - Prominent pagination header and next-page action hints (`[Page X/Y]`, `Next page: ki_search(query="...", page=X+1)`) in search outputs to prevent AI models from getting stuck in repeat queries.
-
-## [2.3.2.dev1] — 2026-10-20
 
 ### Fixed
 - **`find_unmapped_files` Traversal & Scoping**:
