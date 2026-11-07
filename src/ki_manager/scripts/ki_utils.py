@@ -18,7 +18,7 @@ import tempfile
 import argparse
 import fnmatch
 from pathlib import Path
-from typing import Optional, Dict, Any, List, Union
+from typing import Optional, Dict, Any, List, Union, Tuple
 
 # Global state — set by MCP server on initialize
 ACTIVE_WORKSPACE_PATH = None
@@ -325,6 +325,62 @@ def get_doc_config() -> dict:
         except Exception:
             pass
     return {}
+
+
+def normalize_tracked_module(entry: Any) -> Tuple[str, str, int]:
+    """
+    Normalizes a tracked module entry to canonical (module_path, label, importance).
+    Supports:
+      - [path, label, importance] (canonical 3-tuple/list)
+      - [path, label] (defaults importance to 5)
+      - [path] (defaults label=path, importance=5)
+      - "path" (defaults label=path, importance=5)
+      - {"path": "...", "label": "...", "importance": 5}
+    """
+    if isinstance(entry, (list, tuple)):
+        path = str(entry[0]).strip() if len(entry) > 0 and entry[0] is not None else ""
+        label = str(entry[1]).strip() if len(entry) > 1 and entry[1] is not None else path
+        importance = 5
+        if len(entry) > 2 and entry[2] is not None:
+            try:
+                importance = int(entry[2])
+            except (ValueError, TypeError):
+                importance = 5
+        return (path, label, importance)
+    elif isinstance(entry, str):
+        p = entry.strip()
+        return (p, p, 5)
+    elif isinstance(entry, dict):
+        p = str(entry.get("path", "")).strip()
+        l = str(entry.get("label", p)).strip() or p
+        try:
+            imp = int(entry.get("importance", 5))
+        except (ValueError, TypeError):
+            imp = 5
+        return (p, l, imp)
+    return ("", "", 5)
+
+
+def get_tracked_modules(doc_config: Optional[dict] = None) -> List[Tuple[str, str, int]]:
+    """
+    Returns normalized tracked modules list [(module_path, label, importance), ...]
+    from coverage_settings.tracked_modules or root tracked_modules.
+    Filters out empty paths.
+    """
+    if doc_config is None:
+        doc_config = get_doc_config()
+    raw = doc_config.get("coverage_settings", {}).get("tracked_modules")
+    if raw is None:
+        raw = doc_config.get("tracked_modules", [])
+    if not isinstance(raw, list):
+        return []
+
+    res = []
+    for item in raw:
+        norm = normalize_tracked_module(item)
+        if norm[0]:
+            res.append(norm)
+    return res
 
 
 def get_local_config() -> dict:

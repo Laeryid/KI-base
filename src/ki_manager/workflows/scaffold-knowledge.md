@@ -7,7 +7,7 @@ metadata:
 <!-- if-compact -->
 allowed-tools: ki_instructions ki_read ki_search ki_tools ki_call ki_mutate
 <!-- else-compact -->
-allowed-tools: audit_coverage ki_scaffold ki_scaffold_status ki_finalize_scaffolds analyze_all_dependencies generate_dir_index git_checkpoint read_know_file write_know_file ki_instructions ki_read
+allowed-tools: audit_coverage ki_scaffold ki_scaffold_status ki_finalize_scaffolds analyze_all_dependencies generate_dir_index git_checkpoint read_know_file write_know_file ki_instructions ki_read edit_doc_config
 <!-- /if-compact -->
 ---
 
@@ -35,6 +35,16 @@ Three-phase workflow:
 <!-- /if-compact -->
 
 If all modules are ✅ GREEN — skip Phase 1 entirely and go to Phase 2.
+
+> [!NOTE]
+> If `doc_config.json` has no tracked modules yet (fresh project), `audit_coverage` will report candidate code directories.
+> Register the target module(s) before scaffolding:
+> <!-- if-compact -->
+> `ki_mutate(tool="edit_doc_config", args={"section": "tracked_modules", "action": "append", "value": ["<module_path>", "<Label>", 5]})`
+> <!-- else-compact -->
+> `edit_doc_config(section="tracked_modules", action="append", value=["<module_path>", "<Label>", 5])`
+> <!-- /if-compact -->
+> Alternatively, you can directly pass specific modules to `ki_scaffold` in Step 1.3 (e.g. `modules="src"`).
 
 ### Step 1.2 — Preview (optional)
 

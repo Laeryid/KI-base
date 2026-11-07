@@ -230,8 +230,28 @@ def init_project(args: dict) -> str:
     else:
         log.append(f"[!] Registry: {msg}")
 
+    # Discover candidate code directories to inform the user/agent
+    exclude_patterns = {".git", "__pycache__", "node_modules", ".venv", "venv", "dist", "build", know_name}
+    candidates = []
+    try:
+        for item in project_path.iterdir():
+            if item.is_dir() and not item.name.startswith(".") and item.name not in exclude_patterns:
+                has_code = False
+                for root, dirs, files in os.walk(item):
+                    dirs[:] = [d for d in dirs if not d.startswith(".") and d not in exclude_patterns]
+                    if any(f.endswith((".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs", ".java", ".cpp", ".c", ".h")) for f in files):
+                        has_code = True
+                        break
+                if has_code:
+                    candidates.append(item.name)
+    except Exception:
+        pass
+
     log.append("")
     log.append("✓ Initialization complete.")
+    if candidates:
+        log.append(f"  Detected candidate code directories: {', '.join(sorted(candidates))}")
+        log.append("  Tip: Register them in tracked_modules via edit_doc_config or run /scaffold-knowledge.")
     log.append(f"  Connect MCP server: ki-manager --workspace {project_path}")
     return "\n".join(log)
 

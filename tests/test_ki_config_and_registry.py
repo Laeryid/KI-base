@@ -129,6 +129,26 @@ def test_init_project_with_custom_knowledge_root_and_root_config(tmp_path, mock_
     assert ki_utils.get_knowledge_root() == str(ws / "team_docs")
 
 
+@pytest.mark.positive
+def test_init_project_detects_candidate_directories(tmp_path, mock_registry, monkeypatch):
+    """init_project outputs candidate code directories when they exist in project root."""
+    ws = tmp_path / "CandidateProj"
+    ws.mkdir()
+    code_dir = ws / "core"
+    code_dir.mkdir()
+    (code_dir / "app.py").write_text("print('hi')\n", encoding="utf-8")
+
+    monkeypatch.setattr(ki_utils, "ACTIVE_WORKSPACE_PATH", str(ws))
+
+    res = scaffold.init_project({
+        "project_path": str(ws)
+    })
+    assert "Initialization complete" in res
+    assert "Detected candidate code directories: core" in res
+    assert "Tip: Register them in tracked_modules via edit_doc_config" in res
+
+
+
 # ==============================================================================
 # Negative Scenarios
 # ==============================================================================

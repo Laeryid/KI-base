@@ -182,6 +182,35 @@ def test_edit_doc_config_tracked_modules_append_and_delete(mock_ki_project):
     assert len(doc_cfg2["coverage_settings"]["tracked_modules"]) == 1
 
 
+def test_edit_doc_config_tracked_modules_string_normalization(mock_ki_project):
+    mock_ki_project
+    # Append as raw string "rich"
+    res = server.handle_tool_call("edit_doc_config", {
+        "section": "tracked_modules",
+        "action": "append",
+        "value": "rich"
+    })
+    assert "Appended module" in res["content"][0]["text"]
+
+    doc_cfg = ki_utils.get_doc_config()
+    tracked = doc_cfg["coverage_settings"]["tracked_modules"]
+    assert ["rich", "rich", 5] in tracked
+
+    # Append again — should update without creating duplicate
+    res_dup = server.handle_tool_call("edit_doc_config", {
+        "section": "tracked_modules",
+        "action": "append",
+        "value": ["rich", "Rich Core", 8]
+    })
+    assert "Updated existing tracked_module 'rich'" in res_dup["content"][0]["text"]
+
+    doc_cfg2 = ki_utils.get_doc_config()
+    tracked2 = doc_cfg2["coverage_settings"]["tracked_modules"]
+    rich_entries = [m for m in tracked2 if m[0] == "rich"]
+    assert len(rich_entries) == 1
+    assert rich_entries[0] == ["rich", "Rich Core", 8]
+
+
 def test_edit_doc_config_artifacts_operations(mock_ki_project):
     mock_ki_project
     # Set artifact

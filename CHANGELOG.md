@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.3.dev1] — 2026-11-08
+
+### Fixed
+- **`scaffold-knowledge` Cold Start & Initial Coverage**:
+  - `audit_coverage` now detects and displays candidate code directories when `tracked_modules` in `doc_config.json` is unconfigured, providing actionable commands to register modules instead of silently exiting.
+  - `ki_scaffold` no longer outputs a false-positive "No uncovered modules found" message on empty configurations; clearly indicates missing tracked modules and guides configuration.
+  - `ki_scaffold(modules="<path>")` now scaffolds specified modules even when `tracked_modules` is currently empty and automatically registers them into `doc_config.json`.
+- **Tolerant Schema Parsing for `tracked_modules`**:
+  - Transparently normalizes diverse module entry formats (simple string `"module"`, partial tuples `["module"]`, or dictionary `{ "path": "module" }`) into standard `[module_path, label, importance]` triples across all analysis and scaffolding tools.
+  - Fixed crashes (`ValueError` / `IndexError`) when appending raw module strings via `edit_doc_config`.
+- **`edit_doc_config` Validation & Deduplication**:
+  - Documented canonical `[module_path, label, importance]` format in tool schema and description.
+  - Automatically normalizes string module paths and prevents duplicate module entries on `append`.
+
 ## [2.3.2] — 2026-11-07
 
 ### Added

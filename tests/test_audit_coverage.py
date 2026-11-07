@@ -150,3 +150,35 @@ def test_exclude_patterns_ignored_in_untracked_dirs(tmp_project, setup_ki_utils)
     assert "MagicMock" not in untracked_names
     assert "other_untracked" in untracked_names
 
+
+@pytest.mark.positive
+def test_flexible_tracked_modules_formats(tmp_project, setup_ki_utils):
+    """String, 1-element, 2-element list and dict in tracked_modules do not crash audit_coverage."""
+    ac = setup_ki_utils
+    tracked = [
+        "src/module_a",
+        ["src/module_a"],
+        ["src/module_a", "Module A Label"],
+        {"path": "src/module_a", "label": "Dict Label", "importance": 8}
+    ]
+    data = ac.build_coverage_matrix(str(tmp_project), tracked)
+    assert len(data["rows"]) == 4
+    for r in data["rows"]:
+        assert "coverage_pct" in r
+        assert "has_ki" in r
+
+
+@pytest.mark.positive
+def test_empty_tracked_modules_candidate_output(tmp_project, setup_ki_utils, capsys):
+    """When tracked_modules is empty, main() prints candidate directories without crashing."""
+    from unittest.mock import patch
+    ac = setup_ki_utils
+    with patch.object(ac, "load_tracked_modules", return_value=[]):
+        with pytest.raises(SystemExit) as exc:
+            ac.main()
+        assert exc.value.code == 0
+    captured = capsys.readouterr().out
+    assert "[!] No tracked_modules configured in doc_config.json." in captured
+    assert "Found candidate code directories in project:" in captured
+
+

@@ -52,7 +52,7 @@ def get_project_root():
 
 def load_tracked_modules():
     doc_config = ki_utils.get_doc_config()
-    return doc_config.get("coverage_settings", {}).get("tracked_modules", [])
+    return ki_utils.get_tracked_modules(doc_config)
 
 
 def load_doc_config() -> dict:
@@ -138,7 +138,11 @@ def get_ki_size(project_root: str, module_path: str, doc_config: dict) -> int:
 
 
 def find_untracked_dirs(project_root: str, tracked_modules: list) -> list:
-    tracked_paths = {m[0].replace("/", os.sep).rstrip(os.sep) for m in tracked_modules}
+    tracked_paths = set()
+    for m in tracked_modules:
+        p = ki_utils.normalize_tracked_module(m)[0]
+        if p:
+            tracked_paths.add(p.replace("/", os.sep).rstrip(os.sep))
     exclude_patterns = get_excluded_patterns()
     untracked = []
     for item in os.listdir(project_root):
@@ -195,7 +199,10 @@ def build_coverage_matrix(project_root: str, tracked_modules: list) -> dict:
     }
 
     rows = []
-    for module_path, label, importance in tracked_modules:
+    normalized_tracked = [ki_utils.normalize_tracked_module(m) for m in tracked_modules]
+    for module_path, label, importance in normalized_tracked:
+        if not module_path:
+            continue
         module_files = get_module_files(project_root, module_path)
         total_files = len(module_files)
 
@@ -367,12 +374,23 @@ def main():
     parser.add_argument("--root", default=".", help="Project root directory (default: current)")
     parser.add_argument("--no-save", action="store_true", help="Do not save coverage_matrix.md")
     parser.add_argument("--output", default=None, help="Custom output path for coverage_matrix.md")
-    args = parser.parse_args()
+    args, _ = parser.parse_known_args()
 
     project_root = get_project_root()
     tracked_modules = load_tracked_modules()
     if not tracked_modules:
-        print("[!] No tracked_modules found in doc_config.json. Please fill in coverage_settings.")
+        print("[!] No tracked_modules configured in doc_config.json.")
+        untracked = find_untracked_dirs(project_root, [])
+        if untracked:
+            print("\nFound candidate code directories in project:")
+            for u in untracked:
+                print(f"  - {u}")
+            print("\nTo track them, add to doc_config.json using:")
+            print("  edit_doc_config(section=\"tracked_modules\", action=\"append\", value=[\"<path>\", \"<label>\", 5])")
+            print("or generate KIs directly:")
+            print("  ki_scaffold(modules=\"<path>\")")
+        else:
+            print("No code directories detected in project root.")
         sys.exit(0)
 
     print(f"[*] Auditing project: {project_root}")

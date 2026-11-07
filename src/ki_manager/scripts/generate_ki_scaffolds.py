@@ -439,7 +439,7 @@ def save_doc_config(config: dict) -> None:
 
 
 def register_ki_in_config(config: dict, ki_name: str, label: str, module_path: str,
-                           file_infos: List[Dict]) -> None:
+                           file_infos: List[Dict], importance: int = 5) -> None:
     """Add or update a KI entry in doc_config.json under knowledge_items."""
     if "knowledge_items" not in config:
         config["knowledge_items"] = {}
@@ -454,27 +454,30 @@ def register_ki_in_config(config: dict, ki_name: str, label: str, module_path: s
         "depends_on": depends_on,
     }
 
+    # Ensure module is in coverage_settings.tracked_modules
+    cov_settings = config.setdefault("coverage_settings", {})
+    tracked_list = cov_settings.setdefault("tracked_modules", [])
+    tracked_paths = {ki_utils.normalize_tracked_module(m)[0] for m in tracked_list}
+    if module_path not in tracked_paths:
+        tracked_list.append([module_path, label, importance])
+
 
 # ─── Main Logic ───────────────────────────────────────────────────────────────
 
 def get_uncovered_modules(doc_config: dict) -> List[Tuple[str, str, int]]:
     """Return tracked modules that have no KI coverage yet."""
-    tracked = doc_config.get("coverage_settings", {}).get("tracked_modules", [])
-    existing_ki = set(doc_config.get("knowledge_items", {}).keys())
-
-    # Build set of module paths already covered
+    tracked = ki_utils.get_tracked_modules(doc_config)
     covered_module_paths = set()
     for ki_name, entry in doc_config.get("knowledge_items", {}).items():
         for dep in entry.get("depends_on", []):
             covered_module_paths.add(dep.replace("/", os.sep).rstrip(os.sep))
 
     uncovered = []
-    for item in tracked:
-        module_path, label, importance = item[0], item[1], item[2]
+    for module_path, label, importance in tracked:
         norm = module_path.replace("/", os.sep).rstrip(os.sep)
-        # Check if this module path (or its parent) is already in covered_module_paths
+        # Check if this module path (or its parent/child) is already in covered_module_paths
         is_covered = any(
-            norm == cp or norm.startswith(cp + os.sep)
+            norm == cp or norm.startswith(cp + os.sep) or cp.startswith(norm + os.sep)
             for cp in covered_module_paths
         )
         if not is_covered:
@@ -574,16 +577,28 @@ def generate_scaffolds(
     os.makedirs(ki_dir, exist_ok=True)
 
     doc_config = load_doc_config()
+    tracked_modules = ki_utils.get_tracked_modules(doc_config)
     uncovered = get_uncovered_modules(doc_config)
 
     # Apply optional module filter
     if modules_filter:
         filter_set = {m.strip() for m in modules_filter}
-        uncovered = [(p, l, i) for p, l, i in uncovered
-                     if p in filter_set or l in filter_set]
+        filtered_uncovered = [(p, l, i) for p, l, i in uncovered
+                              if p in filter_set or l in filter_set]
+        # For modules specified by user that aren't already in uncovered:
+        for m in filter_set:
+            if not any(m == p or m == l for p, l, i in filtered_uncovered):
+                cand_path = os.path.join(project_root, m.replace("/", os.sep))
+                if os.path.isdir(cand_path) or force:
+                    filtered_uncovered.append((m, m, 5))
+        uncovered = filtered_uncovered
 
     if not uncovered:
-        print("[OK] No uncovered modules found — nothing to scaffold.")
+        if not tracked_modules:
+            print("[!] No tracked modules configured in doc_config.json.")
+            print("    Add modules via edit_doc_config or run ki_scaffold with --modules <path>.")
+        else:
+            print("[OK] All tracked modules are already covered by Knowledge Items.")
         return
 
     print(f"[*] Project root: {project_root}")
@@ -626,7 +641,7 @@ def generate_scaffolds(
             content = build_scaffold_content(module_path, label, file_infos, project_root=project_root)
             with open(ki_path, "w", encoding="utf-8") as f:
                 f.write(content)
-            register_ki_in_config(doc_config, ki_name, label, module_path, file_infos)
+            register_ki_in_config(doc_config, ki_name, label, module_path, file_infos, importance=importance)
             # Save after EVERY KI write — makes the run crash-safe.
             # If interrupted, already-created KIs are registered and won't be re-created.
             save_doc_config(doc_config)

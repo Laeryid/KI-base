@@ -790,7 +790,9 @@ MCP_TOOLS = [
         "name": "edit_doc_config",
         "description": (
             "Safely edit service sections of doc_config.json: "
-            "'tracked_modules', 'artifacts', or 'coverage_settings'."
+            "'tracked_modules', 'artifacts', or 'coverage_settings'. "
+            "For 'tracked_modules', items are [module_path, label, importance (1-10)] triples "
+            "(e.g. ['src/api', 'API Subsystem', 8]) or simple string module paths (normalized automatically)."
         ),
         "inputSchema": {
             "type": "object",
@@ -810,7 +812,7 @@ MCP_TOOLS = [
                     "description": "Key name (for dicts) or identifier/index"
                 },
                 "value": {
-                    "description": "Value to set or append (can be string, number, dict, or list)"
+                    "description": "Value to set or append. For 'tracked_modules': a [path, label, importance] array (e.g. ['src', 'Source', 8]) or string path (e.g. 'src'). For artifacts: dict or dependency string."
                 }
             },
             "required": ["section", "action"]
@@ -1216,32 +1218,46 @@ def tool_edit_doc_config(args: dict) -> dict:
         if action == "append":
             if value is None:
                 return {"isError": True, "content": [{"type": "text", "text": "Error: 'value' is required for append action."}]}
-            modules_list.append(value)
-            msg = f"Appended module to tracked_modules: {value}"
+            norm_val = list(ki_utils.normalize_tracked_module(value))
+            if not norm_val[0]:
+                return {"isError": True, "content": [{"type": "text", "text": "Error: module path cannot be empty."}]}
+            existing_idx = -1
+            for i, item in enumerate(modules_list):
+                if ki_utils.normalize_tracked_module(item)[0] == norm_val[0]:
+                    existing_idx = i
+                    break
+            if existing_idx >= 0:
+                modules_list[existing_idx] = norm_val
+                msg = f"Updated existing tracked_module '{norm_val[0]}': {norm_val}"
+            else:
+                modules_list.append(norm_val)
+                msg = f"Appended module to tracked_modules: {norm_val}"
         elif action == "set":
             if key is not None:
+                norm_val = list(ki_utils.normalize_tracked_module(value)) if value is not None else value
                 idx = -1
                 if isinstance(key, int) or (isinstance(key, str) and key.isdigit()):
                     idx = int(key)
                 else:
                     for i, item in enumerate(modules_list):
-                        mod_name = item[0] if isinstance(item, list) and item else (item if isinstance(item, str) else "")
+                        mod_name = ki_utils.normalize_tracked_module(item)[0]
                         if mod_name == key:
                             idx = i
                             break
                 if 0 <= idx < len(modules_list):
-                    modules_list[idx] = value
-                    msg = f"Updated tracked_modules at index {idx}: {value}"
+                    modules_list[idx] = norm_val
+                    msg = f"Updated tracked_modules at index {idx}: {norm_val}"
                 else:
-                    modules_list.append(value)
-                    msg = f"Key '{key}' not found in tracked_modules; appended {value}"
+                    modules_list.append(norm_val)
+                    msg = f"Key '{key}' not found in tracked_modules; appended {norm_val}"
             else:
                 if isinstance(value, list):
+                    norm_list = [list(ki_utils.normalize_tracked_module(v)) for v in value if ki_utils.normalize_tracked_module(v)[0]]
                     if "tracked_modules" in config and target_container is not config:
-                        config["tracked_modules"] = value
+                        config["tracked_modules"] = norm_list
                     else:
-                        target_container["tracked_modules"] = value
-                    msg = f"Set tracked_modules list to {len(value)} items"
+                        target_container["tracked_modules"] = norm_list
+                    msg = f"Set tracked_modules list to {len(norm_list)} items"
                 else:
                     return {"isError": True, "content": [{"type": "text", "text": "Error: 'value' must be a list when setting tracked_modules without key."}]}
         elif action == "delete":
@@ -1255,17 +1271,20 @@ def tool_edit_doc_config(args: dict) -> dict:
                         msg = f"Deleted tracked_module at index {idx}: {removed}"
                 else:
                     for i, item in enumerate(list(modules_list)):
-                        mod_name = item[0] if isinstance(item, list) and item else (item if isinstance(item, str) else "")
+                        mod_name = ki_utils.normalize_tracked_module(item)[0]
                         if mod_name == key:
                             modules_list.remove(item)
                             deleted = True
                             msg = f"Deleted tracked_module '{key}': {item}"
                             break
             elif value is not None:
-                if value in modules_list:
-                    modules_list.remove(value)
-                    deleted = True
-                    msg = f"Deleted tracked_module: {value}"
+                norm_target = ki_utils.normalize_tracked_module(value)[0]
+                for item in list(modules_list):
+                    if ki_utils.normalize_tracked_module(item)[0] == norm_target:
+                        modules_list.remove(item)
+                        deleted = True
+                        msg = f"Deleted tracked_module: {item}"
+                        break
             if not deleted:
                 return {"isError": True, "content": [{"type": "text", "text": f"Error: module key/value '{key or value}' not found in tracked_modules."}]}
 

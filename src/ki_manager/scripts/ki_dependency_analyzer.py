@@ -45,8 +45,8 @@ class KIDependencyAnalyzer:
 
     def _get_root_packages(self) -> List[str]:
         """Extracts root package names (e.g., 'app', 'ui') from tracked_modules."""
-        modules = self.doc_config.get("coverage_settings", {}).get("tracked_modules", [])
-        return [m[0] for m in modules if isinstance(m, list) and len(m) > 0]
+        modules = ki_utils.get_tracked_modules(self.doc_config)
+        return [m[0] for m in modules if m[0]]
 
     def extract_python_imports(self, file_path: Path) -> Set[str]:
         """Extracts imports from a Python file using AST."""

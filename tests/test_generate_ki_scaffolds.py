@@ -182,3 +182,92 @@ def test_ast_pre_enrichment(tmp_path):
     assert "test_tasks.py" in content
     assert "## Entry Points & Public API" in content
     assert "## Testing & Verification" in content
+
+
+def test_flexible_tracked_modules_in_scaffolds():
+    """String and dict entries in tracked_modules do not crash get_uncovered_modules."""
+    from ki_manager.scripts.generate_ki_scaffolds import get_uncovered_modules
+    doc_cfg = {
+        "coverage_settings": {
+            "tracked_modules": ["src/alpha", ["src/beta"], {"path": "src/gamma", "label": "Gamma", "importance": 7}]
+        },
+        "knowledge_items": {
+            "KI_src_alpha.md": {
+                "depends_on": ["src/alpha/main.py"]
+            }
+        }
+    }
+    uncovered = get_uncovered_modules(doc_cfg)
+    assert len(uncovered) == 2
+    paths = [u[0] for u in uncovered]
+    assert "src/beta" in paths
+    assert "src/gamma" in paths
+
+
+def test_scaffold_modules_filter_on_empty_tracked(tmp_path, monkeypatch):
+    """Passing modules_filter scaffolds module even if tracked_modules is empty, and registers it."""
+    from ki_manager.scripts.generate_ki_scaffolds import generate_scaffolds
+    from ki_manager.scripts import ki_utils
+
+    # Setup mini project
+    src_dir = tmp_path / "rich"
+    src_dir.mkdir()
+    (src_dir / "core.py").write_text("class RichCore:\n    pass\n", encoding="utf-8")
+
+    ki_base = tmp_path / ".ki-base"
+    ki_base.mkdir()
+    ki_config = {
+        "project_name": "test_proj",
+        "paths": {"knowledge_root": ".ki-base", "project_root": "."}
+    }
+    (ki_base / "ki_config.json").write_text(json.dumps(ki_config), encoding="utf-8")
+
+    doc_cfg = {
+        "coverage_settings": {"tracked_modules": []},
+        "knowledge_items": {}
+    }
+    (ki_base / "doc_config.json").write_text(json.dumps(doc_cfg), encoding="utf-8")
+
+    monkeypatch.setattr(ki_utils, "ACTIVE_WORKSPACE_PATH", str(tmp_path))
+    monkeypatch.setattr(ki_utils, "_CACHE", {})
+    monkeypatch.chdir(tmp_path)
+
+    generate_scaffolds(modules_filter=["rich"])
+
+    # Check KI file was created
+    ki_file = ki_base / "knowledge" / "KI_rich.md"
+    assert ki_file.exists()
+    content = ki_file.read_text(encoding="utf-8")
+    assert "RichCore" in content
+
+    # Check doc_config was updated with tracked_module
+    updated_cfg = json.loads((ki_base / "doc_config.json").read_text(encoding="utf-8"))
+    assert "KI_rich.md" in updated_cfg["knowledge_items"]
+    assert any(m[0] == "rich" for m in updated_cfg["coverage_settings"]["tracked_modules"])
+
+
+def test_empty_tracked_modules_message(tmp_path, monkeypatch, capsys):
+    """When tracked_modules is empty and no modules_filter, clear warning is printed."""
+    from ki_manager.scripts.generate_ki_scaffolds import generate_scaffolds
+    from ki_manager.scripts import ki_utils
+
+    ki_base = tmp_path / ".ki-base"
+    ki_base.mkdir()
+    ki_config = {
+        "project_name": "test_proj",
+        "paths": {"knowledge_root": ".ki-base", "project_root": "."}
+    }
+    (ki_base / "ki_config.json").write_text(json.dumps(ki_config), encoding="utf-8")
+
+    doc_cfg = {"coverage_settings": {"tracked_modules": []}, "knowledge_items": {}}
+    (ki_base / "doc_config.json").write_text(json.dumps(doc_cfg), encoding="utf-8")
+
+    monkeypatch.setattr(ki_utils, "ACTIVE_WORKSPACE_PATH", str(tmp_path))
+    monkeypatch.setattr(ki_utils, "_CACHE", {})
+    monkeypatch.chdir(tmp_path)
+
+    generate_scaffolds()
+
+    captured = capsys.readouterr().out
+    assert "[!] No tracked modules configured in doc_config.json." in captured
+
