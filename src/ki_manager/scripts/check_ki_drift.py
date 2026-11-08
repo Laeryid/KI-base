@@ -23,6 +23,7 @@ Usage:
 import os
 import sys
 import re
+import ast
 import json
 import argparse
 import subprocess
@@ -32,6 +33,143 @@ from typing import Dict, List, Tuple, Optional, Any, Set
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ki_utils
 from generate_ki_scaffolds import extract_symbol_details
+
+
+def extract_cell_symbols(raw_cell: str) -> List[str]:
+    """Extract code symbol identifiers from a Key Components table cell."""
+    text = raw_cell.strip()
+    if not text:
+        return []
+
+    # Filter table header keywords or pure markdown dashes
+    header_keywords = {
+        "component", "file", "path", "purpose", "class", "function",
+        "description", "tool", "access", "name", "symbol"
+    }
+    if text.lower() in header_keywords or set(text).issubset({"-", "—", " ", "|", ":"}):
+        return []
+
+    # Check for placeholder descriptive markers (entire cell is descriptive italic/parenthetical/n/a)
+    # e.g., *(lookup table)*, *(file)*, (constants), [internal], *none*, n/a
+    clean_lower = text.strip(" `*_-—()[]\t").lower()
+    if clean_lower in {
+        "n/a", "na", "none", "null", "nil", "lookup table", "file", "constants",
+        "internal", "various", "various helpers", "no source files found"
+    }:
+        return []
+
+    if text.startswith(("*", "(", "[", "—", "-")) and " " in clean_lower:
+        return []
+
+    # If cell contains inline code backticks, extract only the parts inside backticks
+    backtick_matches = re.findall(r"`([^`]+)`", text)
+    if backtick_matches:
+        raw_parts = backtick_matches
+    else:
+        # No backticks. If it's wrapped in parentheses or asterisks, it's descriptive
+        if (text.startswith("(") and text.endswith(")")) or (text.startswith("*") and text.endswith("*")):
+            return []
+        # Remove parenthetical comments like 'func (deprecated)' -> 'func'
+        cleaned = re.sub(r"\([^)]*\)", "", text).strip()
+        raw_parts = [cleaned]
+
+    symbols: List[str] = []
+    for part in raw_parts:
+        p_clean = part.strip()
+        # Skip if the text inside backticks is itself an italic marker e.g. `*(lookup table)*`
+        if p_clean.startswith(("*", "(", "[")) and p_clean.endswith(("*", ")", "]")):
+            continue
+
+        # Split on common list delimiters: /, ,, ;, |, &
+        tokens = re.split(r"[/,;|&]", p_clean)
+        for token in tokens:
+            t = token.strip()
+            # Strip call parentheses e.g. foo() -> foo
+            t = re.sub(r"\(\s*\)$", "", t).strip()
+            # Valid identifier or qualified identifier (Class.method or module.func)
+            if re.match(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$", t):
+                symbols.append(t)
+
+    return symbols
+
+
+def _extract_ast_target_names(target: ast.AST) -> Set[str]:
+    """Recursively extract variable names from AST assignment targets."""
+    res = set()
+    if isinstance(target, ast.Name):
+        res.add(target.id)
+    elif isinstance(target, (ast.Tuple, ast.List)):
+        for elt in target.elts:
+            res.update(_extract_ast_target_names(elt))
+    return res
+
+
+def extract_all_defined_names(abs_file: Path) -> Set[str]:
+    """Extracts all defined top-level and class-level identifiers for dead-symbol checks."""
+    names: Set[str] = set()
+    ext = abs_file.suffix.lower()
+
+    try:
+        content = abs_file.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return names
+
+    if ext == ".py":
+        try:
+            tree = ast.parse(content, filename=str(abs_file))
+        except Exception:
+            return names
+
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                names.add(node.name)
+            elif isinstance(node, ast.ClassDef):
+                names.add(node.name)
+                for item in node.body:
+                    if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        names.add(item.name)
+                        names.add(f"{node.name}.{item.name}")
+                    elif isinstance(item, ast.Assign):
+                        for target in item.targets:
+                            for t_name in _extract_ast_target_names(target):
+                                names.add(t_name)
+                                names.add(f"{node.name}.{t_name}")
+                    elif isinstance(item, ast.AnnAssign):
+                        for t_name in _extract_ast_target_names(item.target):
+                            names.add(t_name)
+                            names.add(f"{node.name}.{t_name}")
+            elif isinstance(node, ast.Assign):
+                for target in node.targets:
+                    names.update(_extract_ast_target_names(target))
+            elif isinstance(node, ast.AnnAssign):
+                names.update(_extract_ast_target_names(node.target))
+            elif hasattr(ast, "TypeAlias") and isinstance(node, ast.TypeAlias):
+                if isinstance(node.name, ast.Name):
+                    names.add(node.name.id)
+            elif isinstance(node, (ast.Import, ast.ImportFrom)):
+                for alias in node.names:
+                    names.add(alias.asname or alias.name.split(".")[-1])
+
+    elif ext in (".ts", ".tsx", ".js", ".jsx"):
+        decl_pattern = re.compile(
+            r"^(?:export\s+(?:default\s+)?(?:abstract\s+)?(?:async\s+)?)?"
+            r"(?:class|function|const|let|var|type|interface|enum)\s+([A-Za-z_]\w*)",
+            re.MULTILINE,
+        )
+        for m in decl_pattern.finditer(content):
+            names.add(m.group(1))
+
+    elif ext == ".go":
+        go_pattern = re.compile(
+            r"^(?:func\s+(?:\([^)]+\)\s+)?([A-Za-z_]\w*)|type\s+([A-Za-z_]\w*)|(?:const|var)\s+([A-Za-z_]\w*))",
+            re.MULTILINE,
+        )
+        for m in go_pattern.finditer(content):
+            for g in m.groups():
+                if g:
+                    names.add(g)
+
+    return names
 
 
 def parse_ki_file(ki_path: Path) -> Dict[str, Any]:
@@ -144,19 +282,18 @@ def parse_ki_file(ki_path: Path) -> Dict[str, Any]:
 
         if current_table_active:
             if len(raw_cells) > max(sym_idx, file_idx):
-                sym_val = raw_cells[sym_idx].strip(" `").strip()
+                raw_sym_val = raw_cells[sym_idx]
                 file_val = raw_cells[file_idx].strip(" `").strip()
                 header_keywords = {"component", "file", "path", "purpose", "class", "function", "description", "tool", "access"}
                 if (
-                    sym_val
-                    and file_val
-                    and not sym_val.startswith("—")
+                    file_val
                     and not file_val.startswith("—")
                     and not file_val.startswith("-")
-                    and sym_val.lower() not in header_keywords
                     and file_val.lower() not in header_keywords
                 ):
-                    table_symbols.append({"symbol": sym_val, "file": file_val})
+                    extracted = extract_cell_symbols(raw_sym_val)
+                    for sym in extracted:
+                        table_symbols.append({"symbol": sym, "file": file_val})
 
     # Extract wiki-links [[KI_*.md]]
     wiki_links = []
@@ -258,40 +395,57 @@ def check_single_ki(
                 missing_files.append(rel_file)
             continue
 
-        # Extract real symbols from code
+        # Extract all defined identifiers for dead-symbol checks
+        defined_names = extract_all_defined_names(abs_file)
+        # Extract real symbols (classes/functions) from code
         code_details = extract_symbol_details(str(abs_file))
         code_symbols_dict = {s["name"]: s for s in code_details.get("symbols", [])}
-        code_symbols_set = set(code_symbols_dict.keys())
 
         # Check dead symbols (present in KI table, absent in code)
         documented_symbols = symbols_by_file.get(rel_file, set())
         for doc_sym in documented_symbols:
-            if doc_sym not in code_symbols_set:
+            if doc_sym not in defined_names and doc_sym not in code_symbols_dict:
+                # Check for qualified method name ClassName.method
+                parts = doc_sym.split(".")
+                if len(parts) > 1 and (parts[-1] in defined_names or parts[0] in defined_names):
+                    continue
                 dead_symbols.append({"symbol": doc_sym, "file": rel_file})
 
-        # Check unmapped public symbols in source files
-        # (Only report top-level non-private symbols)
-        for sym_name, sym_info in code_symbols_dict.items():
-            if sym_name not in documented_symbols and not sym_name.startswith("_"):
-                unmapped_symbols.append({
-                    "symbol": sym_name,
-                    "kind": sym_info.get("kind", "symbol"),
-                    "file": rel_file,
-                })
-
         # Check date drift if last_verified is present
-        if ki_data["last_verified"]:
-            last_commit_date = get_git_commit_date(project_root, rel_file)
-            if last_commit_date and last_commit_date > ki_data["last_verified"]:
+        last_commit_date = get_git_commit_date(project_root, rel_file) if ki_data["last_verified"] else None
+        has_date_drift = False
+        if ki_data["last_verified"] and last_commit_date:
+            if last_commit_date > ki_data["last_verified"]:
+                has_date_drift = True
                 date_drifts.append({
                     "file": rel_file,
                     "commit_date": last_commit_date,
                     "last_verified": ki_data["last_verified"],
                 })
 
+        # Check unmapped public symbols in source files:
+        # If the file is tracked in git and was verified on or after its last commit,
+        # we consider the selection of key components already approved (no unmapped noise).
+        is_verified_unchanged = bool(
+            ki_data["last_verified"]
+            and last_commit_date
+            and not has_date_drift
+        )
+
+        if not is_verified_unchanged:
+            for sym_name, sym_info in code_symbols_dict.items():
+                kind = sym_info.get("kind", "").lower()
+                if "const" in kind or "var" in kind:
+                    continue
+                if sym_name not in documented_symbols and not sym_name.startswith("_"):
+                    unmapped_symbols.append({
+                        "symbol": sym_name,
+                        "kind": sym_info.get("kind", "symbol"),
+                        "file": rel_file,
+                    })
+
     drift_count = (
         len(dead_symbols)
-        + len(unmapped_symbols)
         + len(missing_files)
         + len(date_drifts)
         + len(broken_links)
@@ -397,7 +551,7 @@ def format_drift_markdown(results: List[Dict[str, Any]]) -> str:
             unmapped_str = ", ".join(f"`{u['symbol']}`" for u in sample)
             if more > 0:
                 unmapped_str += f" and {more} more"
-            lines.append(f"- [+] **Unmapped symbols**: {unmapped_str} in `{unmapped[0]['file']}`")
+            lines.append(f"- [i] **Unmapped symbols**: {unmapped_str} in `{unmapped[0]['file']}` (coverage hint)")
 
         lines.append("")
 

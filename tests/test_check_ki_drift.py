@@ -5,7 +5,9 @@ from ki_manager.scripts.check_ki_drift import (
     parse_ki_file,
     check_single_ki,
     format_drift_markdown,
-    run_drift_check
+    run_drift_check,
+    extract_cell_symbols,
+    extract_all_defined_names,
 )
 
 
@@ -166,3 +168,149 @@ def test_parse_ki_file_with_custom_file_column_position(tmp_path):
     data = parse_ki_file(ki_file)
     assert len(data["table_symbols"]) == 1
     assert data["table_symbols"][0] == {"symbol": "execute_task", "file": "src/executor.py"}
+
+
+def test_extract_cell_symbols_handling():
+    # Regular single symbols
+    assert extract_cell_symbols("`Worker`") == ["Worker"]
+    assert extract_cell_symbols("Worker") == ["Worker"]
+    assert extract_cell_symbols("`do_work()`") == ["do_work"]
+
+    # Compound symbols
+    assert extract_cell_symbols("`cell_len / set_cell_size`") == ["cell_len", "set_cell_size"]
+    assert extract_cell_symbols("`cell_len` / `set_cell_size`") == ["cell_len", "set_cell_size"]
+    assert extract_cell_symbols("`words`, `divide_line`") == ["words", "divide_line"]
+    assert extract_cell_symbols("`func_a; func_b`") == ["func_a", "func_b"]
+
+    # Qualified symbols
+    assert extract_cell_symbols("`Worker.process`") == ["Worker.process"]
+
+    # Descriptive markers that should be ignored (return empty list)
+    assert extract_cell_symbols("*(lookup table)*") == []
+    assert extract_cell_symbols("*(file)*") == []
+    assert extract_cell_symbols("(constants)") == []
+    assert extract_cell_symbols("—") == []
+    assert extract_cell_symbols("-") == []
+    assert extract_cell_symbols("N/A") == []
+    assert extract_cell_symbols("`*(lookup table)*`") == []
+    assert extract_cell_symbols("*various helpers*") == []
+
+
+def test_drift_constants_and_compound_symbols(tmp_path):
+    """Verifies that UPPER_CASE/snake_case constants and compound symbols do not trigger dead symbol warnings."""
+    project_root = tmp_path / "project"
+    knowledge_dir = project_root / ".ki-base" / "knowledge"
+    src_dir = project_root / "src"
+    knowledge_dir.mkdir(parents=True)
+    src_dir.mkdir(parents=True)
+
+    py_file = src_dir / "utils.py"
+    py_file.write_text(
+        "DEFAULT_STYLES = {'dark': True}\n"
+        "SPINNERS: list = ['dots']\n"
+        "def cell_len(s):\n    return len(s)\n"
+        "def set_cell_size(s, size):\n    pass\n"
+        "def helper_one():\n    pass\n"
+        "def helper_two():\n    pass\n",
+        encoding="utf-8"
+    )
+
+    ki_path = knowledge_dir / "KI_utils.md"
+    ki_path.write_text(
+        "<!-- last_verified: 2026-05-01 -->\n"
+        "# KI: Utils\n\n"
+        "## Key Components\n"
+        "| Class / Function | File | Purpose |\n"
+        "|---|---|---|\n"
+        "| `DEFAULT_STYLES` | `src/utils.py` | Theme map |\n"
+        "| `SPINNERS` | `src/utils.py` | Spinner list |\n"
+        "| `cell_len / set_cell_size` | `src/utils.py` | String sizing |\n"
+        "| *(lookup table)* | `src/utils.py` | Data reference |\n",
+        encoding="utf-8"
+    )
+
+    doc_config = {
+        "knowledge_items": {
+            "KI_utils.md": {
+                "depends_on": ["src/utils.py"]
+            }
+        }
+    }
+
+    result = check_single_ki(
+        "KI_utils.md",
+        ki_path,
+        doc_config,
+        str(project_root),
+        knowledge_dir
+    )
+
+    # All defined constants, compound functions, and descriptive marker must have no dead symbols
+    assert result["dead_symbols"] == []
+    assert result["missing_files"] == []
+    assert result["broken_links"] == []
+    # Unmapped symbols should not increment drift_count
+    assert result["drift_count"] == 0
+
+
+def test_drift_compound_symbol_detects_actual_dead_subsymbol(tmp_path):
+    """Verifies that if one function in a compound cell is deleted, it is correctly identified as dead."""
+    project_root = tmp_path / "project"
+    knowledge_dir = project_root / ".ki-base" / "knowledge"
+    src_dir = project_root / "src"
+    knowledge_dir.mkdir(parents=True)
+    src_dir.mkdir(parents=True)
+
+    py_file = src_dir / "utils.py"
+    py_file.write_text(
+        "def cell_len(s):\n    return len(s)\n",
+        encoding="utf-8"
+    )
+
+    ki_path = knowledge_dir / "KI_utils.md"
+    ki_path.write_text(
+        "# KI: Utils\n\n"
+        "## Key Components\n"
+        "| Class / Function | File | Purpose |\n"
+        "|---|---|---|\n"
+        "| `cell_len / deleted_function` | `src/utils.py` | String sizing |\n",
+        encoding="utf-8"
+    )
+
+    doc_config = {
+        "knowledge_items": {
+            "KI_utils.md": {
+                "depends_on": ["src/utils.py"]
+            }
+        }
+    }
+
+    result = check_single_ki(
+        "KI_utils.md",
+        ki_path,
+        doc_config,
+        str(project_root),
+        knowledge_dir
+    )
+
+    dead = [d["symbol"] for d in result["dead_symbols"]]
+    assert "deleted_function" in dead
+    assert "cell_len" not in dead
+    assert result["drift_count"] == 1
+
+
+def test_unmapped_symbols_not_in_drift_count_and_clean_format():
+    """Verifies that clean KI with only unmapped advisory symbols formats as 'No drift detected'."""
+    clean_results = [{
+        "ki": "KI_clean.md",
+        "drift_count": 0,
+        "dead_symbols": [],
+        "missing_files": [],
+        "broken_links": [],
+        "date_drifts": [],
+        "integrity_issues": [],
+        "unmapped_symbols": [{"symbol": "auxiliary_tool", "kind": "function", "file": "src/tool.py"}],
+    }]
+    md = format_drift_markdown(clean_results)
+    assert "No drift detected" in md
+    assert "⚠️" not in md

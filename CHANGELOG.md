@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.3.dev3] — 2026-11-08
+
+### Fixed
+- **`check_ki_drift` Dead Symbol False Positives**:
+  - Module constants, dictionaries, and configuration mappings (e.g. `DEFAULT_STYLES`, `SPINNERS`) listed in the Key Components table are now recognized as valid defined symbols across all casing conventions.
+  - Multi-symbol compound entries separated by delimiters (`/`, `,`, `;`, `|`, `&`, e.g. `cell_len / set_cell_size`) are now individually tokenized and validated without false-positive dead symbol warnings while preserving accurate detection if a single member is missing.
+  - Informational and descriptive table markers (such as `*(lookup table)*`, `*(file)*`, `(constants)`, `N/A`, `—`) are automatically filtered and no longer treated as missing code symbols.
+- **`check_ki_drift` Unmapped Symbols Noise Reduction**:
+  - `unmapped_symbols` are excluded from the primary `drift_count`, preventing false-alarm drift warnings on curated architectural KIs.
+  - Files tracked in git that have not been modified since their `last_verified` date suppress unmapped symbol warnings, respecting the selective nature of Key Components tables.
+  - When code has changed after verification, unmapped symbols are presented cleanly with an informational `[i]` marker as advisory coverage hints rather than errors.
+
+
 ## [2.3.3.dev2] — 2026-11-08
 
 ### Added
