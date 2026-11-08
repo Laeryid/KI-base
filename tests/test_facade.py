@@ -19,9 +19,11 @@ def test_tools_counts_and_compact_definition():
         "ki_call",
         "ki_mutate",
     ]
-    # MCP_TOOLS should have 35 tools (34 previous + ki_list)
-    assert len(server.MCP_TOOLS) == 35
+    # MCP_TOOLS should have 37 tools (35 previous + ki_split_analyze + ki_split)
+    assert len(server.MCP_TOOLS) == 37
     assert "ki_list" in [t["name"] for t in server.MCP_TOOLS]
+    assert "ki_split_analyze" in [t["name"] for t in server.MCP_TOOLS]
+    assert "ki_split" in [t["name"] for t in server.MCP_TOOLS]
     assert "check_ki_drift" in [t["name"] for t in server.MCP_TOOLS]
 
 
@@ -195,7 +197,7 @@ def test_full_mode_via_cli():
     lines = [line.strip() for line in stdout.splitlines() if line.strip()]
     resp = json.loads(lines[0])
     tools = resp["result"]["tools"]
-    assert len(tools) == 35
+    assert len(tools) == 37
     assert 'ki_list' in [t['name'] for t in tools]
 
 

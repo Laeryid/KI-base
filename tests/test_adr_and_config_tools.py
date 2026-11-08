@@ -645,3 +645,28 @@ def test_create_adr_affected_files_and_ki_mapping(mock_ki_project):
     assert registered is not None
     assert "KI_storage.md" in registered["depends_on"]
 
+
+def test_edit_doc_config_ignore_dirs(mock_ki_project):
+    proj_dir, ki_base = mock_ki_project
+    res = server.handle_tool_call("edit_doc_config", {
+        "section": "ignore_dirs",
+        "action": "append",
+        "value": ["assets", "benchmarks"]
+    })
+    assert res.get("isError") is not True
+    cfg = ki_utils.get_doc_config()
+    assert "assets" in cfg["coverage_settings"]["ignore_dirs"]
+    assert "benchmarks" in cfg["coverage_settings"]["ignore_dirs"]
+
+    # Test delete
+    res_del = server.handle_tool_call("edit_doc_config", {
+        "section": "ignore_dirs",
+        "action": "delete",
+        "value": "assets"
+    })
+    assert res_del.get("isError") is not True
+    cfg = ki_utils.get_doc_config()
+    assert "assets" not in cfg["coverage_settings"]["ignore_dirs"]
+    assert "benchmarks" in cfg["coverage_settings"]["ignore_dirs"]
+
+

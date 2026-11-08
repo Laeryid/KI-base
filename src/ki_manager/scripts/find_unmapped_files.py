@@ -62,8 +62,65 @@ def _scan_path(target_path: str, project_root: str, mapped_paths: set, exclude_p
     return unmapped
 
 
+def sort_unmapped_by_weight(unmapped_files: List[str], project_root: str) -> List[str]:
+    """Sort unmapped files: architectural hubs (high imports/size) first, private/leaf files last."""
+    if len(unmapped_files) <= 1 or not project_root:
+        return unmapped_files
+
+    stems = {}
+    for f in unmapped_files:
+        p = Path(f)
+        stems[p.stem] = f
+
+    in_degrees = {f: 0 for f in unmapped_files}
+
+    # AST parsing for .py files
+    for f in unmapped_files:
+        if f.endswith(".py"):
+            abs_p = os.path.join(project_root, f)
+            try:
+                with open(abs_p, "r", encoding="utf-8", errors="replace") as fp:
+                    content = fp.read()
+                import ast
+                tree = ast.parse(content, filename=abs_p)
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.Import):
+                        for alias in node.names:
+                            parts = alias.name.split(".")
+                            for part in parts:
+                                if part in stems and stems[part] != f:
+                                    in_degrees[stems[part]] += 1
+                    elif isinstance(node, ast.ImportFrom):
+                        if node.module:
+                            parts = node.module.split(".")
+                            for part in parts:
+                                if part in stems and stems[part] != f:
+                                    in_degrees[stems[part]] += 1
+                        for alias in node.names:
+                            if alias.name in stems and stems[alias.name] != f:
+                                in_degrees[stems[alias.name]] += 1
+            except Exception:
+                pass
+
+    def file_score(f: str):
+        p = Path(f)
+        ext = p.suffix.lower()
+        is_code = 1 if ext in ki_utils.CODE_EXTENSIONS else 0
+        is_private = 1 if p.name.startswith("_") and p.name != "__init__.py" else 0
+        abs_p = os.path.join(project_root, f)
+        size_kb = 0.0
+        try:
+            size_kb = os.path.getsize(abs_p) / 1024.0
+        except OSError:
+            pass
+        score = in_degrees.get(f, 0) * 100.0 + size_kb - (50.0 if is_private else 0.0)
+        return (is_code, score)
+
+    return sorted(unmapped_files, key=file_score, reverse=True)
+
+
 def get_unmapped_files(target_path: str = ".") -> List[str]:
-    """Returns a sorted list of unmapped files relative to project root."""
+    """Returns a sorted list of unmapped files relative to project root, weighted by relevance."""
     project_root = ki_utils.get_project_root()
     doc_config = ki_utils.get_doc_config()
 
@@ -102,11 +159,11 @@ def get_unmapped_files(target_path: str = ".") -> List[str]:
             unmapped_set = set()
             for td in sorted(target_dirs):
                 unmapped_set.update(_scan_path(td, project_root, mapped_paths, exclude_patterns, ignored_exts))
-            return sorted(unmapped_set)
+            return sort_unmapped_by_weight(list(unmapped_set), project_root)
         else:
-            return sorted(_scan_path(".", project_root, mapped_paths, exclude_patterns, ignored_exts))
+            return sort_unmapped_by_weight(_scan_path(".", project_root, mapped_paths, exclude_patterns, ignored_exts), project_root)
 
-    return sorted(_scan_path(norm_target, project_root, mapped_paths, exclude_patterns, ignored_exts))
+    return sort_unmapped_by_weight(_scan_path(norm_target, project_root, mapped_paths, exclude_patterns, ignored_exts), project_root)
 
 
 def find_unmapped_files(target_path: str = "."):
@@ -125,8 +182,26 @@ def find_unmapped_files(target_path: str = "."):
             return
 
     unmapped = get_unmapped_files(display_target)
+
+    # Show existing KIs covering this target area
+    existing_kis = []
+    knowledge_items = doc_config.get("knowledge_items", {})
+    norm_disp = display_target.replace("\\", "/").strip("./")
+    for ki_name, entry in knowledge_items.items():
+        deps = [d.replace("\\", "/").strip("./") for d in entry.get("depends_on", [])]
+        matched_deps = [d for d in deps if (not norm_disp) or d.startswith(norm_disp + "/") or d == norm_disp]
+        if matched_deps:
+            existing_kis.append((ki_name, len(matched_deps), entry.get("summary", "")))
+
+    if existing_kis:
+        print(f"\nExisting KIs for '{display_target}':")
+        for kn, count, summ in existing_kis:
+            s_info = f" - {summ}" if summ else ""
+            print(f"  • `{kn}` ({count} files){s_info}")
+        print()
+
     if unmapped:
-        print(f"### Unmapped Files in '{display_target}':")
+        print(f"### Unmapped Files in '{display_target}' (ordered by architectural weight):")
         for f in unmapped:
             print(f"- {f}")
     else:

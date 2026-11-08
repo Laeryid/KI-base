@@ -747,6 +747,74 @@ MCP_TOOLS = [
             "idempotentHint": True,
         },
     },
+    {
+        "name": "ki_split_analyze",
+        "description": (
+            "Analyze an overloaded Knowledge Item (>10 files) and calculate an optimal bisection "
+            "into Group A and Group B by static import graph."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "ki_name": {
+                    "type": "string",
+                    "description": "Filename of the overloaded KI to analyze (e.g. 'KI_rich.md')"
+                }
+            },
+            "required": ["ki_name"]
+        },
+        "annotations": {
+            "title": "Analyze KI Split",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True
+        }
+    },
+    {
+        "name": "ki_split",
+        "description": (
+            "Atomically split an overloaded Knowledge Item into two balanced Knowledge Items "
+            "(target_a and target_b), update doc_config.json, and remove original if renamed."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "ki_name": {
+                    "type": "string",
+                    "description": "Original KI filename being split (e.g. 'KI_rich.md')"
+                },
+                "target_a": {
+                    "type": "object",
+                    "description": "Payload for part A: {ki_name, summary, depends_on, content}",
+                    "properties": {
+                        "ki_name": {"type": "string"},
+                        "summary": {"type": "string"},
+                        "depends_on": {"type": "array", "items": {"type": "string"}},
+                        "content": {"type": "string"}
+                    },
+                    "required": ["ki_name", "depends_on"]
+                },
+                "target_b": {
+                    "type": "object",
+                    "description": "Payload for part B: {ki_name, summary, depends_on, content}",
+                    "properties": {
+                        "ki_name": {"type": "string"},
+                        "summary": {"type": "string"},
+                        "depends_on": {"type": "array", "items": {"type": "string"}},
+                        "content": {"type": "string"}
+                    },
+                    "required": ["ki_name", "depends_on"]
+                }
+            },
+            "required": ["ki_name", "target_a", "target_b"]
+        },
+        "annotations": {
+            "title": "Apply KI Split",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False
+        }
+    },
     # ─── Config & ADR Management ───
     {
         "name": "add_ki_to_config",
@@ -790,7 +858,7 @@ MCP_TOOLS = [
         "name": "edit_doc_config",
         "description": (
             "Safely edit service sections of doc_config.json: "
-            "'tracked_modules', 'artifacts', or 'coverage_settings'. "
+            "'tracked_modules', 'artifacts', 'coverage_settings', or 'ignore_dirs'. "
             "For 'tracked_modules', items are [module_path, label, importance (1-10)] triples "
             "(e.g. ['src/api', 'API Subsystem', 8]) or simple string module paths (normalized automatically)."
         ),
@@ -799,7 +867,7 @@ MCP_TOOLS = [
             "properties": {
                 "section": {
                     "type": "string",
-                    "enum": ["tracked_modules", "artifacts", "coverage_settings"],
+                    "enum": ["tracked_modules", "artifacts", "coverage_settings", "ignore_dirs"],
                     "description": "Section in doc_config.json to modify"
                 },
                 "action": {
@@ -1192,7 +1260,7 @@ def tool_edit_doc_config(args: dict) -> dict:
     key = args.get("key")
     value = args.get("value")
 
-    allowed_sections = {"tracked_modules", "artifacts", "coverage_settings"}
+    allowed_sections = {"tracked_modules", "artifacts", "coverage_settings", "ignore_dirs"}
     if section not in allowed_sections:
         return {"isError": True, "content": [{"type": "text", "text": f"Error: section '{section}' is not allowed. Allowed: {sorted(allowed_sections)}"}]}
 
@@ -1356,6 +1424,45 @@ def tool_edit_doc_config(args: dict) -> dict:
                 msg = f"Deleted coverage_settings['{key}']"
             else:
                 return {"isError": True, "content": [{"type": "text", "text": f"Error: key '{key}' not found in coverage_settings."}]}
+
+    elif section == "ignore_dirs":
+        settings = config.setdefault("coverage_settings", {})
+        if not isinstance(settings, dict):
+            settings = {}
+            config["coverage_settings"] = settings
+        target_list = settings.setdefault("ignore_dirs", [])
+        if not isinstance(target_list, list):
+            target_list = []
+            settings["ignore_dirs"] = target_list
+
+        if action == "append":
+            items_to_add = value if isinstance(value, list) else ([value] if value is not None else [])
+            added = []
+            for item in items_to_add:
+                s_item = str(item).strip()
+                if s_item and s_item not in target_list:
+                    target_list.append(s_item)
+                    added.append(s_item)
+            msg = f"Appended to ignore_dirs: {added}"
+        elif action == "set":
+            if isinstance(value, list):
+                settings["ignore_dirs"] = [str(x).strip() for x in value if str(x).strip()]
+                msg = f"Set ignore_dirs to {settings['ignore_dirs']}"
+            elif value is not None:
+                settings["ignore_dirs"] = [str(value).strip()]
+                msg = f"Set ignore_dirs to {settings['ignore_dirs']}"
+            else:
+                return {"isError": True, "content": [{"type": "text", "text": "Error: 'value' is required for set action on ignore_dirs."}]}
+        elif action == "delete":
+            target = key or value
+            if not target:
+                return {"isError": True, "content": [{"type": "text", "text": "Error: 'key' or 'value' is required for delete action on ignore_dirs."}]}
+            s_target = str(target).strip()
+            if s_target in target_list:
+                target_list.remove(s_target)
+                msg = f"Deleted '{s_target}' from ignore_dirs"
+            else:
+                return {"isError": True, "content": [{"type": "text", "text": f"Error: '{s_target}' not found in ignore_dirs."}]}
 
     ki_utils.save_doc_config(config)
     return {"content": [{"type": "text", "text": msg}]}
@@ -1927,6 +2034,28 @@ def handle_tool_call(name: str, args: dict) -> Any:
             if args.get("dry_run"):
                 cmd_args.append("--dry-run")
             return run_script("finalize_ki_scaffolds.py", cmd_args)
+        if name == "ki_split_analyze":
+            ki_name = args.get("ki_name", "").strip()
+            if not ki_name:
+                return {"isError": True, "content": [{"type": "text", "text": "Error: 'ki_name' is required."}]}
+            sys.path.insert(0, str(_SCRIPTS_DIR))
+            import split_ki
+            res = split_ki.analyze_split(ki_name)
+            if res.get("isError"):
+                return {"isError": True, "content": [{"type": "text", "text": res.get("message", "Split analysis failed.")}]}
+            return {"content": [{"type": "text", "text": res.get("markdown_report", json.dumps(res, indent=2))}]}
+        if name == "ki_split":
+            ki_name = args.get("ki_name", "").strip()
+            target_a = args.get("target_a")
+            target_b = args.get("target_b")
+            if not ki_name or not target_a or not target_b:
+                return {"isError": True, "content": [{"type": "text", "text": "Error: 'ki_name', 'target_a', and 'target_b' are required."}]}
+            sys.path.insert(0, str(_SCRIPTS_DIR))
+            import split_ki
+            res = split_ki.apply_split(ki_name, target_a, target_b)
+            if res.get("isError"):
+                return {"isError": True, "content": [{"type": "text", "text": res.get("message", "Split failed.")}]}
+            return {"content": [{"type": "text", "text": res.get("message", "Split applied.")}]}
 
         # ─── Config & ADR Management ───
         if name == "add_ki_to_config":

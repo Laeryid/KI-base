@@ -32,6 +32,7 @@ import ki_utils
 EXCLUDED_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv", "dist", "build"}
 DENSITY_THRESHOLD = 50.0   # KI bytes per 1 KB of code
 COMPLEXITY_THRESHOLD = 10  # Files per one KI
+SATURATION_THRESHOLD_BYTES = 3500  # KI bytes above which a module's doc is deemed sufficient
 
 
 def get_excluded_patterns() -> set:
@@ -87,7 +88,7 @@ def get_module_files(project_root: str, module_path: str) -> list:
             rel_path = os.path.relpath(os.path.join(root, f), project_root)
             if ki_utils.should_exclude(f, rel_path, exclude_patterns):
                 continue
-            if f.endswith((".py", ".ts", ".tsx", ".js", ".jsx")) and not f.startswith("__"):
+            if any(f.endswith(ext) for ext in ki_utils.CODE_EXTENSIONS) and not f.startswith("__"):
                 files_list.append(rel_path)
     return files_list
 
@@ -163,6 +164,7 @@ def find_untracked_dirs(project_root: str, tracked_modules: list) -> list:
             norm_rel = rel_path.replace("/", os.sep).rstrip(os.sep)
             has_relevant_files = any(
                 not f.startswith(".")
+                and any(f.endswith(ext) for ext in ki_utils.CODE_EXTENSIONS)
                 and not ki_utils.should_exclude(f, os.path.relpath(os.path.join(root, f), project_root), exclude_patterns)
                 for f in files
             )
@@ -192,6 +194,13 @@ def build_coverage_matrix(project_root: str, tracked_modules: list) -> dict:
     doc_config = load_doc_config()
     ki_files = load_ki_files()
     covered_paths = get_covered_paths(doc_config)
+
+    cov_cfg = doc_config.get("coverage_settings", {})
+    if not isinstance(cov_cfg, dict):
+        cov_cfg = {}
+    density_thresh = cov_cfg.get("density_threshold", DENSITY_THRESHOLD)
+    complexity_thresh = cov_cfg.get("complexity_threshold", COMPLEXITY_THRESHOLD)
+    saturation_bytes = cov_cfg.get("min_ki_bytes", cov_cfg.get("saturation_bytes", SATURATION_THRESHOLD_BYTES))
 
     ki_complexity = {
         ki_name: len(entry.get("depends_on", []))
@@ -230,9 +239,16 @@ def build_coverage_matrix(project_root: str, tracked_modules: list) -> dict:
         ki_size = get_ki_size(project_root, module_path, doc_config)
         density = round(ki_size / size_kb, 1) if size_kb > 0 else 0.0
 
+        is_low_density = bool(
+            has_ki
+            and size_kb > 5
+            and density < density_thresh
+            and ki_size < saturation_bytes
+        )
+
         complex_kis = [
             k for k, v in ki_complexity.items()
-            if v > COMPLEXITY_THRESHOLD and any(
+            if v > complexity_thresh and any(
                 dep.startswith(module_path)
                 for dep in doc_config["knowledge_items"][k].get("depends_on", [])
             )
@@ -241,7 +257,7 @@ def build_coverage_matrix(project_root: str, tracked_modules: list) -> dict:
         gap_factor = 1.0 + (100 - coverage_pct) / 50.0
         if not has_ki:
             gap_factor += 1.0
-        density_factor = 1.5 if (has_ki and size_kb > 5 and density < DENSITY_THRESHOLD) else 1.0
+        density_factor = 1.5 if is_low_density else 1.0
         computed_priority = round(importance * gap_factor * (1 + size_kb / 200) * density_factor)
 
         rows.append({
@@ -253,6 +269,7 @@ def build_coverage_matrix(project_root: str, tracked_modules: list) -> dict:
             "has_ki": has_ki,
             "ki_size": ki_size,
             "density": density,
+            "is_low_density": is_low_density,
             "coverage_pct": round(coverage_pct, 1),
             "importance": importance,
             "priority": computed_priority,
@@ -292,7 +309,7 @@ def format_markdown(data: dict, generated_at: str) -> str:
         warn = ""
         if r["complex_kis"]:
             warn += " 🔥"  # Back to fire icon
-        if r["has_ki"] and r["density"] < DENSITY_THRESHOLD and r["size_kb"] > 5:
+        if r.get("is_low_density"):
             warn += " ❄️"
         lines.append(
             f"| `{r['module']}` | {r['label']}{warn} | {ki} | {cov} | "
@@ -347,12 +364,12 @@ def format_markdown(data: dict, generated_at: str) -> str:
     lines += ["## Recommendations for /expand-knowledge", ""]
     top = [r for r in rows
            if r["coverage_pct"] < 100
-           or (r["has_ki"] and r["density"] < DENSITY_THRESHOLD and r["size_kb"] > 5)][:5]
+           or r.get("is_low_density")][:5]
     for i, r in enumerate(top, 1):
         missing = []
         if not r["has_ki"]:
             missing.append("no KI file")
-        elif r["density"] < DENSITY_THRESHOLD:
+        elif r.get("is_low_density"):
             missing.append(f"low knowledge density ({r['density']} bytes/KB)")
         if r["coverage_pct"] < 100:
             missing.append(f"only {r['coverage_pct']}% files covered")
@@ -408,7 +425,7 @@ def main():
         warn = ""
         if r["complex_kis"]:
             warn += " 🔥"
-        if r["has_ki"] and r["density"] < DENSITY_THRESHOLD and r["size_kb"] > 5:
+        if r.get("is_low_density"):
             warn += " ❄️"
         
         module_display = f"{r['label']}{warn}"
@@ -422,7 +439,7 @@ def main():
             kis = ", ".join(r["complex_kis"])
             print(f"  - {r['label']}: {kis}")
 
-    low_density = [r for r in data["rows"] if r["has_ki"] and r["density"] < DENSITY_THRESHOLD and r["size_kb"] > 5]
+    low_density = [r for r in data["rows"] if r.get("is_low_density")]
     if low_density:
         print("\n❄️ LOW DENSITY (Documentation too brief):")
         for r in low_density:

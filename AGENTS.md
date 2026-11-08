@@ -56,7 +56,7 @@ src/ki_manager/
 ## Режимы работы (`--tool-mode`)
 
 Сервер поддерживает два режима экспозиции инструментов:
-- `--tool-mode full` (по умолчанию, или `KI_TOOL_MODE=full`): возвращает все 35 инструментов.
+- `--tool-mode full` (по умолчанию, или `KI_TOOL_MODE=full`): возвращает все 37 инструментов.
 - `--tool-mode compact` (или `KI_TOOL_MODE=compact`): возвращает 7 фасадных инструментов, экономя тысячи токенов контекста.
 
 ### Компактный режим (Compact Facade)
@@ -82,7 +82,7 @@ src/ki_manager/
 | Инициализация | `ki_init_project`, `ki_migrate_project` |
 | Реестр | `ki_register_project`, `ki_list_projects`, `ki_status`, `ki_prune_registry` |
 | Покрытие | `audit_coverage`, `generate_dir_index`, `analyze_dependencies`, `analyze_all_dependencies`, `find_unmapped_files`, `analyze_module`, `ki_graph_visualize`, `check_ki_drift` |
-| Scaffold | `ki_scaffold`, `ki_scaffold_status`, `ki_finalize_scaffolds`, `update_last_verified` |
+| Scaffold | `ki_scaffold`, `ki_scaffold_status`, `ki_finalize_scaffolds`, `update_last_verified`, `ki_split_analyze`, `ki_split` |
 | Файлы | `read_know_file`, `write_know_file`, `edit_know_file`, `make_know_dir` |
 | Конфиг и ADR | `add_ki_to_config`, `edit_doc_config`, `sync_agents_md`, `create_adr` |
 | Git | `git_checkpoint`, `git_restore`, `git_diff_secured` |

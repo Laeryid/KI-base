@@ -182,3 +182,93 @@ def test_empty_tracked_modules_candidate_output(tmp_project, setup_ki_utils, cap
     assert "Found candidate code directories in project:" in captured
 
 
+@pytest.mark.positive
+def test_non_code_dirs_excluded_from_untracked(tmp_project, setup_ki_utils):
+    """Directories containing only assets, images, markdown or yaml (no source code) must not be reported as untracked blind spots."""
+    for folder, filename, content in [
+        ("assets", "logo.svg", "<svg></svg>"),
+        ("imgs", "screenshot.png", "binarydata"),
+        ("docs", "guide.md", "# Guide"),
+        ("questions", "faq.yml", "q: a"),
+    ]:
+        d = tmp_project / folder
+        d.mkdir(exist_ok=True)
+        (d / filename).write_text(content, encoding="utf-8")
+
+    code_dir = tmp_project / "real_code_dir"
+    code_dir.mkdir(exist_ok=True)
+    (code_dir / "engine.py").write_text("def run(): pass\n", encoding="utf-8")
+
+    ac = setup_ki_utils
+    tracked = [["src/module_a", "Module A", 5]]
+    data = ac.build_coverage_matrix(str(tmp_project), tracked)
+
+    untracked_names = [os.path.basename(u) for u in data["untracked"]]
+    assert "assets" not in untracked_names
+    assert "imgs" not in untracked_names
+    assert "docs" not in untracked_names
+    assert "questions" not in untracked_names
+    assert "real_code_dir" in untracked_names
+
+
+@pytest.mark.positive
+def test_ignore_dirs_in_doc_config(tmp_project, setup_ki_utils):
+    """Directories listed in doc_config.json coverage_settings.ignore_dirs are excluded from untracked."""
+    from conftest import get_know_info
+    _, know_path, _ = get_know_info(tmp_project)
+    cfg_path = know_path / "doc_config.json"
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    cfg.setdefault("coverage_settings", {})["ignore_dirs"] = ["benchmarks", "examples"]
+    cfg_path.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+
+    for folder in ["benchmarks", "examples", "unignored_pkg"]:
+        d = tmp_project / folder
+        d.mkdir(exist_ok=True)
+        (d / "bench.py").write_text("x = 1\n", encoding="utf-8")
+
+    ac = setup_ki_utils
+    tracked = [["src/module_a", "Module A", 5]]
+    data = ac.build_coverage_matrix(str(tmp_project), tracked)
+
+    untracked_names = [os.path.basename(u) for u in data["untracked"]]
+    assert "benchmarks" not in untracked_names
+    assert "examples" not in untracked_names
+    assert "unignored_pkg" in untracked_names
+
+
+@pytest.mark.positive
+def test_density_saturation_cap_prevents_false_low_density(tmp_project, setup_ki_utils):
+    """A large module (e.g. >100 KB code) with a comprehensive KI (>=3500 bytes) must not trigger low density warning."""
+    from conftest import get_know_info
+    _, know_path, _ = get_know_info(tmp_project)
+
+    # Make src/module_a/code.py ~120 KB
+    code_file = tmp_project / "src" / "module_a" / "code.py"
+    code_file.write_text("def func():\n    pass\n" * 6000, encoding="utf-8")
+
+    # Create a comprehensive 4000-byte KI (4000 B / 120 KB = 33.3 B/KB < 50.0 threshold, but >= 3500 B saturation cap)
+    ki_file = know_path / "knowledge" / "KI_module_a.md"
+    ki_content = "# KI: Module A\n\n## Overview\nDetailed architectural overview.\n" + ("Detailed documentation line.\n" * 140)
+    assert len(ki_content.encode("utf-8")) >= 3500
+    ki_file.write_text(ki_content, encoding="utf-8")
+
+    cfg_path = know_path / "doc_config.json"
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    cfg["knowledge_items"]["KI_module_a.md"] = {
+        "description": "Module A",
+        "depends_on": ["src/module_a/code.py"]
+    }
+    cfg_path.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+
+    ac = setup_ki_utils
+    tracked = [["src/module_a", "Module A", 5]]
+    data = ac.build_coverage_matrix(str(tmp_project), tracked)
+    row = data["rows"][0]
+
+    assert row["density"] < 50.0
+    assert row.get("is_low_density") is False
+    md = ac.format_markdown(data, "2026-01-01")
+    assert "❄️" not in md
+
+
+

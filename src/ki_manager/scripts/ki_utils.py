@@ -430,14 +430,18 @@ DEFAULT_EXCLUDED_DIRS = {
     ".mypy_cache", ".pytest_cache", ".ruff_cache",
 }
 
+CODE_EXTENSIONS = {
+    ".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs", ".java",
+    ".c", ".cpp", ".h", ".hpp", ".cs", ".rb", ".php", ".swift", ".kt",
+}
+
 
 def get_exclude_patterns() -> set:
     """
     Returns the set of directory/file exclude patterns.
-    Combines default excluded dirs with exclude_patterns and exclude from:
+    Combines default excluded dirs with exclude_patterns, exclude, ignore_dirs, and exclude_dirs from:
     1. config.json (machine-specific)
-    2. doc_config.json (coverage_settings.exclude_patterns, coverage_settings.exclude,
-       top-level exclude_patterns, top-level exclude)
+    2. doc_config.json (coverage_settings and top-level)
     3. ki_config.json
     4. .gitignore in project root
     """
@@ -452,24 +456,26 @@ def get_exclude_patterns() -> set:
         elif isinstance(val, str) and val:
             patterns.add(val)
 
+    exclude_keys = ("exclude_patterns", "exclude", "ignore_dirs", "exclude_dirs")
+
     # 1. config.json
     local_cfg = get_local_config()
-    _add_from_cfg(local_cfg, "exclude_patterns")
-    _add_from_cfg(local_cfg, "exclude")
+    for k in exclude_keys:
+        _add_from_cfg(local_cfg, k)
 
     # 2. doc_config.json
     doc_cfg = get_doc_config()
-    _add_from_cfg(doc_cfg, "exclude_patterns")
-    _add_from_cfg(doc_cfg, "exclude")
+    for k in exclude_keys:
+        _add_from_cfg(doc_cfg, k)
     cov_cfg = doc_cfg.get("coverage_settings", {})
     if isinstance(cov_cfg, dict):
-        _add_from_cfg(cov_cfg, "exclude_patterns")
-        _add_from_cfg(cov_cfg, "exclude")
+        for k in exclude_keys:
+            _add_from_cfg(cov_cfg, k)
 
     # 3. ki_config.json
     ki_cfg = get_ki_cfg()
-    _add_from_cfg(ki_cfg, "exclude_patterns")
-    _add_from_cfg(ki_cfg, "exclude")
+    for k in exclude_keys:
+        _add_from_cfg(ki_cfg, k)
 
     # 4. .gitignore
     patterns.update(load_gitignore_patterns())

@@ -445,9 +445,8 @@ def register_ki_in_config(config: dict, ki_name: str, label: str, module_path: s
         config["knowledge_items"] = {}
 
     depends_on = [info["rel_path"] for info in file_infos]
-    # Also include the module directory itself as a dependency
-    if module_path not in depends_on:
-        depends_on = [module_path] + depends_on
+    if not depends_on and module_path:
+        depends_on = [module_path]
 
     config["knowledge_items"][ki_name] = {
         "summary": f"[scaffold] {label}",
@@ -462,26 +461,104 @@ def register_ki_in_config(config: dict, ki_name: str, label: str, module_path: s
         tracked_list.append([module_path, label, importance])
 
 
+def cluster_file_infos(
+    module_path: str,
+    file_infos: List[Dict],
+    max_per_cluster: int = 10
+) -> List[Tuple[str, List[Dict]]]:
+    """
+    Groups file_infos into cohesive clusters of <= max_per_cluster files.
+    Returns a list of (cluster_suffix, cluster_file_infos).
+    If <= max_per_cluster, returns [("", file_infos)].
+    """
+    if len(file_infos) <= max_per_cluster:
+        return [("", file_infos)]
+
+    # 1. Subdirectories
+    subdirs: Dict[str, List[Dict]] = {}
+    mod_norm = module_path.replace("\\", "/").strip("/")
+    for fi in file_infos:
+        rel = fi["rel_path"].replace("\\", "/")
+        if rel.startswith(mod_norm + "/"):
+            sub_rel = rel[len(mod_norm) + 1:]
+        else:
+            sub_rel = rel
+        parts = sub_rel.split("/")
+        subdir_key = parts[0] if len(parts) > 1 else ""
+        subdirs.setdefault(subdir_key, []).append(fi)
+
+    if len(subdirs) > 1 and all(len(v) <= max_per_cluster for v in subdirs.values() if v):
+        return [(sdir if sdir else "root", flist) for sdir, flist in sorted(subdirs.items())]
+
+    # 2. Group by prefix
+    prefix_buckets: Dict[str, List[Dict]] = {}
+    for fi in file_infos:
+        stem = Path(fi["fname"]).stem.lstrip("_")
+        prefix = stem.split("_")[0] if "_" in stem else stem
+        prefix_buckets.setdefault(prefix, []).append(fi)
+
+    clusters: List[Tuple[str, List[Dict]]] = []
+    current_name = ""
+    current_files: List[Dict] = []
+
+    for prefix, flist in sorted(prefix_buckets.items(), key=lambda x: -len(x[1])):
+        if len(flist) > max_per_cluster:
+            for i in range(0, len(flist), max_per_cluster):
+                chunk = flist[i : i + max_per_cluster]
+                c_name = f"{prefix}_{i // max_per_cluster + 1}" if i > 0 else prefix
+                clusters.append((c_name, chunk))
+        elif len(current_files) + len(flist) <= max_per_cluster:
+            current_files.extend(flist)
+            current_name = f"{current_name}_{prefix}" if current_name else prefix
+        else:
+            if current_files:
+                clusters.append((current_name, current_files))
+            current_name = prefix
+            current_files = list(flist)
+
+    if current_files:
+        clusters.append((current_name, current_files))
+
+    final_clusters = []
+    for idx, (cname, cfiles) in enumerate(clusters, 1):
+        clean_name = cname.split("_")[0] if len(cname) > 15 else cname
+        clean_name = clean_name or f"part{idx}"
+        final_clusters.append((clean_name, cfiles))
+
+    return final_clusters
+
+
 # ─── Main Logic ───────────────────────────────────────────────────────────────
 
 def get_uncovered_modules(doc_config: dict) -> List[Tuple[str, str, int]]:
-    """Return tracked modules that have no KI coverage yet."""
+    """Return tracked modules that have unmapped code files."""
+    project_root = ki_utils.get_project_root()
     tracked = ki_utils.get_tracked_modules(doc_config)
     covered_module_paths = set()
     for ki_name, entry in doc_config.get("knowledge_items", {}).items():
         for dep in entry.get("depends_on", []):
-            covered_module_paths.add(dep.replace("/", os.sep).rstrip(os.sep))
+            covered_module_paths.add(dep.replace("/", os.sep).rstrip(os.sep).lower())
 
     uncovered = []
     for module_path, label, importance in tracked:
-        norm = module_path.replace("/", os.sep).rstrip(os.sep)
-        # Check if this module path (or its parent/child) is already in covered_module_paths
-        is_covered = any(
-            norm == cp or norm.startswith(cp + os.sep) or cp.startswith(norm + os.sep)
-            for cp in covered_module_paths
-        )
-        if not is_covered:
-            uncovered.append((module_path, label, importance))
+        norm = module_path.replace("/", os.sep).rstrip(os.sep).lower()
+        if norm in covered_module_paths:
+            continue
+        if project_root and os.path.isdir(os.path.join(project_root, module_path.replace("/", os.sep))):
+            m_files = scan_module(project_root, module_path)
+            uncovered_files = [
+                fi for fi in m_files 
+                if fi["rel_path"].replace("/", os.sep).lower() not in covered_module_paths
+            ]
+            if uncovered_files:
+                uncovered.append((module_path, label, importance))
+        else:
+            is_covered = any(
+                norm == cp or norm.startswith(cp + os.sep) or cp.startswith(norm + os.sep)
+                for cp in covered_module_paths
+            )
+            if not is_covered:
+                uncovered.append((module_path, label, importance))
 
     return uncovered
 
@@ -610,46 +687,72 @@ def generate_scaffolds(
     created, skipped, overwritten = 0, 0, 0
 
     for module_path, label, importance in uncovered:
-        ki_name = ki_filename_from_module(module_path)
-        ki_path = os.path.join(ki_dir, ki_name)
-
-        # Conflict resolution
-        if os.path.exists(ki_path):
-            if force and is_scaffold_ki(ki_path):
-                action = "overwrite"
-            elif force:
-                print(f"  [SKIP] {ki_name} — exists and is NOT a scaffold (--force skips non-scaffold KIs)")
-                skipped += 1
-                continue
-            else:
-                print(f"  [SKIP] {ki_name} — already exists (use --force to overwrite scaffold KIs)")
-                skipped += 1
-                continue
-        else:
-            action = "create"
-
         # Scan module
-        file_infos = scan_module(project_root, module_path)
-        symbol_count = sum(len(fi["symbols"]) for fi in file_infos)
-        lang_set = {fi["ext"] for fi in file_infos}
-        langs_str = ", ".join(sorted(lang_set)) if lang_set else "unknown"
+        all_file_infos = scan_module(project_root, module_path)
 
-        print(f"  [{action.upper()}] {ki_name}")
-        print(f"           module: {module_path}  ({len(file_infos)} files, {symbol_count} symbols, langs: {langs_str})")
+        # Filter out files already covered by existing KIs (unless force is requested)
+        covered_paths_set = set()
+        for k_entry in doc_config.get("knowledge_items", {}).values():
+            for p in k_entry.get("depends_on", []):
+                covered_paths_set.add(p.replace("/", os.sep).lower())
 
-        if not dry_run:
-            content = build_scaffold_content(module_path, label, file_infos, project_root=project_root)
-            with open(ki_path, "w", encoding="utf-8") as f:
-                f.write(content)
-            register_ki_in_config(doc_config, ki_name, label, module_path, file_infos, importance=importance)
-            # Save after EVERY KI write — makes the run crash-safe.
-            # If interrupted, already-created KIs are registered and won't be re-created.
-            save_doc_config(doc_config)
+        uncovered_file_infos = [
+            fi for fi in all_file_infos
+            if fi["rel_path"].replace("/", os.sep).lower() not in covered_paths_set
+        ]
 
-            if action == "create":
-                created += 1
+        target_file_infos = uncovered_file_infos if (uncovered_file_infos or not force) else all_file_infos
+        if not target_file_infos and all_file_infos and not force:
+            print(f"  [SKIP] {module_path} — all {len(all_file_infos)} files already covered.")
+            skipped += 1
+            continue
+
+        clusters = cluster_file_infos(module_path, target_file_infos)
+
+        for cluster_suffix, c_file_infos in clusters:
+            if cluster_suffix:
+                ki_name = ki_filename_from_module(f"{module_path}_{cluster_suffix}")
+                c_label = f"{label} ({cluster_suffix.capitalize()})"
             else:
-                overwritten += 1
+                ki_name = ki_filename_from_module(module_path)
+                c_label = label
+
+            ki_path = os.path.join(ki_dir, ki_name)
+
+            # Conflict resolution
+            if os.path.exists(ki_path):
+                if force and is_scaffold_ki(ki_path):
+                    action = "overwrite"
+                elif force:
+                    print(f"  [SKIP] {ki_name} — exists and is NOT a scaffold (--force skips non-scaffold KIs)")
+                    skipped += 1
+                    continue
+                else:
+                    print(f"  [SKIP] {ki_name} — already exists (use --force to overwrite scaffold KIs)")
+                    skipped += 1
+                    continue
+            else:
+                action = "create"
+
+            symbol_count = sum(len(fi["symbols"]) for fi in c_file_infos)
+            lang_set = {fi["ext"] for fi in c_file_infos}
+            langs_str = ", ".join(sorted(lang_set)) if lang_set else "unknown"
+
+            print(f"  [{action.upper()}] {ki_name}")
+            print(f"           module: {module_path}  ({len(c_file_infos)} files, {symbol_count} symbols, langs: {langs_str})")
+
+            if not dry_run:
+                content = build_scaffold_content(module_path, c_label, c_file_infos, project_root=project_root)
+                with open(ki_path, "w", encoding="utf-8") as f:
+                    f.write(content)
+                register_ki_in_config(doc_config, ki_name, c_label, module_path, c_file_infos, importance=importance)
+                # Save after EVERY KI write — makes the run crash-safe.
+                save_doc_config(doc_config)
+
+                if action == "create":
+                    created += 1
+                else:
+                    overwritten += 1
 
     if not dry_run and (created + overwritten) > 0:
         print(f"[+] doc_config.json updated ({created + overwritten} entries written).")

@@ -41,6 +41,8 @@ TOOL_GROUPS: Dict[str, List[str]] = {
         "ki_scaffold_status",
         "ki_finalize_scaffolds",
         "update_last_verified",
+        "ki_split_analyze",
+        "ki_split",
     ],
     "config_adr": [
         "add_ki_to_config",

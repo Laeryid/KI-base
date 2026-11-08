@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.3.dev2] — 2026-11-08
+
+### Added
+- **`ki_split_analyze` & `ki_split` Tools for B-Tree KI Decomposition**:
+  - `ki_split_analyze`: Computes static import graph bisection for overloaded KIs (>10 files), identifying internal dependencies and suggesting balanced Group A (Core / Foundation) and Group B (Components / High-level) splits.
+  - `ki_split`: Atomically executes KI bisection into two balanced KIs, verifying that no files are lost or duplicated, updating `doc_config.json`, and cleaning up the renamed original KI.
+  - Exposed in full mode (37 tools) and registered under `scaffold` tool group for compact facade mode (`ki_call` for analyze, `ki_mutate` for apply).
+- **Direct `ignore_dirs` Management in `edit_doc_config`**:
+  - Added `section="ignore_dirs"` in `edit_doc_config` for quickly excluding directories (such as benchmarks or assets) from coverage audits.
+
+### Fixed
+- **`audit_coverage` Untracked Blind Spots & Density Saturation**:
+  - `find_untracked_dirs` now filters candidates strictly by recognized source code extensions (`.py`, `.ts`, `.tsx`, `.js`, `.jsx`, `.go`, `.rs`, `.java`, etc.), eliminating false-positive `⚠️ UNTRACKED AREAS` on assets, images, and non-code documentation folders.
+  - Introduced saturation threshold (`min_ki_bytes`, default 3,500 bytes) and configurable `coverage_settings` (`density_threshold`, `min_ki_bytes`, `complexity_threshold`) in `doc_config.json`. Comprehensive KIs covering large codebases no longer trigger false-positive `❄️ LOW DENSITY` warnings.
+- **Support for `ignore_dirs` and `exclude_dirs` in Configs**:
+  - `ki_utils.get_exclude_patterns` now automatically loads `ignore_dirs` and `exclude_dirs` across all config files (`doc_config.json`, `config.json`, `ki_config.json`).
+- **`ki_scaffold` File-Level Tracking & Auto-Clustering**:
+  - Removed insertion of top-level directory paths into `depends_on`, enabling accurate multi-KI coverage for single tracked modules.
+  - Automatically clusters flat modules with >10 files into cohesive sub-KIs (each $\le 10$ files) by subdirectories or name prefixes, avoiding single monolithic scaffold KIs.
+- **`find_unmapped_files` Architectural Weight Sorting**:
+  - Sorts unmapped files by architectural weight (internal incoming import count + file size), guiding agents to document core module hubs before peripheral utilities.
+  - Displays existing KIs and their file counts for the queried module to simplify semantic merge decisions.
+- **`expand-knowledge` Workflow**:
+  - Enriched workflow with B-Tree semantics: prioritizes semantic merging of unmapped files into existing KIs, followed by atomic bisection on overflow (>10 files) via `ki_split`.
+
 ## [2.3.3.dev1] — 2026-11-08
 
 ### Fixed

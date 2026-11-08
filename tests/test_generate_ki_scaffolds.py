@@ -271,3 +271,49 @@ def test_empty_tracked_modules_message(tmp_path, monkeypatch, capsys):
     captured = capsys.readouterr().out
     assert "[!] No tracked modules configured in doc_config.json." in captured
 
+
+def test_scaffold_clustering_on_large_flat_module(tmp_path, monkeypatch):
+    """When a module has >10 files, generate_scaffolds splits it into cohesive KIs each <=10 files without adding folder to depends_on."""
+    from ki_manager.scripts.generate_ki_scaffolds import generate_scaffolds
+    from ki_manager.scripts import ki_utils
+
+    src_dir = tmp_path / "rich"
+    src_dir.mkdir()
+
+    # Create 14 files across 2 themes
+    for i in range(7):
+        (src_dir / f"table_widget_{i}.py").write_text(f"class Table{i}: pass\n", encoding="utf-8")
+        (src_dir / f"progress_bar_{i}.py").write_text(f"class Progress{i}: pass\n", encoding="utf-8")
+
+    ki_base = tmp_path / ".ki-base"
+    ki_base.mkdir()
+    ki_config = {
+        "project_name": "test_large_flat",
+        "paths": {"knowledge_root": ".ki-base", "project_root": "."}
+    }
+    (ki_base / "ki_config.json").write_text(json.dumps(ki_config), encoding="utf-8")
+
+    doc_cfg = {
+        "coverage_settings": {"tracked_modules": [["rich", "Rich Module", 8]]},
+        "knowledge_items": {}
+    }
+    (ki_base / "doc_config.json").write_text(json.dumps(doc_cfg), encoding="utf-8")
+
+    monkeypatch.setattr(ki_utils, "ACTIVE_WORKSPACE_PATH", str(tmp_path))
+    monkeypatch.setattr(ki_utils, "_CACHE", {})
+    monkeypatch.chdir(tmp_path)
+
+    generate_scaffolds()
+
+    updated_cfg = json.loads((ki_base / "doc_config.json").read_text(encoding="utf-8"))
+    created_kis = updated_cfg["knowledge_items"]
+
+    # Must create more than 1 KI because 14 files > 10 files limit
+    assert len(created_kis) >= 2
+    for ki_name, entry in created_kis.items():
+        deps = entry["depends_on"]
+        assert len(deps) <= 10
+        # The module directory itself must NOT be in depends_on
+        assert "rich" not in deps
+
+

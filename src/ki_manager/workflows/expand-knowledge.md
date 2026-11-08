@@ -7,7 +7,7 @@ metadata:
 <!-- if-compact -->
 allowed-tools: ki_instructions ki_read ki_search ki_tools ki_call ki_mutate
 <!-- else-compact -->
-allowed-tools: read_know_file write_know_file edit_know_file ki_instructions ki_read audit_coverage add_ki_to_config analyze_dependencies save_state git_checkpoint
+allowed-tools: read_know_file write_know_file edit_know_file ki_instructions ki_read audit_coverage add_ki_to_config analyze_dependencies save_state git_checkpoint find_unmapped_files ki_split_analyze ki_split edit_doc_config
 <!-- /if-compact -->
 ---
 
@@ -32,7 +32,7 @@ The script will output a coverage matrix, a list of Blind Spots, and density met
 Iterations can be stopped if ALL of the following conditions are met:
 1. All modules in the matrix have **GREEN (✅)** status.
 2. The **⚠️ Untracked Areas** section is empty.
-3. No **🔷 (Complexity)** tags — overloaded KIs.
+3. No **🔥 (Complexity)** tags — overloaded KIs (>10 files).
 4. No **❄️ (Low Density)** tags — documentation too brief for the code volume.
 
 > [!TIP]
@@ -44,10 +44,17 @@ Iterations can be stopped if ALL of the following conditions are met:
 
 Select **one** target with the highest priority in the following order:
 
-1. ⚠️ **Blind Spots** (folders exist, lots of code, but missing from audit) — create a new KI.
-2. 🔴 **Critical Priority** in the matrix (no KI + large size).
-3. 🔷 **Complexity Warning** (one KI covers >10 files) — goal: split into multiple KIs.
-4. ❄️ **Low Density** (KI exists but is "empty" relative to code) — goal: detailing.
+1. ⚠️ **Blind Spots / Untracked Areas** (folders exist, contain code, but missing from audit):
+   - If folder should be tracked: add to `tracked_modules` or document files.
+   - If folder should NOT be audited (e.g. static assets, tests, benchmarks): ignore via
+     <!-- if-compact -->
+     `ki_mutate(tool="edit_doc_config", args={"section": "ignore_dirs", "action": "append", "value": "<folder_name>"})`
+     <!-- else-compact -->
+     `edit_doc_config(section="ignore_dirs", action="append", value="<folder_name>")`
+     <!-- /if-compact -->
+2. 🔴 **Critical Priority / Partial Coverage** in the matrix (uncovered code files).
+3. 🔥 **Complexity Warning** (one KI covers >10 files) — goal: split into two cohesive KIs via `ki_split`.
+4. ❄️ **Low Density** (KI exists but is brief relative to code volume without reaching saturation) — goal: detailing.
 5. 🌾 **Medium/Low Priority** — for planned improvement.
 
 ---
@@ -64,33 +71,66 @@ Select **one** target with the highest priority in the following order:
 > - `ki_mutate(tool="write_know_file", ...)` — to create or fully overwrite a KI.
 > - `ki_mutate(tool="edit_know_file", ...)` — for precise text replacement.
 > - `ki_mutate(tool="make_know_dir", ...)` — to create directories inside the knowledge base.
+> - `ki_call(tool="ki_split_analyze", ...)` — to analyze an overloaded KI for splitting.
+> - `ki_mutate(tool="ki_split", ...)` — to atomically apply KI bisection.
 <!-- else-compact -->
 > You **MUST** use the following MCP tools from the `ki-manager` server:
 > - `read_know_file` / `ki_read` — to read existing KIs.
 > - `write_know_file` — to create or fully overwrite a KI.
 > - `edit_know_file` — for precise text replacement.
 > - `make_know_dir` — to create directories inside the knowledge base.
+> - `ki_split_analyze` — to analyze an overloaded KI for splitting.
+> - `ki_split` — to atomically apply KI bisection.
 <!-- /if-compact -->
 > 
 > This ensures that documentation changes remain isolated within the knowledge sandbox and do not accidentally affect the project's source code.
 
 ---
 
-## Step 3 — Research and Analysis
+## Step 3 — Research and Execution (B-Tree Workflow)
 
-### Case A: New Module or Blind Spot
-1. Read the files in the directory.
-2. Define the **Purpose** and **Key Components**.
-3. Check dependencies (who calls this module).
+### Case A: Documenting Unmapped Files (Merge or Create)
+1. Inspect unmapped files of the target module (ordered by architectural weight from core hubs to utilities):
+   <!-- if-compact -->
+   // turbo
+   `ki_call(tool="find_unmapped_files", args={"path": "<module_path>"})`
+   <!-- else-compact -->
+   // turbo
+   `find_unmapped_files(path="<module_path>")`
+   <!-- /if-compact -->
+2. Check existing KIs in this module (listed in `find_unmapped_files` output).
+3. **Semantic Match (Merge)**:
+   - If the file naturally belongs to an existing KI, **merge it into that KI** regardless of its current size:
+     - Update the KI with `edit_know_file` (add to `Key Components` and description).
+     - Update `depends_on` in `doc_config.json` via `add_ki_to_config`.
+   - If no existing KI is semantically suitable: create a new focused KI (go to Step 4).
+4. **Overflow Check**:
+   - If after merging the KI has more than 10 files in `depends_on`, **proceed immediately to Case B (Split)**.
 
-### Case B: Splitting (Complexity)
-1. Read the current KI with `ki_read(rel_path="...")`.
-2. Identify logical groups of files (e.g., `core logic`, `models`, `utils`).
-3. Prepare the structure for new, more focused KIs.
+### Case B: Splitting Overloaded KIs (B-Tree Split on Overflow)
+When a KI covers $> 10$ files (or triggers 🔥 `COMPLEXITY WARNING`):
+1. Run static import bisection analysis:
+   <!-- if-compact -->
+   // turbo
+   `ki_call(tool="ki_split_analyze", args={"ki_name": "<filename>.ki.md"})`
+   <!-- else-compact -->
+   // turbo
+   `ki_split_analyze(ki_name="<filename>.ki.md")`
+   <!-- /if-compact -->
+2. The tool computes a balanced bisection (Group A vs Group B) based on internal imports and abstraction layers.
+3. Prepare content for both parts, ensuring all files from the original KI are covered.
+4. Apply the split atomically:
+   <!-- if-compact -->
+   // turbo
+   `ki_mutate(tool="ki_split", args={"ki_name": "<filename>.ki.md", "target_a": {"ki_name": "...", "summary": "...", "depends_on": [...], "content": "..."}, "target_b": {"ki_name": "...", "summary": "...", "depends_on": [...], "content": "..."}})`
+   <!-- else-compact -->
+   // turbo
+   `ki_split(ki_name="<filename>.ki.md", target_a={"ki_name": "...", "summary": "...", "depends_on": [...], "content": "..."}, target_b={"ki_name": "...", "summary": "...", "depends_on": [...], "content": "..."})`
+   <!-- /if-compact -->
 
 ### Case C: Detailing (Low Density)
 1. Find non-obvious points in the code: side-effects, initialization order, hidden configs.
-2. Add "Non-obvious Details" and "Common Pitfalls" sections.
+2. Add "Non-obvious Details" and "Common Pitfalls" sections using `edit_know_file`.
 
 ---
 
