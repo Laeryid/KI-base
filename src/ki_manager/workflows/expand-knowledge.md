@@ -7,7 +7,7 @@ metadata:
 <!-- if-compact -->
 allowed-tools: ki_instructions ki_read ki_search ki_tools ki_call ki_mutate
 <!-- else-compact -->
-allowed-tools: read_know_file write_know_file edit_know_file ki_instructions ki_read audit_coverage add_ki_to_config analyze_dependencies save_state git_checkpoint find_unmapped_files ki_split_analyze ki_split edit_doc_config
+allowed-tools: read_know_file write_know_file edit_know_file ki_instructions ki_read audit_coverage add_ki_to_config analyze_dependencies save_state git_checkpoint find_unmapped_files ki_split_analyze ki_split edit_doc_config ki_lint ki_sync
 <!-- /if-compact -->
 ---
 
@@ -59,31 +59,30 @@ Select **one** target with the highest priority in the following order:
 
 ---
 
-## Safety & Tooling Rules (Mandatory)
-> [!IMPORTANT]
+## Safety & Tooling Rules
+> [!NOTE]
 > - `{{KI_DIR}}` (knowledge_root) is the system container. All Knowledge Items (`*.ki.md`) live strictly in `{{KI_DIR}}/knowledge/`.
 > - **NEVER** write `.ki.md` files directly into `{{KI_DIR}}/` root, and **NEVER** delete `{{KI_DIR}}/knowledge/`.
-> - When working with this workflow, it is **STRICTLY PROHIBITED** to use general file editing tools (e.g., `filesystem.edit_file`) for files inside the `{{KI_DIR}}` directory.
+> - Native file tools (`read_file`, `edit_file`) **are allowed** for inspecting and editing `.md` files inside `{{KI_DIR}}/knowledge/`.
+> - After editing KI files, run `ki_sync` (or `ki_lint`) to validate structure, metadata, and references.
 > 
 <!-- if-compact -->
-> You **MUST** use the following MCP tools from the `ki-manager` server:
+> Available `ki-manager` MCP tools for knowledge operations:
 > - `ki_read` — to read existing KIs.
-> - `ki_mutate(tool="write_know_file", ...)` — to create or fully overwrite a KI.
-> - `ki_mutate(tool="edit_know_file", ...)` — for precise text replacement.
+> - `ki_mutate(tool="write_know_file", ...)` / `edit_know_file` — optional sandboxed alternatives to native file tools.
 > - `ki_mutate(tool="make_know_dir", ...)` — to create directories inside the knowledge base.
 > - `ki_call(tool="ki_split_analyze", ...)` — to analyze an overloaded KI for splitting.
 > - `ki_mutate(tool="ki_split", ...)` — to atomically apply KI bisection.
+> - `ki_mutate(tool="ki_sync")` / `ki_call(tool="ki_lint")` — to validate and synchronize state after edits.
 <!-- else-compact -->
-> You **MUST** use the following MCP tools from the `ki-manager` server:
+> Available `ki-manager` MCP tools for knowledge operations:
 > - `read_know_file` / `ki_read` — to read existing KIs.
-> - `write_know_file` — to create or fully overwrite a KI.
-> - `edit_know_file` — for precise text replacement.
+> - `write_know_file` / `edit_know_file` — optional sandboxed alternatives to native file tools.
 > - `make_know_dir` — to create directories inside the knowledge base.
 > - `ki_split_analyze` — to analyze an overloaded KI for splitting.
 > - `ki_split` — to atomically apply KI bisection.
+> - `ki_sync` / `ki_lint` — to validate and synchronize state after edits.
 <!-- /if-compact -->
-> 
-> This ensures that documentation changes remain isolated within the knowledge sandbox and do not accidentally affect the project's source code.
 
 ---
 
@@ -222,15 +221,15 @@ Automatically identify and link related KIs based on code imports:
 
 Updates coverage metrics and verifies that the blind spot is resolved.
 
-## Step 8 — Git Checkpoint
+## Step 8 — Synchronize & Validate (`ki_sync`)
 
-Finalize the expansion by creating a git snapshot of the knowledge state.
+Finalize the expansion by validating structure/metadata/references and updating `DIR_INDEX.md`, `doc_state.json`, and `AGENTS.md`:
 
 // turbo
 <!-- if-compact -->
-`ki_mutate(tool="git_checkpoint", args={"message": "Expand knowledge base: new KI registration"})`
+`ki_mutate(tool="ki_sync")`
 <!-- else-compact -->
-`git_checkpoint(message="Expand knowledge base: new KI registration")`
+`ki_sync()`
 <!-- /if-compact -->
 
 ---

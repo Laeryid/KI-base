@@ -340,10 +340,14 @@ def test_create_adr_and_auto_increment(mock_ki_project):
     assert any("001_sqlite_storage.md" in k for k in registered_keys)
     assert any("002_websocket_transport.md" in k for k in registered_keys)
 
-    # Check ADR table formatting
+    # Check ADR table formatting (active only by default; Proposed -> draft omitted into summary)
     adr_table = ki_utils.get_adr_table()
-    assert "| 001 | Use SQLite Storage | Accepted |" in adr_table
-    assert "| 002 | Migrate Transport to WebSockets | Proposed |" in adr_table
+    assert "| 001 | Use SQLite Storage | accepted |" in adr_table
+    assert "002_websocket_transport.md" not in adr_table
+    assert "1 inactive ADR(s) omitted (draft: 1)" in adr_table
+
+    adr_table_all = ki_utils.get_adr_table(include_inactive=True)
+    assert "| 002 | Migrate Transport to WebSockets | draft |" in adr_table_all
 
 
 def test_create_adr_negative_missing_title(mock_ki_project):
@@ -376,7 +380,7 @@ def test_sync_agents_md_enabled(mock_ki_project):
     agents_content = (proj_dir / "AGENTS.md").read_text(encoding="utf-8")
     assert "| `_OVERVIEW.ki.md` |" in agents_content
     assert "## Architecture Decision Records (ADRs)" in agents_content
-    assert "| 001 | Adopt Event Bus | Accepted |" in agents_content
+    assert "| 001 | Adopt Event Bus | accepted |" in agents_content
 
 
 def test_sync_agents_md_disabled_in_ki_config(mock_ki_project):
@@ -566,14 +570,16 @@ def test_create_adr_with_supersedes_list(mock_ki_project):
 
     # Verify ADR 001 was updated
     content1 = adr1_path.read_text(encoding="utf-8")
-    assert "<!-- status: Superseded by ADR 003 -->" in content1
+    assert "<!-- status: superseded -->" in content1
+    assert "<!-- superseded_by: 003 -->" in content1
     assert "**Status**: Superseded by [ADR 003](./003_unified_engine.md)" in content1
     assert "> [!WARNING]" in content1
     assert "This ADR is superseded by [ADR 003: Consolidated New Architecture](./003_unified_engine.md)" in content1
 
     # Verify ADR 002 was updated
     content2 = adr2_path.read_text(encoding="utf-8")
-    assert "<!-- status: Superseded by ADR 003 -->" in content2
+    assert "<!-- status: superseded -->" in content2
+    assert "<!-- superseded_by: 003 -->" in content2
     assert "**Status**: Superseded by [ADR 003](./003_unified_engine.md)" in content2
     assert "> [!WARNING]" in content2
 
@@ -591,18 +597,32 @@ def test_create_adr_with_supersedes_list(mock_ki_project):
     assert "## Verification" in content3
     assert "pytest tests/test_engine.py" in content3
 
-    # Verify doc_config.json update
+    # Verify doc_config.json update (structured status + superseded_by + legacy description)
     doc_cfg = ki_utils.get_doc_config()
     for k, v in doc_cfg["knowledge_items"].items():
         if "001_old_one.md" in k or "002_old_two.md" in k:
+            assert v["status"] == "superseded"
+            assert v["superseded_by"] == "003"
             assert "(Superseded by ADR 003)" in v["description"]
+        elif "003_unified_engine.md" in k:
+            assert v["status"] == "accepted"
 
     # Verify parse_adr_file and get_adr_table
     parsed = ki_utils.parse_adr_file(str(adr3_path), str(proj_dir))
     assert parsed["supersedes"] == ["001", "002"]
+    assert parsed["status"] == "accepted"
+
+    parsed1 = ki_utils.parse_adr_file(str(adr1_path), str(proj_dir))
+    assert parsed1["status"] == "superseded"
+    assert parsed1["superseded_by"] == "003"
 
     adr_table = ki_utils.get_adr_table()
-    assert "Superseded by ADR 003" in adr_table
+    assert "| 003 | Consolidated New Architecture | accepted |" in adr_table
+    assert "001_old_one.md" not in adr_table
+    assert "2 inactive ADR(s) omitted (superseded: 2)" in adr_table
+
+    adr_table_all = ki_utils.get_adr_table(include_inactive=True)
+    assert "superseded -> ADR 003" in adr_table_all
 
 
 def test_create_adr_affected_files_and_ki_mapping(mock_ki_project):

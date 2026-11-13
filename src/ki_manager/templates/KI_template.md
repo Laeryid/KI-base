@@ -17,6 +17,10 @@
 - Test commands: `pytest tests/test_<module>.py`
 - Test files: `tests/test_<module>.py`
 
+## Invariants
+<!-- Hard constraints extracted first by ki_context_for (optional if none) -->
+- [MUST] <Critical invariant or architectural rule for this module>
+
 ## Non-obvious Details
 - <Implementation constraint, side effect, initialization order, or environment variable>
 

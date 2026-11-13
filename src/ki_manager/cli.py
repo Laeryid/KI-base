@@ -2,18 +2,23 @@
 ki_manager/cli.py
 
 CLI commands for ki-manager (besides the MCP server).
-Currently provides:
+Provides:
   install-skills  — install bundled workflows as Agent Skills
+  install-hooks   — install Git pre-commit hook running `ki-manager lint --staged`
+  lint            — run deterministic linter on the knowledge base
 
 Usage:
-    ki-manager install-skills
-    ki-manager install-skills --path /path/to/skills/dir
+    ki-manager install-skills [--path /path/to/skills/dir]
+    ki-manager install-hooks [--path /path/to/repo] [--force]
+    ki-manager lint [--staged] [--fix] [--json]
 """
 
 import sys
 import os
 import argparse
+import subprocess
 from pathlib import Path
+from typing import Optional
 
 _PACKAGE_DIR = Path(__file__).parent
 _WORKFLOWS_DIR = _PACKAGE_DIR / "workflows"
@@ -126,8 +131,114 @@ def install_skills(argv=None):
     print(f"\nTarget: {target}")
 
 
+_PRE_COMMIT_MARKER = "# ki-manager pre-commit hook"
+
+_PRE_COMMIT_SCRIPT = """#!/usr/bin/env sh
+# ki-manager pre-commit hook (installed by ki-manager install-hooks)
+if command -v ki-manager >/dev/null 2>&1; then
+    ki-manager lint --staged
+elif [ -x ".venv/Scripts/python.exe" ]; then
+    .venv/Scripts/python.exe -m ki_manager.server lint --staged
+elif [ -x ".venv/bin/python" ]; then
+    .venv/bin/python -m ki_manager.server lint --staged
+else
+    python -m ki_manager.server lint --staged
+fi
+"""
+
+
+def _find_git_hooks_dir(target_dir: Path) -> Optional[Path]:
+    """Locate the .git/hooks directory using git rev-parse."""
+    try:
+        res = subprocess.run(
+            ["git", "rev-parse", "--git-path", "hooks"],
+            cwd=str(target_dir),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+        )
+        if res.returncode != 0:
+            return None
+        hooks_raw = res.stdout.strip()
+        if not hooks_raw:
+            return None
+        p = Path(hooks_raw)
+        if not p.is_absolute():
+            p = (target_dir / p).resolve()
+        return p
+    except Exception:
+        return None
+
+
+def install_hooks(argv=None) -> int:
+    """Entry point for `ki-manager install-hooks`."""
+    parser = argparse.ArgumentParser(
+        prog="ki-manager install-hooks",
+        description="Install Git pre-commit hook to run `ki-manager lint --staged`.",
+    )
+    parser.add_argument(
+        "--path",
+        type=str,
+        default=None,
+        help="Path inside target Git repository (default: current working directory)",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite an existing non-ki-manager pre-commit hook",
+    )
+    args = parser.parse_args(argv)
+
+    target = Path(args.path).resolve() if args.path else Path.cwd()
+    hooks_dir = _find_git_hooks_dir(target)
+    if hooks_dir is None:
+        print(f"Error: '{target}' is not inside a Git repository.", file=sys.stderr)
+        return 1
+
+    hooks_dir.mkdir(parents=True, exist_ok=True)
+    hook_path = hooks_dir / "pre-commit"
+
+    if hook_path.exists():
+        existing = hook_path.read_text(encoding="utf-8", errors="replace")
+        if _PRE_COMMIT_MARKER not in existing and not args.force:
+            print(
+                f"Error: existing pre-commit hook at '{hook_path}' was not created by ki-manager. "
+                "Re-run with --force to overwrite.",
+                file=sys.stderr,
+            )
+            return 1
+
+    with open(hook_path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(_PRE_COMMIT_SCRIPT)
+
+    try:
+        os.chmod(hook_path, 0o755)
+    except Exception:
+        pass
+
+    print(f"Installed Git pre-commit hook: {hook_path}")
+    return 0
+
+
+def run_lint(argv=None):
+    """Entry point for `ki-manager lint`."""
+    scripts_dir = str(_PACKAGE_DIR / "scripts")
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    import ki_lint
+
+    old_argv = sys.argv
+    try:
+        sys.argv = ["ki-manager lint"] + list(argv or [])
+        ki_lint.main()
+    finally:
+        sys.argv = old_argv
+
+
 def main():
-    """Dispatcher for ki-manager subcommands."""
+    """Dispatcher for ki-manager CLI subcommands."""
     if hasattr(sys.stdout, "reconfigure"):
         try:
             sys.stdout.reconfigure(encoding="utf-8")
@@ -135,14 +246,21 @@ def main():
             pass
 
     if len(sys.argv) < 2 or sys.argv[1] in ("--help", "-h"):
-        print("Usage: ki-manager-skills <command> [options]")
+        print("Usage: ki-manager <command> [options]")
         print("Commands:")
         print("  install-skills  Install bundled workflows as Agent Skills")
+        print("  install-hooks   Install Git pre-commit hook (runs ki-manager lint --staged)")
+        print("  lint            Lint the project knowledge base")
         sys.exit(0 if len(sys.argv) >= 2 and sys.argv[1] in ("--help", "-h") else 1)
-    
+
     command = sys.argv[1]
     if command == "install-skills":
         install_skills(sys.argv[2:])
+    elif command == "install-hooks":
+        rc = install_hooks(sys.argv[2:])
+        sys.exit(rc)
+    elif command == "lint":
+        run_lint(sys.argv[2:])
     elif command in ("--version", "-v"):
         try:
             from . import __version__ as v

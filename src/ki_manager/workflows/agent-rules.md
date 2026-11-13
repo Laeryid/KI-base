@@ -5,9 +5,9 @@ metadata:
   author: ki-manager
   version: "1.0"
 <!-- if-compact -->
-allowed-tools: ki_instructions ki_read ki_search ki_tools ki_call ki_mutate
+allowed-tools: ki_instructions ki_read ki_search ki_tools ki_call ki_mutate ki_context_for
 <!-- else-compact -->
-allowed-tools: ki_instructions ki_read sync_agents_md
+allowed-tools: ki_instructions ki_read ki_context_for ki_lint ki_sync sync_agents_md
 <!-- /if-compact -->
 ---
 
@@ -68,14 +68,15 @@ This project uses **ki-manager** (an MCP server for architectural knowledge mana
 
 ## Agent Operating Rules
 1. **Context Before Changes**:
-   - Inspect `{{KI_DIR}}/knowledge/_OVERVIEW.ki.md` first.
-   - Read relevant module KIs via `ki_read(rel_path="...")` or `read_know_file` before writing code.
+   - Before editing existing code, call `ki_context_for(files=[...])` to retrieve active KI/ADR constraints and pitfalls.
+   - Inspect `{{KI_DIR}}/knowledge/_OVERVIEW.ki.md` first for broad orientation.
+   - Read relevant module KIs via `ki_read(rel_path="...")` or `read_know_file` when deep context is needed.
    - List read KIs and architectural constraints in your Implementation Plan.
 2. **File Safety**:
    - NEVER delete `{{KI_DIR}}/knowledge/` and never save `.ki.md` files directly in `{{KI_DIR}}/` root.
-   - Use `ki-manager` tools (`write_know_file`, `edit_know_file`) rather than generic filesystem tools when modifying documentation.
+   - Native file tools (`read_file`, `edit_file`) may be used for `.md` files inside `{{KI_DIR}}/knowledge/` and `{{KI_DIR}}/decisions/`.
 3. **Synchronization**:
-   - When modifying module logic, update the corresponding KI and run `sync_agents_md`.
+   - After editing a KI/ADR or modifying module logic, run `ki_sync` (or `ki_lint`) to validate and synchronize `DIR_INDEX.md`, `doc_state.json`, and `AGENTS.md`.
 
 ## Knowledge Items
 <!-- Auto-synchronized by sync_agents_md -->
@@ -105,9 +106,9 @@ This project uses `ki-manager` MCP server for knowledge management.
 - Project overview: `{{KI_DIR}}/knowledge/_OVERVIEW.ki.md`
 
 ## Core Protocols
-- **Always read context first**: Check `{{KI_DIR}}/knowledge/_OVERVIEW.ki.md` and relevant KIs before implementing changes.
+- **Context before edits**: Call `ki_context_for(files=[...])` before editing existing source files; check `{{KI_DIR}}/knowledge/_OVERVIEW.ki.md` for broad orientation.
 - **Never mutate container root**: Do NOT write `*.ki.md` directly into `{{KI_DIR}}/`. Never delete `{{KI_DIR}}/knowledge/`.
-- **Tooling**: Prefer MCP tools (`ki_read`, `ki_search`, `write_know_file`) when inspecting or updating documentation.
+- **Tooling**: Native `read_file`/`edit_file` or MCP tools (`ki_read`, `ki_search`, `write_know_file`) may be used for `.md` knowledge files; run `ki_sync` (or `ki_lint`) after edits.
 - **Verification**: Run tests via project virtual environment (`.venv`).
 ```
 
@@ -137,16 +138,22 @@ alwaysApply: true
 Depending on the active `--tool-mode` of the `ki-manager` MCP server, use the corresponding tools:
 
 <!-- if-compact -->
+- **Get context before edit**: `ki_context_for(files=["path/to/file.py"])`
 - **Search documentation**: `ki_search(query="<keywords>")`
 - **Read KI or ADR**: `ki_read(rel_path="<filename>.ki.md")`
 - **Inspect tool catalog**: `ki_tools()`
 - **Coverage audit**: `ki_call(tool="audit_coverage")`
-- **Write / update KI**: `ki_mutate(tool="write_know_file", args={"rel_path": "<name>.ki.md", "content": "..."})`
-- **Sync AGENTS.md**: `ki_mutate(tool="sync_agents_md")`
+- **Lint knowledge base**: `ki_call(tool="ki_lint")`
+- **Write / update KI**: native `edit_file` or `ki_mutate(tool="write_know_file", args={"rel_path": "<name>.ki.md", "content": "..."})`
+- **Synchronize state**: `ki_mutate(tool="ki_sync")`
+- **Sync AGENTS.md only**: `ki_mutate(tool="sync_agents_md")`
 <!-- else-compact -->
+- **Get context before edit**: `ki_context_for(files=["path/to/file.py"])`
 - **Search documentation**: `ki_search(query="<keywords>")`
 - **Read KI or ADR**: `ki_read(rel_path="<filename>.ki.md")` or `read_know_file(rel_path="<filename>.ki.md")`
 - **Coverage audit**: `audit_coverage()`
-- **Write / update KI**: `write_know_file(rel_path="<name>.ki.md", content="...")`
-- **Sync AGENTS.md**: `sync_agents_md()`
+- **Lint knowledge base**: `ki_lint()`
+- **Write / update KI**: native `edit_file` or `write_know_file(rel_path="<name>.ki.md", content="...")`
+- **Synchronize state**: `ki_sync()`
+- **Sync AGENTS.md only**: `sync_agents_md()`
 <!-- /if-compact -->

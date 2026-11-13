@@ -64,6 +64,12 @@ def update_ki_table_in_text(content: str, ki_table_text: str) -> str:
             end_idx = divider_idx + 1
             while end_idx < len(lines) and lines[end_idx].strip().startswith("|"):
                 end_idx += 1
+            # Consume trailing omitted-items note from previous sync if present
+            probe_idx = end_idx
+            while probe_idx < len(lines) and not lines[probe_idx].strip():
+                probe_idx += 1
+            if probe_idx < len(lines) and lines[probe_idx].lstrip().startswith("> *+") and "omitted" in lines[probe_idx]:
+                end_idx = probe_idx + 1
             # Replace existing table
             new_lines = lines[:header_idx] + table_lines + lines[end_idx:]
             return "\n".join(new_lines)

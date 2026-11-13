@@ -35,6 +35,7 @@ TOOL_GROUPS: Dict[str, List[str]] = {
         "analyze_module",
         "ki_graph_visualize",
         "check_ki_drift",
+        "ki_lint",
     ],
     "scaffold": [
         "ki_scaffold",
@@ -49,6 +50,7 @@ TOOL_GROUPS: Dict[str, List[str]] = {
         "edit_doc_config",
         "sync_agents_md",
         "create_adr",
+        "ki_sync",
     ],
     "files": [
         "ki_list",
@@ -93,6 +95,11 @@ KI_LIST_TOOL = {
             "filter": {
                 "type": "string",
                 "description": "Optional substring to filter by filename, title, summary, or covered module.",
+            },
+            "status": {
+                "type": "string",
+                "default": "active",
+                "description": "Filter by lifecycle status: 'active' (default, excludes superseded/deprecated/archived), 'all', or a specific status ('accepted', 'poc', 'draft', 'superseded', 'deprecated', 'archived', 'active', 'stale', 'stub').",
             },
         },
     },
@@ -146,6 +153,11 @@ KI_SEARCH_TOOL = {
                 "default": "markdown",
                 "description": "Output format: 'markdown' (compact list, default) or 'json'.",
             },
+            "include_inactive": {
+                "type": "boolean",
+                "default": False,
+                "description": "Include superseded, deprecated, and archived documents (penalized in ranking, default: false).",
+            },
         },
         "required": ["query"],
     },
@@ -188,6 +200,46 @@ KI_READ_TOOL = {
     },
     "annotations": {
         "title": "Read Knowledge Item / ADR",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+    },
+}
+
+KI_CONTEXT_FOR_TOOL = {
+    "name": "ki_context_for",
+    "description": (
+        "Get just-in-time architectural constraints, invariants, non-obvious details, and pitfalls "
+        "from active KIs and ADRs affecting the specified source files or directories before editing code."
+    ),
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "files": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Target file paths, directories, or glob patterns about to be modified.",
+            },
+            "max_chars": {
+                "type": "integer",
+                "default": 2000,
+                "description": "Maximum response character budget (default: 2000).",
+            },
+            "include_poc": {
+                "type": "boolean",
+                "default": True,
+                "description": "Include documents marked 'poc' with a [POC] tag (default: true). Superseded/deprecated/archived/draft are always excluded.",
+            },
+            "force": {
+                "type": "boolean",
+                "default": False,
+                "description": "Bypass context deduplication cache if applicable (default: false).",
+            },
+        },
+        "required": ["files"],
+    },
+    "annotations": {
+        "title": "Get Context for Files",
         "readOnlyHint": True,
         "destructiveHint": False,
         "idempotentHint": True,

@@ -6,6 +6,7 @@ CLI helper and module function to register or update a Knowledge Item in doc_con
 
 import sys
 import os
+import re
 import json
 import argparse
 from typing import List, Optional
@@ -19,7 +20,8 @@ def add_ki(
     description: str,
     covers: Optional[List[str]] = None,
     depends_on: Optional[List[str]] = None,
-    summary: Optional[str] = None
+    summary: Optional[str] = None,
+    status: Optional[str] = None,
 ) -> str:
     """
     Registers or updates a Knowledge Item in doc_config.json.
@@ -43,13 +45,23 @@ def add_ki(
         "covers": covers,
         "depends_on": depends_on,
     }
-    
+
     if summary:
         entry["summary"] = summary
     elif "summary" in existing:
         entry["summary"] = existing["summary"]
     elif description:
         entry["summary"] = description
+
+    is_adr = (
+        "decisions/" in ki_name.replace("\\", "/").lower()
+        or bool(re.match(r"^(?:ADR[_\-])?\d+_", os.path.basename(ki_name)))
+    )
+    doc_type = "adr" if is_adr else "ki"
+    if status:
+        entry["status"] = ki_utils.normalize_status(status, doc_type=doc_type)
+    elif "status" in existing:
+        entry["status"] = existing["status"]
 
     config["knowledge_items"][ki_name] = entry
     ki_utils.save_doc_config(config)
@@ -63,6 +75,7 @@ def main():
     parser.add_argument("--covers", type=str, default="[]", help="JSON array of covered modules")
     parser.add_argument("--depends-on", type=str, default="[]", help="JSON array of dependencies")
     parser.add_argument("--summary", type=str, default=None, help="Optional summary text")
+    parser.add_argument("--status", type=str, default=None, help="Optional lifecycle status")
 
     args = parser.parse_args()
     try:
@@ -72,7 +85,7 @@ def main():
         print(f"Error decoding JSON arguments: {e}")
         sys.exit(1)
 
-    result = add_ki(args.ki_name, args.description, covers, depends_on, args.summary)
+    result = add_ki(args.ki_name, args.description, covers, depends_on, args.summary, status=args.status)
     print(result)
 
 

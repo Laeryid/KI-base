@@ -33,20 +33,44 @@ def setup_git_mcp(monkeypatch, tmp_project):
 
 
 @pytest.mark.positive
-def test_git_checkpoint_success(tmp_project, setup_git_mcp):
+def test_git_checkpoint_disabled_by_default(tmp_project, setup_git_mcp):
     mcp = setup_git_mcp
-    
-    # Modify a tracked file
+
     doc_config = Path(tmp_project) / ".know" / "doc_config.json"
     with open(doc_config, "w") as f:
         f.write('{"test": true}')
+
+    res = mcp.tool_git_checkpoint({"message": "Should not commit"})
+    text = res["content"][0]["text"]
+    assert "auto-commit is disabled" in text
+    assert "doc_config.json" in text
+
+    # Ensure no commit was created
+    rev = subprocess.run(
+        ["git", "rev-parse", "--verify", "HEAD"],
+        cwd=tmp_project, capture_output=True, text=True,
+    )
+    assert rev.returncode != 0
+
+
+@pytest.mark.positive
+def test_git_checkpoint_success(tmp_project, setup_git_mcp):
+    mcp = setup_git_mcp
     
-    # Call checkpoint
-    res = mcp.tool_git_checkpoint({"message": "Test checkpoint"})
+    # Modify a tracked file and doc_state.json
+    doc_config = Path(tmp_project) / ".know" / "doc_config.json"
+    with open(doc_config, "w") as f:
+        f.write('{"test": true}')
+    doc_state = Path(tmp_project) / ".know" / "doc_state.json"
+    with open(doc_state, "w") as f:
+        f.write('{"src/module_a/code.py": {"hash": "abc"}}')
+    
+    # Explicit commit=True
+    res = mcp.tool_git_checkpoint({"message": "Test checkpoint", "commit": True})
     assert "Checkpoint created" in res["content"][0]["text"]
     assert "[AI] Test checkpoint" in res["content"][0]["text"]
     
-    # Verify via git log
+    # Verify via git log and committed files
     log = subprocess.run(
         ["git", "log", "-1", "--format=%B%an<%ae>"], 
         cwd=tmp_project, capture_output=True, text=True
@@ -55,15 +79,36 @@ def test_git_checkpoint_success(tmp_project, setup_git_mcp):
     assert "[AI] Test checkpoint" in log
     assert "ki-manager<ki-manager@bot>" in log
 
+    show_files = subprocess.run(
+        ["git", "show", "--name-only", "--format=", "HEAD"],
+        cwd=tmp_project, capture_output=True, text=True
+    ).stdout
+    assert "doc_state.json" in show_files
+    assert "doc_config.json" in show_files
+
+
+@pytest.mark.positive
+def test_git_checkpoint_auto_enabled_in_config(tmp_project, setup_git_mcp):
+    import json
+    mcp = setup_git_mcp
+
+    ki_cfg_path = Path(tmp_project) / ".know" / "ki_config.json"
+    cfg = json.loads(ki_cfg_path.read_text(encoding="utf-8"))
+    cfg["auto_git_checkpoint"] = True
+    ki_cfg_path.write_text(json.dumps(cfg, indent=4), encoding="utf-8")
+
+    res = mcp.tool_git_checkpoint({"message": "Config auto commit"})
+    assert "Checkpoint created" in res["content"][0]["text"]
+
 
 @pytest.mark.positive
 def test_git_checkpoint_no_changes(setup_git_mcp):
     mcp = setup_git_mcp
     # First commit anything to have a clean state
-    mcp.tool_git_checkpoint({"message": "Initial"})
+    mcp.tool_git_checkpoint({"message": "Initial", "commit": True})
     
     # Call again with no changes
-    res = mcp.tool_git_checkpoint({"message": "No changes test"})
+    res = mcp.tool_git_checkpoint({"message": "No changes test", "commit": True})
     assert "No changes to checkpoint" in res["content"][0]["text"]
 
 
@@ -75,7 +120,7 @@ def test_git_restore_file(tmp_project, setup_git_mcp):
     # 1. Initial state and checkpoint
     with open(doc_config, "w") as f:
         f.write("original content")
-    mcp.tool_git_checkpoint({"message": "Original state"})
+    mcp.tool_git_checkpoint({"message": "Original state", "commit": True})
     
     # 2. Modify
     with open(doc_config, "w") as f:

@@ -147,3 +147,71 @@ def test_search_pagination_and_formatting(tmp_path):
     empty_md = ki_search.format_search_markdown({"query": "unknown", "total": 0, "results": []})
     assert "No documentation matching" in empty_md
 
+
+def test_search_excludes_inactive_by_default_and_resolves_superseded_chain(tmp_path):
+    project_dir = tmp_path / "proj_status"
+    know_dir = project_dir / ".ki-base" / "knowledge"
+    dec_dir = project_dir / ".ki-base" / "decisions"
+    know_dir.mkdir(parents=True)
+    dec_dir.mkdir(parents=True)
+
+    # Clear doc cache to ensure clean test
+    ki_search._DOC_CACHE.clear()
+
+    (dec_dir / "001_legacy_manifold.md").write_text(
+        "<!-- status: superseded -->\n"
+        "<!-- superseded_by: 002 -->\n"
+        "# ADR 001: Legacy Manifold Squash\n\n"
+        "## Decisions Made\n"
+        "Use safe_squash for manifold projection normalization.\n",
+        encoding="utf-8",
+    )
+    (dec_dir / "002_mid_manifold.md").write_text(
+        "<!-- status: superseded -->\n"
+        "<!-- superseded_by: 003 -->\n"
+        "# ADR 002: Intermediate Manifold Clamp\n\n"
+        "## Decisions Made\n"
+        "Replace safe_squash with partial clamp.\n",
+        encoding="utf-8",
+    )
+    (dec_dir / "003_final_manifold.md").write_text(
+        "<!-- status: accepted -->\n"
+        "# ADR 003: Final Manifold Clamp Rule\n\n"
+        "## Decisions Made\n"
+        "Always use clamp_to_unit_ball for manifold projection normalization.\n",
+        encoding="utf-8",
+    )
+    (know_dir / "archived_notes.ki.md").write_text(
+        "<!-- status: archived -->\n"
+        "# Archived Manifold Notes\n\n"
+        "Old manifold projection experiments.\n",
+        encoding="utf-8",
+    )
+
+    # Default search excludes superseded and archived
+    res_active = ki_search.search_knowledge(
+        query="manifold projection normalization",
+        project_root=str(project_dir),
+        scope="all",
+    )
+    active_paths = [r["path"] for r in res_active["results"]]
+    assert any("003_final_manifold.md" in p for p in active_paths)
+    assert not any("001_legacy_manifold.md" in p for p in active_paths)
+    assert not any("archived_notes.ki.md" in p for p in active_paths)
+
+    # Search with include_inactive=True returns superseded but penalized below active, with transitive redirect
+    res_all = ki_search.search_knowledge(
+        query="manifold projection normalization",
+        project_root=str(project_dir),
+        scope="adr",
+        include_inactive=True,
+    )
+    assert res_all["results"][0]["path"].endswith("003_final_manifold.md")
+    sup_item = next(r for r in res_all["results"] if "001_legacy_manifold.md" in r["path"])
+    assert sup_item["status"] == "superseded"
+    assert sup_item["superseded_by"] == "003"
+
+    md_all = ki_search.format_search_markdown(res_all)
+    assert "[SUPERSEDED -> ADR 003]" in md_all
+
+

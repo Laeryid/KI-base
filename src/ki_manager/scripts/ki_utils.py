@@ -535,8 +535,223 @@ def get_instructions() -> str:
     return "AGENTS.md not found in .ki-base/."
 
 
-def get_ki_list_table() -> str:
-    """Returns a markdown table of all registered Knowledge Items."""
+ADR_STATUSES = ("draft", "poc", "accepted", "superseded", "deprecated", "archived")
+KI_STATUSES = ("stub", "draft", "poc", "active", "stale", "archived")
+INACTIVE_STATUSES = frozenset({"superseded", "deprecated", "archived"})
+ACTIVE_ADR_TABLE_STATUSES = frozenset({"accepted", "poc"})
+
+
+def normalize_status(raw_status: Optional[str], doc_type: str = "adr") -> str:
+    """Normalizes ADR or KI lifecycle status to canonical lowercase form."""
+    raw = (raw_status or "").strip()
+    if raw:
+        raw = re.sub(r"^\[|\]$", "", raw.strip("`").strip()).strip()
+    low = raw.lower()
+
+    if doc_type == "adr":
+        if not low:
+            return "accepted"
+        if low.startswith("superseded"):
+            return "superseded"
+        if low.startswith("deprecated"):
+            return "deprecated"
+        if low.startswith("archived"):
+            return "archived"
+        if low.startswith("proposed") or low.startswith("draft") or low == "wip":
+            return "draft"
+        if low.startswith("poc") or low in ("proof of concept", "experiment"):
+            return "poc"
+        if low.startswith("accepted") or low == "active":
+            return "accepted"
+        return low
+
+    # doc_type == "ki"
+    if not low:
+        return "active"
+    if low in ("active", "accepted", "verified"):
+        return "active"
+    if low.startswith("poc") or low in ("proof of concept", "experiment"):
+        return "poc"
+    if low.startswith("draft") or low.startswith("proposed") or low == "wip":
+        return "draft"
+    if low in ("stub", "scaffold"):
+        return "stub"
+    if low in ("stale", "outdated"):
+        return "stale"
+    if low in ("archived", "deprecated", "superseded") or low.startswith("superseded"):
+        return "archived"
+    return low
+
+
+def _extract_frontmatter_field(content: str, field_name: str) -> Optional[str]:
+    """Extracts a scalar field from YAML frontmatter at the top of markdown content."""
+    if not content.startswith("---"):
+        return None
+    m_fm = re.match(r"^---\s*\n([\s\S]*?)\n---(?:\s*\n|\Z)", content)
+    if not m_fm:
+        return None
+    pattern = rf"^{re.escape(field_name)}\s*:\s*([^\n\r]+)"
+    m_val = re.search(pattern, m_fm.group(1), re.MULTILINE | re.IGNORECASE)
+    if not m_val:
+        return None
+    return m_val.group(1).strip().strip('"').strip("'")
+
+
+def extract_raw_status_from_content(content: str, doc_type: str = "adr") -> Optional[str]:
+    """Extracts raw status string from HTML comments, YAML frontmatter, or Markdown headers."""
+    if not content:
+        return None
+    m_status = re.search(r"<!--\s*status:\s*([^\n\r>]+?)\s*-->", content, re.IGNORECASE)
+    if m_status:
+        return m_status.group(1).strip()
+    fm_status = _extract_frontmatter_field(content, "status")
+    if fm_status:
+        return fm_status
+    m_status = re.search(r"\*\*Status\*\*:\s*([^\n\r]+)", content, re.IGNORECASE)
+    if m_status:
+        return m_status.group(1).strip()
+    m_status = re.search(r"^Status:\s*([^\n\r]+)", content, re.MULTILINE | re.IGNORECASE)
+    if m_status:
+        return m_status.group(1).strip()
+    if doc_type == "ki" and re.search(r"<!--\s*scaffold:\s*true\s*-->", content, re.IGNORECASE):
+        return "stub"
+    return None
+
+
+def extract_status_from_content(content: str, doc_type: str = "adr") -> str:
+    """Extracts and normalizes lifecycle status from markdown content."""
+    raw = extract_raw_status_from_content(content, doc_type=doc_type)
+    return normalize_status(raw, doc_type=doc_type)
+
+
+def extract_superseded_by_from_content(content: str) -> Optional[str]:
+    """Extracts the target ADR ID that superseded this document, if any."""
+    if not content:
+        return None
+    m_meta = re.search(r"<!--\s*superseded_by:\s*([^\n\r>]+?)\s*-->", content, re.IGNORECASE)
+    if m_meta:
+        nums = re.findall(r"\d+", m_meta.group(1))
+        if nums:
+            return nums[0].zfill(3)
+        val = m_meta.group(1).strip()
+        return val or None
+
+    fm_val = _extract_frontmatter_field(content, "superseded_by")
+    if fm_val:
+        nums = re.findall(r"\d+", fm_val)
+        return nums[0].zfill(3) if nums else fm_val
+
+    m_inline = re.search(r"superseded\s+by\s+\[?ADR[\s_\-]*(\d+)\]?", content, re.IGNORECASE)
+    if m_inline:
+        return m_inline.group(1).zfill(3)
+    return None
+
+
+def resolve_superseding_chain(adr_id: str, adr_records_or_map: Any) -> List[str]:
+    """
+    Follows superseded_by links transitively (with cycle protection) and returns
+    the ordered chain of replacement ADR IDs (e.g. ['128', '129']).
+    """
+    if isinstance(adr_records_or_map, dict):
+        adr_map = adr_records_or_map
+    else:
+        adr_map = {}
+        for rec in adr_records_or_map or []:
+            rid = str(rec.get("id", "")).strip()
+            if rid:
+                adr_map[rid] = rec
+                if rid.isdigit():
+                    adr_map[rid.lstrip("0") or "0"] = rec
+                    adr_map[rid.zfill(3)] = rec
+
+    start = str(adr_id).strip()
+    if start.isdigit():
+        start_norm = start.zfill(3)
+    else:
+        start_norm = start
+
+    chain: List[str] = []
+    visited = {start_norm}
+    current = start_norm
+
+    while True:
+        rec = adr_map.get(current) or (adr_map.get(current.lstrip("0") or "0") if current.isdigit() else None)
+        if not rec:
+            break
+        nxt = rec.get("superseded_by")
+        if not nxt:
+            break
+        nxt_norm = nxt.zfill(3) if str(nxt).isdigit() else str(nxt).strip()
+        if not nxt_norm or nxt_norm in visited:
+            break
+        chain.append(nxt_norm)
+        visited.add(nxt_norm)
+        current = nxt_norm
+
+    return chain
+
+
+def _resolve_ki_display_and_path(name: str, info: dict, jail: str, proj: str, dec_dirs: List[str]) -> Tuple[str, Optional[str]]:
+    """Resolves display name and optional on-disk file path for a doc_config entry."""
+    display_name = name
+    found_path: Optional[str] = None
+
+    if "path" in info and info["path"]:
+        display_name = info["path"]
+
+    search_roots = []
+    if jail:
+        search_roots.extend([jail, os.path.join(jail, "knowledge")])
+    if proj:
+        search_roots.append(proj)
+    search_roots.extend(dec_dirs)
+
+    candidates = [display_name, name]
+    if re.match(r"^(?:ADR|adr)[_\-]", name):
+        candidates.append(re.sub(r"^(?:ADR|adr)[_\-]", "", name))
+
+    for cand in candidates:
+        for root_cand in search_roots:
+            if not root_cand:
+                continue
+            p = os.path.join(root_cand, cand)
+            if os.path.isfile(p):
+                found_path = p
+                if cand != name and "path" not in info and any(os.path.normcase(os.path.dirname(p)) == os.path.normcase(d) for d in dec_dirs):
+                    display_name = cand
+                return display_name, found_path
+
+    return display_name, found_path
+
+
+def get_ki_status(ki_name: str, info: Optional[dict] = None, file_path: Optional[str] = None) -> str:
+    """Determines canonical lifecycle status for a Knowledge Item (or config-tracked doc)."""
+    info = info or {}
+    is_adr = (
+        "decisions/" in ki_name.replace("\\", "/").lower()
+        or "decisions/" in str(info.get("path", "")).replace("\\", "/").lower()
+        or bool(re.match(r"^(?:ADR[_\-])?\d+_", os.path.basename(ki_name)))
+    )
+    doc_type = "adr" if is_adr else "ki"
+
+    if file_path and os.path.isfile(file_path):
+        try:
+            with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+                head_content = f.read(4096)
+            raw_in_file = extract_raw_status_from_content(head_content, doc_type=doc_type)
+            if raw_in_file:
+                return normalize_status(raw_in_file, doc_type=doc_type)
+        except Exception:
+            pass
+
+    if info.get("status"):
+        return normalize_status(str(info["status"]), doc_type=doc_type)
+
+    return "accepted" if is_adr else "active"
+
+
+def get_ki_list_table(include_archived: bool = False) -> str:
+    """Returns a markdown table of active Knowledge Items (filtering archived by default)."""
     doc_config = get_doc_config()
     items = doc_config.get("knowledge_items", {})
     if not items:
@@ -546,30 +761,40 @@ def get_ki_list_table() -> str:
     dec_dirs = get_decisions_dirs(proj, jail)
 
     rows = ["| File | Topic / Summary |", "|------|-----------------|"]
+    archived_count = 0
+    shown_count = 0
+
     for name, info in sorted(items.items()):
         summary = info.get("summary", info.get("description", "—"))
-        display_name = name
-        if "path" in info and info["path"]:
-            display_name = info["path"]
-        elif jail or proj:
-            # Check if name exists literally
-            exists_literal = False
-            for root_cand in ([jail] if jail else []) + dec_dirs:
-                if os.path.exists(os.path.join(root_cand, name)) or os.path.exists(os.path.join(root_cand, "knowledge", name)):
-                    exists_literal = True
-                    break
-            if not exists_literal and re.match(r"^(?:ADR|adr)[_\-]", name):
-                stripped = re.sub(r"^(?:ADR|adr)[_\-]", "", name)
-                for d in dec_dirs:
-                    if os.path.exists(os.path.join(d, stripped)):
-                        display_name = stripped
-                        break
-        rows.append(f"| `{display_name}` | {summary} |")
-    return "\n".join(rows)
+        display_name, file_path = _resolve_ki_display_and_path(name, info, jail, proj, dec_dirs)
+        status = get_ki_status(name, info, file_path)
+
+        if not include_archived and status in INACTIVE_STATUSES:
+            archived_count += 1
+            continue
+
+        shown_count += 1
+        status_tag = ""
+        if status in ("poc", "stale", "draft", "stub"):
+            status_tag = f"[{status.upper()}] "
+        rows.append(f"| `{display_name}` | {status_tag}{summary} |")
+
+    if shown_count == 0 and archived_count > 0:
+        table = "No active Knowledge Items (all registered items are archived/superseded)."
+    else:
+        table = "\n".join(rows)
+
+    if archived_count > 0:
+        table += f"\n\n> *+ {archived_count} archived/inactive item(s) omitted. Call `ki_list(status=\"all\")` to view all.*"
+    return table
 
 
-def get_ki_list_data(scope: str = "all", filter_query: Optional[str] = None) -> Dict[str, Any]:
-    """Collects structured list of Knowledge Items and ADRs with optional filtering."""
+def get_ki_list_data(
+    scope: str = "all",
+    filter_query: Optional[str] = None,
+    status: str = "active",
+) -> Dict[str, Any]:
+    """Collects structured list of Knowledge Items and ADRs with optional filtering by text and lifecycle status."""
     jail = get_knowledge_root()
     proj = get_project_root()
     dec_dirs = get_decisions_dirs(proj, jail)
@@ -577,24 +802,44 @@ def get_ki_list_data(scope: str = "all", filter_query: Optional[str] = None) -> 
     items = doc_config.get("knowledge_items", {})
 
     flt = filter_query.lower().strip() if filter_query else None
+    req_status = (status or "active").strip().lower()
+
+    def _matches_status(item_status: str) -> bool:
+        if req_status in ("all", "*"):
+            return True
+        if req_status == "active":
+            return item_status not in INACTIVE_STATUSES
+        return item_status == normalize_status(req_status, "adr") or item_status == normalize_status(req_status, "ki")
+
+    omitted_count = 0
 
     ki_list = []
     if scope in ("all", "ki"):
         for name, info in sorted(items.items()):
             summary = info.get("summary", info.get("description", "—"))
             covers = info.get("covers", [])
-            display_name = name
-            if "path" in info and info["path"]:
-                display_name = info["path"]
+            display_name, file_path = _resolve_ki_display_and_path(name, info, jail, proj, dec_dirs)
+            item_status = get_ki_status(name, info, file_path)
 
             if flt:
                 covers_str = " ".join(covers).lower() if isinstance(covers, list) else str(covers).lower()
-                if flt not in name.lower() and flt not in summary.lower() and flt not in covers_str and flt not in display_name.lower():
+                if (
+                    flt not in name.lower()
+                    and flt not in summary.lower()
+                    and flt not in covers_str
+                    and flt not in display_name.lower()
+                    and flt not in item_status.lower()
+                ):
                     continue
+
+            if not _matches_status(item_status):
+                omitted_count += 1
+                continue
 
             ki_list.append({
                 "name": name,
                 "path": display_name,
+                "status": item_status,
                 "summary": summary,
                 "covers": covers,
                 "type": "ki",
@@ -619,10 +864,13 @@ def get_ki_list_data(scope: str = "all", filter_query: Optional[str] = None) -> 
 
         for r in adr_records:
             if flt:
-                target_text = f"{r['id']} {r['title']} {r['summary']} {r['file']} {r['status']}".lower()
+                target_text = f"{r['id']} {r['title']} {r['summary']} {r['file']} {r['status']} {r.get('raw_status', '')}".lower()
                 if flt not in target_text:
                     continue
-            adr_list.append({
+            if not _matches_status(r["status"]):
+                omitted_count += 1
+                continue
+            entry = {
                 "id": r["id"],
                 "title": r["title"],
                 "status": r["status"],
@@ -631,13 +879,18 @@ def get_ki_list_data(scope: str = "all", filter_query: Optional[str] = None) -> 
                 "file": r["file"],
                 "rel_path": r["rel_path"],
                 "type": "adr",
-            })
+            }
+            if r.get("superseded_by"):
+                entry["superseded_by"] = r["superseded_by"]
+            adr_list.append(entry)
 
     return {
         "scope": scope,
         "filter": filter_query,
+        "status": req_status,
         "total_ki": len(ki_list),
         "total_adr": len(adr_list),
+        "omitted_inactive": omitted_count,
         "knowledge_items": ki_list,
         "adrs": adr_list,
     }
@@ -647,39 +900,49 @@ def format_ki_list_markdown(data: Dict[str, Any]) -> str:
     """Formats KI and ADR list into clean Markdown tables."""
     scope = data.get("scope", "all")
     flt = data.get("filter")
+    req_status = data.get("status", "active")
     ki_list = data.get("knowledge_items", [])
     adr_list = data.get("adrs", [])
+    omitted = data.get("omitted_inactive", 0)
 
     sections = []
     flt_msg = f" matching '{flt}'" if flt else ""
+    status_msg = f" (status={req_status})" if req_status and req_status != "active" else ""
 
     if scope in ("all", "ki"):
         if ki_list:
             rows = [
-                f"### Knowledge Items ({len(ki_list)}){flt_msg}\n",
-                "| File | Summary / Topic | Covered Modules |",
-                "|------|-----------------|-----------------|"
+                f"### Knowledge Items ({len(ki_list)}){flt_msg}{status_msg}\n",
+                "| File | Status | Summary / Topic | Covered Modules |",
+                "|------|--------|-----------------|-----------------|"
             ]
             for item in ki_list:
                 covers_str = ", ".join(f"`{c}`" for c in item.get("covers", [])) if item.get("covers") else "—"
-                rows.append(f"| `{item['path']}` | {item['summary']} | {covers_str} |")
+                st = item.get("status", "active")
+                rows.append(f"| `{item['path']}` | {st} | {item['summary']} | {covers_str} |")
             sections.append("\n".join(rows))
         else:
-            sections.append(f"No Knowledge Items{flt_msg} found.")
+            sections.append(f"No Knowledge Items{flt_msg}{status_msg} found.")
 
     if scope in ("all", "adr"):
         if adr_list:
             rows = [
-                f"### Architecture Decision Records ({len(adr_list)}){flt_msg}\n",
+                f"### Architecture Decision Records ({len(adr_list)}){flt_msg}{status_msg}\n",
                 "| ID | Title | Status | Date | File |",
                 "|----|-------|--------|------|------|"
             ]
             for r in adr_list:
                 link = f"[{r['file']}]({r['rel_path']})"
-                rows.append(f"| {r['id']} | {r['title']} | {r['status']} | {r['date']} | {link} |")
+                st = r["status"]
+                if r.get("superseded_by"):
+                    st = f"{st} -> ADR {r['superseded_by']}"
+                rows.append(f"| {r['id']} | {r['title']} | {st} | {r['date']} | {link} |")
             sections.append("\n".join(rows))
         elif scope == "adr":
-            sections.append(f"No ADRs{flt_msg} found.")
+            sections.append(f"No ADRs{flt_msg}{status_msg} found.")
+
+    if omitted > 0:
+        sections.append(f"> *+ {omitted} inactive item(s) omitted (superseded/deprecated/archived). Call `ki_list(status=\"all\")` to view all.*")
 
     return "\n\n".join(sections)
 
@@ -708,6 +971,12 @@ def is_sync_agents_md_enabled() -> bool:
     return bool(cfg.get("sync_agents_md", True))
 
 
+def is_auto_git_checkpoint_enabled() -> bool:
+    """Checks whether git_checkpoint creates commits automatically (default: False)."""
+    cfg = get_ki_cfg()
+    return bool(cfg.get("auto_git_checkpoint", False))
+
+
 def get_decisions_dirs(project_root: str = None, jail: str = None) -> list:
     """Returns candidate directories where ADRs can be stored."""
     if not project_root:
@@ -730,7 +999,7 @@ def parse_adr_file(filepath: str, project_root: str = None) -> dict:
     rel_path = os.path.relpath(filepath, project_root).replace("\\", "/") if project_root else filename
 
     title = filename
-    status = "Accepted"
+    raw_status = "Accepted"
     date = "—"
     summary = "—"
     adr_id = "—"
@@ -750,14 +1019,12 @@ def parse_adr_file(filepath: str, project_root: str = None) -> dict:
     if m_title:
         title = m_title.group(1).strip()
 
-    # Parse status
-    m_status = re.search(r"<!--\s*status:\s*([^\n\r>]+?)\s*-->", content, re.IGNORECASE)
-    if not m_status:
-        m_status = re.search(r"\*\*Status\*\*:\s*([^\n\r]+)", content, re.IGNORECASE)
-    if not m_status:
-        m_status = re.search(r"^Status:\s*([^\n\r]+)", content, re.MULTILINE | re.IGNORECASE)
-    if m_status:
-        status = m_status.group(1).strip()
+    # Parse status (normalized + raw)
+    extracted_raw = extract_raw_status_from_content(content, doc_type="adr")
+    if extracted_raw:
+        raw_status = extracted_raw
+    status = normalize_status(extracted_raw, doc_type="adr")
+    superseded_by = extract_superseded_by_from_content(content)
 
     # Parse date
     m_date = re.search(r"<!--\s*created:\s*([^\n\r>]+?)\s*-->", content, re.IGNORECASE)
@@ -793,6 +1060,8 @@ def parse_adr_file(filepath: str, project_root: str = None) -> dict:
         "id": adr_id,
         "title": title,
         "status": status,
+        "raw_status": raw_status,
+        "superseded_by": superseded_by,
         "date": date,
         "summary": summary,
         "file": filename,
@@ -802,8 +1071,8 @@ def parse_adr_file(filepath: str, project_root: str = None) -> dict:
     }
 
 
-def get_adr_table(project_root: str = None, jail: str = None) -> str:
-    """Dynamically scans for ADR files and formats a structured Markdown table."""
+def get_adr_table(project_root: str = None, jail: str = None, include_inactive: bool = False) -> str:
+    """Dynamically scans for ADR files and formats a structured Markdown table (active ADRs by default)."""
     if not project_root:
         project_root = get_project_root()
     if not jail:
@@ -831,13 +1100,42 @@ def get_adr_table(project_root: str = None, jail: str = None) -> str:
 
     adr_records.sort(key=_sort_key)
 
-    rows = [
-        "| ID | Title | Status | Date | File |",
-        "|----|-------|--------|------|------|"
-    ]
+    visible_records = []
+    inactive_counts: Dict[str, int] = {}
     for r in adr_records:
-        link = f"[{r['file']}]({r['rel_path']})"
-        rows.append(f"| {r['id']} | {r['title']} | {r['status']} | {r['date']} | {link} |")
+        st = r["status"]
+        if not include_inactive and st not in ACTIVE_ADR_TABLE_STATUSES:
+            inactive_counts[st] = inactive_counts.get(st, 0) + 1
+            continue
+        visible_records.append(r)
+
+    rows = []
+    if visible_records:
+        rows.extend([
+            "| ID | Title | Status | Date | File |",
+            "|----|-------|--------|------|------|"
+        ])
+        for r in visible_records:
+            link = f"[{r['file']}]({r['rel_path']})"
+            st = r["status"]
+            if st == "poc":
+                st_cell = "poc [POC]"
+            elif st == "superseded" and r.get("superseded_by"):
+                st_cell = f"superseded -> ADR {r['superseded_by']}"
+            else:
+                st_cell = st
+            rows.append(f"| {r['id']} | {r['title']} | {st_cell} | {r['date']} | {link} |")
+    else:
+        rows.append("No active ADRs (all ADRs are draft/superseded/archived).")
+
+    inactive_total = sum(inactive_counts.values())
+    if inactive_total > 0:
+        breakdown = ", ".join(f"{k}: {v}" for k, v in sorted(inactive_counts.items()))
+        rows.append("")
+        rows.append(
+            f"> *+ {inactive_total} inactive ADR(s) omitted ({breakdown}). "
+            f'Call `ki_list(scope="adr", status="all")` to view all.*'
+        )
 
     return "\n".join(rows)
 

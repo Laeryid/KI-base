@@ -8,23 +8,28 @@ from ki_manager.tools import facade
 
 
 def test_tools_counts_and_compact_definition():
-    assert len(server.COMPACT_TOOLS) == 7
+    assert len(server.COMPACT_TOOLS) == 8
     compact_names = [t["name"] for t in server.COMPACT_TOOLS]
     assert compact_names == [
         "ki_instructions",
         "ki_list",
         "ki_search",
         "ki_read",
+        "ki_context_for",
         "ki_tools",
         "ki_call",
         "ki_mutate",
     ]
-    # MCP_TOOLS should have 37 tools (35 previous + ki_split_analyze + ki_split)
-    assert len(server.MCP_TOOLS) == 37
-    assert "ki_list" in [t["name"] for t in server.MCP_TOOLS]
-    assert "ki_split_analyze" in [t["name"] for t in server.MCP_TOOLS]
-    assert "ki_split" in [t["name"] for t in server.MCP_TOOLS]
-    assert "check_ki_drift" in [t["name"] for t in server.MCP_TOOLS]
+    # MCP_TOOLS should have 40 tools (39 previous + ki_context_for)
+    assert len(server.MCP_TOOLS) == 40
+    tool_names = [t["name"] for t in server.MCP_TOOLS]
+    assert "ki_list" in tool_names
+    assert "ki_context_for" in tool_names
+    assert "ki_split_analyze" in tool_names
+    assert "ki_split" in tool_names
+    assert "check_ki_drift" in tool_names
+    assert "ki_lint" in tool_names
+    assert "ki_sync" in tool_names
 
 
 def test_ki_tools_catalog():
@@ -167,9 +172,10 @@ def test_compact_mode_via_cli():
     lines = [line.strip() for line in stdout.splitlines() if line.strip()]
     resp = json.loads(lines[0])
     tools = resp["result"]["tools"]
-    assert len(tools) == 7
+    assert len(tools) == 8
     names = [t["name"] for t in tools]
     assert "ki_list" in names
+    assert "ki_context_for" in names
     assert "ki_call" in names
     assert "ki_mutate" in names
     assert "ki_tools" in names
@@ -177,7 +183,7 @@ def test_compact_mode_via_cli():
 
 
 def test_full_mode_via_cli():
-    # Test server in full mode returns all 35 tools
+    # Test server in full mode returns all 40 tools
     req = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}})
     cmd = [
         sys.executable,
@@ -197,8 +203,9 @@ def test_full_mode_via_cli():
     lines = [line.strip() for line in stdout.splitlines() if line.strip()]
     resp = json.loads(lines[0])
     tools = resp["result"]["tools"]
-    assert len(tools) == 37
+    assert len(tools) == 40
     assert 'ki_list' in [t['name'] for t in tools]
+    assert 'ki_context_for' in [t['name'] for t in tools]
 
 
 def test_sync_dispatch_schemas_dynamic():

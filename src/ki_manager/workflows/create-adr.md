@@ -3,11 +3,11 @@ name: ki-manager-create-adr
 description: Document architectural decisions, logic transitions, or abandoned paths (ADR)
 metadata:
   author: ki-manager
-  version: "1.1"
+  version: "1.2"
 <!-- if-compact -->
 allowed-tools: ki_instructions ki_read ki_search ki_tools ki_call ki_mutate
 <!-- else-compact -->
-allowed-tools: read_know_file write_know_file ki_instructions create_adr sync_agents_md
+allowed-tools: read_know_file write_know_file ki_instructions create_adr ki_lint ki_sync sync_agents_md
 <!-- /if-compact -->
 ---
 
@@ -16,30 +16,18 @@ allowed-tools: read_know_file write_know_file ki_instructions create_adr sync_ag
 Triggered on user demand when it's necessary to document a significant architectural transition, fix a complex bug, or record an "erroneous path" that was abandoned. **ADRs (Architecture Decision Records) are strictly time-bound** — they reflect the trade-offs that were relevant at the moment the decision was made.
 
 ## General AI Instructions
-- **Never modify old ADRs.** If a decision is revisited, create a new ADR with a reference to the old one.
+- **Never modify old ADRs.** If a decision is revisited, create a new ADR with a reference to the old one (or pass `supersedes=[...]`).
 - The internal structure of an ADR should be a chronological log (append-only).
 
-## Safety & Tooling Rules (Mandatory)
-> [!IMPORTANT]
-> When working with this workflow, it is **STRICTLY PROHIBITED** to use general file editing tools (e.g., `filesystem.edit_file`) for files inside the <knowledge_root> directory.
-> 
+## Tooling & Validation Rules
+> [!NOTE]
+> - Prefer `create_adr` when creating a new ADR so IDs, git provenance, `doc_config.json` registration, and `supersedes` links are generated automatically.
+> - Native `read_file` / `edit_file` **are allowed** for inspecting or refining `.md` files inside `{{KI_DIR}}/decisions/`.
 <!-- if-compact -->
-> You **MUST** use the following MCP tools from the `ki-manager` server:
-> - `ki_mutate(tool="create_adr", ...)` — to create and register a new ADR.
-> - `ki_read` — to read existing ADRs.
-> - `ki_mutate(tool="sync_agents_md")` — to synchronize ADR tables in AGENTS.md.
-> - `ki_mutate(tool="write_know_file", ...)` — to create or fully overwrite a file.
-> - `ki_mutate(tool="edit_know_file", ...)` — for precise text replacement.
+> - Use `ki_read` to inspect existing ADRs, and run `ki_mutate(tool="ki_sync")` (or `ki_call(tool="ki_lint")`) after editing ADR files to validate `status` / `superseded_by` integrity and update `AGENTS.md`.
 <!-- else-compact -->
-> You **MUST** use the following MCP tools from the `ki-manager` server:
-> - `create_adr` — to create and register a new ADR.
-> - `read_know_file` / `ki_read` — to read existing ADRs.
-> - `sync_agents_md` — to synchronize ADR tables in AGENTS.md.
-> - `write_know_file` — to create or fully overwrite a file.
-> - `edit_know_file` — for precise text replacement.
+> - Use `ki_read` / `read_know_file` to inspect existing ADRs, and run `ki_sync()` (or `ki_lint()`) after editing ADR files to validate `status` / `superseded_by` integrity and update `AGENTS.md`.
 <!-- /if-compact -->
-> 
-> This ensures that ADRs and documentation changes remain isolated within the knowledge sandbox and do not accidentally affect the project's source code.
 
 ## Step 0 — Discovery Phase
 Before writing the document, the AI must analyze the context of recent changes to "infer" the problem independently:
@@ -66,13 +54,11 @@ Use the dedicated `create_adr` tool. It automatically:
 <!-- /if-compact -->
 
 ## Step 2 — Verify and Synchronize
-Verify that the ADR was created in `decisions/` and referenced in documentation:
+Verify that the ADR was created in `decisions/` and synchronize `DIR_INDEX.md`, `doc_state.json`, and `AGENTS.md` in one pass:
 <!-- if-compact -->
 // turbo
-`ki_mutate(tool="sync_agents_md")`
+`ki_mutate(tool="ki_sync")`
 <!-- else-compact -->
 // turbo
-`sync_agents_md()`
+`ki_sync()`
 <!-- /if-compact -->
-
-Immediately after successful integration, suggest that the user run (or automatically launch) the `/sync-knowledge` workflow to keep `DIR_INDEX` up to date.

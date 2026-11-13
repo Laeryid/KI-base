@@ -107,6 +107,15 @@ def parse_markdown_doc(file_path: str, doc_type: str, project_root: str) -> Opti
     except Exception:
         rel_path = file_path.replace("\\", "/")
 
+    raw_status = ki_utils.extract_raw_status_from_content(content, doc_type=doc_type)
+    status = ki_utils.normalize_status(raw_status, doc_type=doc_type)
+    superseded_by = ki_utils.extract_superseded_by_from_content(content) if doc_type == "adr" else None
+    adr_id = ""
+    if doc_type == "adr":
+        m_id = re.match(r"^(\d+)", os.path.basename(file_path))
+        if m_id:
+            adr_id = m_id.group(1)
+
     title_tokens = tokenize(title)
     headers_tokens = tokenize(" ".join(headers))
     path_tokens = tokenize(rel_path)
@@ -137,6 +146,10 @@ def parse_markdown_doc(file_path: str, doc_type: str, project_root: str) -> Opti
         "rel_path": rel_path,
         "title": title,
         "doc_type": doc_type,
+        "status": status,
+        "has_explicit_status": bool(raw_status),
+        "superseded_by": superseded_by,
+        "adr_id": adr_id,
         "content": content,
         "term_counts": term_counts,
         "weighted_len": max(1.0, total_weighted_len),
@@ -199,6 +212,7 @@ def search_knowledge(
     limit: int = 5,
     offset: int = 0,
     page: Optional[int] = None,
+    include_inactive: bool = False,
     k1: float = 1.5,
     b: float = 0.75,
 ) -> Dict[str, Any]:
@@ -211,6 +225,7 @@ def search_knowledge(
     :param limit: Max number of results to return (default: 5).
     :param offset: Offset index for pagination (default: 0).
     :param page: 1-based page number for pagination (calculates offset if provided).
+    :param include_inactive: If True, includes superseded/deprecated/archived items (penalized).
     :param k1: BM25 k1 parameter.
     :param b: BM25 b parameter.
     """
@@ -244,20 +259,34 @@ def search_knowledge(
         return {"query": query, "total": 0, "offset": offset, "limit": limit, "page": 1, "total_pages": 1, "results": []}
 
     docs: List[Dict[str, Any]] = []
+    doc_config = ki_utils.get_doc_config() or {}
+    cfg_items = doc_config.get("knowledge_items", {})
 
     # 1. Collect Knowledge Items
     if scope in ("all", "ki") and knowledge_root and os.path.exists(knowledge_root):
-        for root, _, files in os.walk(knowledge_root):
+        for root, dirs, files in os.walk(knowledge_root):
+            dirs[:] = [dn for dn in dirs if dn.lower() != "decisions"]
             for f in files:
                 if f.endswith(".md"):
                     full_p = os.path.join(root, f)
                     d = parse_markdown_doc(full_p, "ki", project_root)
                     if d:
+                        if not d.get("has_explicit_status"):
+                            meta = cfg_items.get(f) or cfg_items.get(d["rel_path"]) or {}
+                            if meta.get("status"):
+                                d = dict(d)
+                                d["status"] = ki_utils.normalize_status(str(meta["status"]), doc_type="ki")
                         docs.append(d)
 
     # 2. Collect ADRs
+    adr_records_for_chain: List[Dict[str, Any]] = []
     if scope in ("all", "adr"):
-        candidates = ki_utils.get_decisions_dirs(project_root, knowledge_root)
+        jail_for_decisions = (
+            os.path.dirname(knowledge_root)
+            if knowledge_root and os.path.basename(knowledge_root) == "knowledge"
+            else knowledge_root
+        )
+        candidates = ki_utils.get_decisions_dirs(project_root, jail_for_decisions)
         seen_adrs = set()
         for c in candidates:
             if os.path.exists(c) and os.path.isdir(c):
@@ -268,6 +297,11 @@ def search_knowledge(
                         d = parse_markdown_doc(full_p, "adr", project_root)
                         if d:
                             docs.append(d)
+                            if d.get("adr_id"):
+                                adr_records_for_chain.append({"id": d["adr_id"], "superseded_by": d.get("superseded_by")})
+
+    if not include_inactive:
+        docs = [d for d in docs if d.get("status", "active") not in ki_utils.INACTIVE_STATUSES]
 
     total_docs = len(docs)
     if total_docs == 0:
@@ -298,14 +332,25 @@ def search_knowledge(
             score += term_score
 
         if score > 0.001:
+            doc_status = d.get("status", "active")
+            if doc_status in ki_utils.INACTIVE_STATUSES:
+                score *= 0.25
+
             snippet = extract_snippet(d["content"], q_tokens)
-            scored_results.append({
+            res_entry: Dict[str, Any] = {
                 "path": d["rel_path"],
                 "title": d["title"],
                 "type": d["doc_type"],
+                "status": doc_status,
                 "score": round(score, 3),
                 "snippet": snippet,
-            })
+            }
+            if doc_status == "superseded":
+                chain = ki_utils.resolve_superseding_chain(d.get("adr_id", ""), adr_records_for_chain)
+                target_id = chain[-1] if chain else d.get("superseded_by")
+                if target_id:
+                    res_entry["superseded_by"] = target_id
+            scored_results.append(res_entry)
 
     scored_results.sort(key=lambda x: x["score"], reverse=True)
     total_count = len(scored_results)
@@ -357,8 +402,16 @@ def format_search_markdown(search_dict: Dict[str, Any]) -> str:
         path = r.get("path", "")
         score = r.get("score", 0.0)
         snippet = r.get("snippet", "").strip()
+        status = r.get("status", "active")
 
-        out.append(f"{i}. [{doc_type}] **{title}** (`{path}`, score: {score})")
+        badge = ""
+        if status == "superseded":
+            sup_by = r.get("superseded_by")
+            badge = f" [SUPERSEDED -> ADR {sup_by}]" if sup_by else " [SUPERSEDED]"
+        elif status in ("deprecated", "archived", "poc", "draft", "stale", "stub"):
+            badge = f" [{status.upper()}]"
+
+        out.append(f"{i}. [{doc_type}]{badge} **{title}** (`{path}`, score: {score})")
         if snippet:
             out.append(f"   > {snippet}")
 

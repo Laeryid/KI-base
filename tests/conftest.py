@@ -50,6 +50,16 @@ server.run_script = run_script_wrapper
 server.get_jail_dir = get_jail_dir_wrapper
 
 
+@pytest.fixture(autouse=True)
+def isolate_home(tmp_path, monkeypatch):
+    """Isolate HOME/USERPROFILE so tests never touch real ~/.ki_base/registry.json."""
+    fake_home = tmp_path / "_test_home"
+    fake_home.mkdir(exist_ok=True)
+    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.setenv("USERPROFILE", str(fake_home))
+    return fake_home
+
+
 @pytest.fixture
 def tmp_project(tmp_path):
     """

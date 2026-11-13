@@ -179,6 +179,38 @@ def test_e2e_tool_call_graph_visualize(mcp_session):
     assert "```mermaid" in content[0]["text"]
 
 
+@pytest.mark.positive
+def test_e2e_tool_call_context_for(e2e_project, mcp_session):
+    """Verifies calling ki_context_for via MCP stdio protocol for a tracked source file."""
+    know_dir = e2e_project / ".ki-base" / "knowledge"
+    know_dir.mkdir(parents=True, exist_ok=True)
+    (know_dir / "KI_app.md").write_text(
+        "<!-- last_verified: 2026-11-01 -->\n"
+        "# KI: App\n\n"
+        "## Overview\nMain application module.\n\n"
+        "## Non-obvious Details\n- Must initialize logging before starting workers.\n",
+        encoding="utf-8",
+    )
+
+    mcp_session.send_request("server/discover")
+
+    list_resp = mcp_session.send_request("tools/list")
+    tool_names = {t["name"] for t in list_resp["result"].get("tools", [])}
+    assert "ki_context_for" in tool_names
+
+    resp = mcp_session.send_request("tools/call", {
+        "name": "ki_context_for",
+        "arguments": {"files": ["src/app.py"], "max_chars": 1500},
+    })
+    assert "result" in resp
+    content = resp["result"].get("content", [])
+    assert len(content) > 0
+    text = content[0]["text"]
+    assert "KI_app.md" in text
+    assert "Must initialize logging before starting workers." in text
+    assert len(text) <= 1500
+
+
 @pytest.mark.negative
 def test_e2e_unknown_method(mcp_session):
     """Verifies unknown methods return JSON-RPC error -32601."""

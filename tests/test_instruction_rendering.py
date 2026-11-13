@@ -116,5 +116,23 @@ def test_agent_rules_workflow_and_resource(monkeypatch):
         assert "STRICTLY ALL Knowledge Items (*.ki.md) live HERE!" in rules_text
         if mode == "compact":
             assert "ki_mutate(tool=\"sync_agents_md\")" in rules_text
+            assert "ki_mutate(tool=\"ki_sync\")" in rules_text
+            assert "ki_call(tool=\"ki_lint\")" in rules_text
         else:
             assert "sync_agents_md()" in rules_text
+            assert "ki_sync()" in rules_text
+            assert "ki_lint()" in rules_text
+
+
+def test_workflows_allow_native_edits_and_use_ki_sync(monkeypatch):
+    for mode in ("compact", "full"):
+        monkeypatch.setattr(server, "CURRENT_TOOL_MODE", mode)
+        for doc_name in ("sync-knowledge", "create-adr", "expand-knowledge", "agent-rules"):
+            text = server.handle_tool_call("ki_instructions", {"document": doc_name})
+            assert "STRICTLY PROHIBITED" not in text
+            assert "read_file" in text
+            assert "edit_file" in text
+            assert "ki_sync" in text
+            if mode == "full":
+                assert "ki_call" not in text
+                assert "ki_mutate" not in text

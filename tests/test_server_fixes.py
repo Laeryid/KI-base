@@ -74,13 +74,77 @@ def test_update_last_verified_all_formats(monkeypatch, tmp_path):
     f4 = know_dir / "item4.ki.md"
     f4.write_text("# Item 4\n\n## Section\nContent", encoding="utf-8")
 
-    res = handle_tool_call("update_last_verified", {})
+    res = handle_tool_call("update_last_verified", {"all_files": True})
     assert "in 4 files" in res
 
     assert f"<!-- last_verified: {today} -->" in f1.read_text(encoding="utf-8")
     assert today in f2.read_text(encoding="utf-8")
     assert f"**Last verified**: {today}" in f3.read_text(encoding="utf-8")
     assert f"<!-- last_verified: {today} -->" in f4.read_text(encoding="utf-8")
+
+    # Running again when already today must not duplicate tags
+    res_again = handle_tool_call("update_last_verified", {"all_files": True})
+    assert "in 0 files" in res_again
+
+
+def test_update_last_verified_targeted_only_affected(monkeypatch, tmp_path):
+    import subprocess
+    from datetime import datetime
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    project_dir = tmp_path / "proj"
+    project_dir.mkdir()
+    (project_dir / "src" / "a").mkdir(parents=True)
+    (project_dir / "src" / "b").mkdir(parents=True)
+    file_a = project_dir / "src" / "a" / "mod_a.py"
+    file_b = project_dir / "src" / "b" / "mod_b.py"
+    file_a.write_text("x = 1\n", encoding="utf-8")
+    file_b.write_text("y = 2\n", encoding="utf-8")
+
+    jail = project_dir / ".ki-base"
+    know_dir = jail / "knowledge"
+    know_dir.mkdir(parents=True)
+
+    ki_a = know_dir / "a.ki.md"
+    ki_b = know_dir / "b.ki.md"
+    ki_a.write_text("# KI A\n<!-- last_verified: 2020-01-01 -->\n", encoding="utf-8")
+    ki_b.write_text("# KI B\n<!-- last_verified: 2020-01-01 -->\n", encoding="utf-8")
+
+    doc_cfg = {
+        "knowledge_items": {
+            "a.ki.md": {"depends_on": ["src/a/mod_a.py"]},
+            "b.ki.md": {"depends_on": ["src/b/mod_b.py"]},
+        }
+    }
+    (jail / "doc_config.json").write_text(json.dumps(doc_cfg), encoding="utf-8")
+    (jail / "ki_config.json").write_text(json.dumps({"paths": {"knowledge_root": ".ki-base"}}), encoding="utf-8")
+
+    subprocess.run(["git", "init"], cwd=project_dir, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "t@e.com"], cwd=project_dir, check=True)
+    subprocess.run(["git", "config", "user.name", "T"], cwd=project_dir, check=True)
+    subprocess.run(["git", "add", "."], cwd=project_dir, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=project_dir, check=True, capture_output=True)
+
+    monkeypatch.setattr('ki_manager.scripts.ki_utils.ACTIVE_WORKSPACE_PATH', str(project_dir))
+    monkeypatch.setattr('ki_manager.scripts.ki_utils._CACHE', {})
+    monkeypatch.setattr('ki_manager.server.get_jail_dir', lambda: str(jail))
+    monkeypatch.setattr('ki_manager.server.get_project_root', lambda: str(project_dir))
+
+    # No changes -> 0 files updated
+    res_none = handle_tool_call("update_last_verified", {})
+    assert "in 0 files" in res_none
+
+    # Modify only src/a/mod_a.py -> only a.ki.md should be updated
+    file_a.write_text("x = 2\n", encoding="utf-8")
+    res_a = handle_tool_call("update_last_verified", {})
+    assert "in 1 files: a.ki.md" in res_a
+    assert today in ki_a.read_text(encoding="utf-8")
+    assert "2020-01-01" in ki_b.read_text(encoding="utf-8")
+
+    # Explicit ki_files -> updates b.ki.md
+    res_explicit = handle_tool_call("update_last_verified", {"ki_files": ["b.ki.md"]})
+    assert "in 1 files: b.ki.md" in res_explicit
+    assert today in ki_b.read_text(encoding="utf-8")
 
 
 def test_git_diff_secured_guards(monkeypatch, tmp_path):

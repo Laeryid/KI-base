@@ -39,6 +39,7 @@ sys.path.insert(0, str(_TOOLS_DIR))
 import ki_utils
 import facade
 import ki_search
+import ki_context
 
 # â”€â”€â”€ Logging â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _LOG_DIR = Path.home() / ".ki_base" / "logs"
@@ -116,15 +117,19 @@ GLOBAL_INSTRUCTIONS = """\
    - **KIs Constraints**: [which approaches are prohibited by current architecture]
 
 2. **Strict Adherence**:
+   - Before editing existing code, call `ki_context_for(files=[...])` to retrieve active invariants, pitfalls, and ADR rules.
    - Always read relevant KIs before modifying a module.
+   - Native file tools (`read_file`, `edit_file`) may be used to inspect or edit `.md` files inside `{{KI_DIR}}/knowledge/` or `{{KI_DIR}}/decisions/` as long as all `*.ki.md` remain in `{{KI_DIR}}/knowledge/`.
 <!-- if-compact -->
    - Use `ki_list()` to view all documented items, `ki_search(query="...")` to find topics, and `ki_read(rel_path="...")` to read documentation.
-   - For read-only analysis tools (`audit_coverage`, `generate_dir_index`, `ki_scaffold_status`, `git_diff_secured`), call `ki_call(tool="...")`.
-   - For state-modifying operations (`git_checkpoint`, `write_know_file`, `edit_know_file`, `ki_scaffold`, `create_adr`), call `ki_mutate(tool="...", args={...})`.
+   - For read-only analysis tools (`ki_lint`, `audit_coverage`, `generate_dir_index`, `ki_scaffold_status`, `git_diff_secured`), call `ki_call(tool="...")`.
+   - For state-modifying operations (`ki_sync`, `git_checkpoint`, `write_know_file`, `edit_know_file`, `ki_scaffold`, `create_adr`), call `ki_mutate(tool="...", args={...})`.
+   - After editing KI or ADR files, run `ki_mutate(tool="ki_sync")` (or `ki_call(tool="ki_lint")`) to validate and synchronize state.
    - To inspect schemas of available tools, call `ki_tools(name="<tool_name>")`.
 <!-- else-compact -->
    - Use `ki_list()` to view all documented items, `ki_search(query="...")` to find topics, and `ki_read(rel_path="...")` or `read_know_file(rel_path="...")` to explore documentation.
-   - After significant changes, run `audit_coverage` via MCP.
+   - After editing KI or ADR files, run `ki_sync()` (or `ki_lint()`) to validate metadata/references and synchronize `DIR_INDEX.md`, `doc_state.json`, and `AGENTS.md`.
+   - After significant code changes, run `audit_coverage` via MCP.
    - Use `git_checkpoint` to save knowledge snapshots.
 <!-- /if-compact -->
    
@@ -738,8 +743,24 @@ MCP_TOOLS = [
     },
     {
         "name": "update_last_verified",
-        "description": "Update the last_verified date in all KI files to today.",
-        "inputSchema": {"type": "object", "properties": {}},
+        "description": (
+            "Update the last_verified date to today in affected KI files "
+            "(by git diff / doc_config mapping, explicit ki_files, or all_files=true)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "ki_files": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional list of KI filenames or relative paths to update.",
+                },
+                "all_files": {
+                    "type": "boolean",
+                    "description": "Set true to update all KI files regardless of code changes.",
+                },
+            },
+        },
         "annotations": {
             "title": "Update Last Verified",
             "readOnlyHint": False,
@@ -843,6 +864,10 @@ MCP_TOOLS = [
                 "summary": {
                     "type": "string",
                     "description": "Optional short summary for tables and overview"
+                },
+                "status": {
+                    "type": "string",
+                    "description": "Optional lifecycle status (KI: stub, draft, poc, active, stale, archived; ADR: draft, poc, accepted, superseded, deprecated, archived)"
                 }
             },
             "required": ["ki_name", "description"]
@@ -931,8 +956,8 @@ MCP_TOOLS = [
                 },
                 "status": {
                     "type": "string",
-                    "default": "Accepted",
-                    "description": "Status of the decision (e.g. 'Accepted', 'Proposed', 'Superseded')"
+                    "default": "accepted",
+                    "description": "Status of the decision: 'draft' (or 'proposed'), 'poc', 'accepted' (default), 'superseded', 'deprecated', 'archived'"
                 },
                 "context": {
                     "type": "string",
@@ -1063,10 +1088,19 @@ MCP_TOOLS = [
     # â”€â”€ Git Operations â”€â”€
     {
         "name": "git_checkpoint",
-        "description": "Stage and commit all knowledge root changes to git.",
+        "description": (
+            "Check or commit knowledge root changes to git. "
+            "Requires auto_git_checkpoint=true in ki_config.json or commit=true to create a commit."
+        ),
         "inputSchema": {
             "type": "object",
-            "properties": {"message": {"type": "string", "description": "Commit message suffix"}},
+            "properties": {
+                "message": {"type": "string", "description": "Commit message suffix"},
+                "commit": {
+                    "type": "boolean",
+                    "description": "Explicitly create a git commit even when auto_git_checkpoint is disabled.",
+                },
+            },
         },
         "annotations": {
             "title": "Git Checkpoint",
@@ -1129,10 +1163,78 @@ MCP_TOOLS = [
             "idempotentHint": True,
         },
     },
+    {
+        "name": "ki_lint",
+        "description": (
+            "Lint the knowledge base for structural, metadata (status, superseded_by cycles, last_verified, "
+            "empty sections), and referential integrity (doc_config.json registration, depends_on paths)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "staged": {
+                    "type": "boolean",
+                    "description": "Only check Git-staged knowledge files (default: false).",
+                    "default": False,
+                },
+                "fix": {
+                    "type": "boolean",
+                    "description": "Auto-fix safe issues such as registering unmapped KIs in doc_config.json (default: false).",
+                    "default": False,
+                },
+                "format": {
+                    "type": "string",
+                    "enum": ["markdown", "json"],
+                    "description": "Output format (default: markdown).",
+                    "default": "markdown",
+                },
+            },
+        },
+        "annotations": {
+            "title": "Lint Knowledge Base",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+        },
+    },
+    {
+        "name": "ki_sync",
+        "description": (
+            "Composite synchronization tool: runs ki_lint -> git diff -> check_ki_drift (on affected KIs) -> "
+            "targeted update_last_verified -> generate_dir_index -> save_state -> sync_agents_md. "
+            "Aborts before mutating doc_state.json or AGENTS.md if ki_lint reports errors."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "fix_lint": {
+                    "type": "boolean",
+                    "description": "Auto-fix safe lint issues before syncing (default: false).",
+                    "default": False,
+                },
+                "skip_drift": {
+                    "type": "boolean",
+                    "description": "Skip check_ki_drift analysis on affected KIs (default: false).",
+                    "default": False,
+                },
+                "agents_path": {
+                    "type": "string",
+                    "description": "Optional explicit path to AGENTS.md.",
+                },
+            },
+        },
+        "annotations": {
+            "title": "Synchronize Knowledge System",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": True,
+        },
+    },
     # ─── Navigation, Search & Read ───
     facade.KI_LIST_TOOL,
     facade.KI_SEARCH_TOOL,
     facade.KI_READ_TOOL,
+    facade.KI_CONTEXT_FOR_TOOL,
 ]
 
 # Dynamically bind ki_call and ki_mutate schemas to readOnlyHint annotations
@@ -1144,6 +1246,7 @@ COMPACT_TOOLS = [
     facade.KI_LIST_TOOL,
     facade.KI_SEARCH_TOOL,
     facade.KI_READ_TOOL,
+    facade.KI_CONTEXT_FOR_TOOL,
     facade.KI_TOOLS_TOOL,
     facade.KI_CALL_TOOL,
     facade.KI_MUTATE_TOOL,
@@ -1179,16 +1282,40 @@ def tool_git_checkpoint(args: dict) -> dict:
     ki_base_rel = os.path.relpath(jail, project_root)
     targets = [
         os.path.join(ki_base_rel, "doc_config.json"),
+        os.path.join(ki_base_rel, "doc_state.json"),
         os.path.join(ki_base_rel, "ki_config.json"),
         os.path.join(ki_base_rel, "AGENTS.md"),
         os.path.join(ki_base_rel, "DIR_INDEX.md"),
         os.path.join(ki_base_rel, "knowledge"),
         os.path.join(ki_base_rel, "decisions") if os.path.exists(os.path.join(jail, "decisions")) else None,
     ]
+    existing_targets = [t for t in targets if t and os.path.exists(os.path.join(project_root, t))]
+    should_commit = bool(args.get("commit", False)) or ki_utils.is_auto_git_checkpoint_enabled()
+
+    if not should_commit:
+        try:
+            pending = []
+            if existing_targets:
+                stat_res = subprocess.run(
+                    ["git", "status", "--porcelain", "--", *existing_targets],
+                    cwd=project_root, capture_output=True, text=True, encoding="utf-8", check=False,
+                )
+                if stat_res.returncode == 0 and stat_res.stdout.strip():
+                    pending = [line.rstrip() for line in stat_res.stdout.splitlines() if line.strip()]
+            note = (
+                "Git auto-commit is disabled (auto_git_checkpoint=false). "
+                "Knowledge changes remain in the working tree for atomic commit with your code "
+                "(pass commit=true or set auto_git_checkpoint=true in ki_config.json to commit)."
+            )
+            if pending:
+                return {"content": [{"type": "text", "text": f"{note}\nPending knowledge changes:\n" + "\n".join(pending)}]}
+            return {"content": [{"type": "text", "text": f"{note}\nNo pending knowledge changes."}]}
+        except Exception as e:
+            return {"isError": True, "content": [{"type": "text", "text": f"Git Error: {str(e)}"}]}
+
     try:
-        for t in targets:
-            if t and os.path.exists(os.path.join(project_root, t)):
-                subprocess.run(["git", "add", t], cwd=project_root, check=False, capture_output=True)
+        for t in existing_targets:
+            subprocess.run(["git", "add", t], cwd=project_root, check=False, capture_output=True)
         status = subprocess.run(["git", "diff", "--quiet", "--cached"], cwd=project_root)
         if status.returncode == 0:
             return {"content": [{"type": "text", "text": "No changes to checkpoint."}]}
@@ -1224,6 +1351,180 @@ def tool_git_restore(args: dict) -> dict:
         return {"isError": True, "content": [{"type": "text", "text": f"Git Error: {e.stderr or str(e)}"}]}
 
 
+def _collect_git_changed_files(project_root: str) -> list:
+    """Returns project-relative forward-slash paths of uncommitted git changes."""
+    if not project_root or not os.path.exists(os.path.join(project_root, ".git")):
+        return []
+    try:
+        res = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=2,
+        )
+        if res.returncode != 0 or not res.stdout.strip():
+            return []
+        changed = []
+        for line in res.stdout.splitlines():
+            if len(line) < 4:
+                continue
+            raw_path = line[3:].strip()
+            if " -> " in raw_path:
+                raw_path = raw_path.split(" -> ", 1)[1].strip()
+            raw_path = raw_path.strip('"').replace("\\", "/")
+            if raw_path:
+                changed.append(raw_path)
+        return changed
+    except Exception:
+        return []
+
+
+def _resolve_target_ki_files(project_root: str, jail: str, know_dir: str, args: dict) -> list:
+    """Resolves which KI files should have last_verified updated."""
+    all_ki_map = {}
+    for fname in sorted(os.listdir(know_dir)):
+        if not ki_utils.is_ki_filename(fname, include_overview=True):
+            continue
+        fpath = os.path.join(know_dir, fname)
+        if os.path.isfile(fpath):
+            all_ki_map[fname] = fpath
+
+    if not all_ki_map:
+        return []
+
+    if args.get("all_files"):
+        return list(all_ki_map.values())
+
+    ki_files_arg = args.get("ki_files")
+    if isinstance(ki_files_arg, str):
+        ki_files_arg = [x.strip() for x in ki_files_arg.split(",") if x.strip()]
+    if isinstance(ki_files_arg, list) and ki_files_arg:
+        selected = []
+        seen = set()
+        for item in ki_files_arg:
+            base = os.path.basename(str(item).strip().replace("\\", "/"))
+            if base in all_ki_map and base not in seen:
+                seen.add(base)
+                selected.append(all_ki_map[base])
+        return selected
+
+    changed_files = set(_collect_git_changed_files(project_root))
+
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+    from knowledge_engine import KnowledgeEngine
+    rel_jail = os.path.relpath(jail, project_root) if project_root else os.path.basename(jail)
+    ke = KnowledgeEngine(project_root, rel_jail)
+    if os.path.exists(ke.state_file):
+        modified, new_files, _ = ke.check_for_changes()
+        changed_files.update(p.replace("\\", "/") for p in (modified + new_files))
+
+    affected_bases = set()
+    if changed_files:
+        affected_map = ke.get_affected_ki_map(list(changed_files))
+        for ki_key in affected_map:
+            affected_bases.add(os.path.basename(ki_key.replace("\\", "/")))
+
+        know_rel = os.path.relpath(know_dir, project_root).replace("\\", "/").strip("/")
+        for cf in changed_files:
+            cf_norm = cf.strip("./")
+            if cf_norm.startswith(know_rel + "/") or cf_norm.startswith("knowledge/"):
+                base = os.path.basename(cf_norm)
+                if base in all_ki_map:
+                    affected_bases.add(base)
+
+    return [all_ki_map[b] for b in sorted(affected_bases) if b in all_ki_map]
+
+
+def _update_last_verified_in_file(filepath: str, today: str) -> bool:
+    """Updates or inserts last_verified tag in a single KI file. Returns True if modified."""
+    import tempfile
+
+    with open(filepath, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    has_tag = bool(
+        re.search(r'<!--\s*last_verified:\s*"?\d{4}-\d{2}-\d{2}"?\s*-->', content, re.IGNORECASE)
+        or re.search(r'^last_verified:\s*"?\d{4}-\d{2}-\d{2}"?', content, re.MULTILINE)
+        or re.search(r'\*\*Last verified\*\*:\s*"?\d{4}-\d{2}-\d{2}"?', content, re.IGNORECASE)
+    )
+
+    new_content = content
+    if has_tag:
+        new_content = re.sub(
+            r'<!--\s*last_verified:\s*"?\d{4}-\d{2}-\d{2}"?\s*-->',
+            f'<!-- last_verified: {today} -->',
+            new_content,
+            flags=re.IGNORECASE,
+        )
+        new_content = re.sub(
+            r'^(last_verified:\s*)"?\d{4}-\d{2}-\d{2}"?',
+            rf'\g<1>"{today}"',
+            new_content,
+            flags=re.MULTILINE,
+        )
+        new_content = re.sub(
+            r'(\*\*Last verified\*\*:\s*)"?\d{4}-\d{2}-\d{2}"?',
+            rf'\g<1>{today}',
+            new_content,
+            flags=re.IGNORECASE,
+        )
+    else:
+        lines = content.splitlines(keepends=True)
+        res_lines = []
+        inserted = False
+        for line in lines:
+            res_lines.append(line)
+            if not inserted and line.startswith("# "):
+                res_lines.append(f"\n<!-- last_verified: {today} -->\n")
+                inserted = True
+        if not inserted:
+            res_lines.insert(0, f"<!-- last_verified: {today} -->\n\n")
+        new_content = "".join(res_lines)
+
+    if new_content == content:
+        return False
+
+    fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(filepath), text=True)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
+            f.write(new_content)
+        os.replace(tmp_path, filepath)
+        return True
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        return False
+
+
+def tool_update_last_verified(args: dict) -> str:
+    """Updates last_verified only in affected KI files (or explicit/all_files)."""
+    import datetime
+
+    jail = get_jail_dir()
+    if not jail:
+        return "Error: No project."
+    know_dir = os.path.join(jail, "knowledge")
+    if not os.path.exists(know_dir):
+        return "Updated last_verified in 0 files."
+
+    project_root = get_project_root()
+    target_files = _resolve_target_ki_files(project_root, jail, know_dir, args or {})
+    if not target_files:
+        return "Updated last_verified in 0 files (no affected KIs)."
+
+    today = datetime.datetime.now().strftime("%Y-%m-%d")
+    updated_names = []
+    for filepath in target_files:
+        if _update_last_verified_in_file(filepath, today):
+            updated_names.append(os.path.basename(filepath))
+
+    if not updated_names:
+        return "Updated last_verified in 0 files (already up to date)."
+    return f"Updated last_verified in {len(updated_names)} files: {', '.join(updated_names)}."
+
+
 def tool_add_ki_to_config(args: dict) -> dict:
     jail = get_jail_dir()
     if not jail:
@@ -1234,6 +1535,7 @@ def tool_add_ki_to_config(args: dict) -> dict:
     covers = args.get("covers", [])
     depends_on = args.get("depends_on", [])
     summary = args.get("summary")
+    status = args.get("status")
 
     if not ki_name or not description:
         return {"isError": True, "content": [{"type": "text", "text": "Error: 'ki_name' and 'description' are required."}]}
@@ -1244,7 +1546,7 @@ def tool_add_ki_to_config(args: dict) -> dict:
     sys.path.insert(0, str(_SCRIPTS_DIR))
     import add_ki_to_config
     try:
-        msg = add_ki_to_config.add_ki(ki_name, description, covers, depends_on, summary)
+        msg = add_ki_to_config.add_ki(ki_name, description, covers, depends_on, summary, status=status)
         return {"content": [{"type": "text", "text": msg}]}
     except Exception as e:
         return {"isError": True, "content": [{"type": "text", "text": f"Error registering KI: {e}"}]}
@@ -1479,6 +1781,150 @@ def tool_sync_agents_md(args: dict) -> dict:
     return {"content": [{"type": "text", "text": msg}]}
 
 
+def tool_ki_lint(args: dict) -> dict:
+    jail = get_jail_dir()
+    project_root = get_project_root()
+    if not jail or not project_root:
+        return NO_WORKSPACE_ERROR
+
+    if str(_SCRIPTS_DIR) not in sys.path:
+        sys.path.insert(0, str(_SCRIPTS_DIR))
+    import ki_lint
+
+    staged = bool((args or {}).get("staged", False))
+    fix = bool((args or {}).get("fix", False))
+    fmt = str((args or {}).get("format", "markdown")).lower()
+
+    res = ki_lint.lint_knowledge_base(
+        project_root=project_root,
+        knowledge_root=jail,
+        staged=staged,
+        fix=fix,
+    )
+    text = json.dumps(res, indent=2, ensure_ascii=False) if fmt == "json" else ki_lint.format_lint_report(res)
+    return {"isError": not res.get("ok", True), "content": [{"type": "text", "text": text}]}
+
+
+def tool_ki_sync(args: dict) -> dict:
+    """Composite synchronization: ki_lint -> git diff -> check_ki_drift -> update_last_verified -> generate_dir_index -> save_state -> sync_agents_md."""
+    import datetime
+
+    jail = get_jail_dir()
+    project_root = get_project_root()
+    if not jail or not project_root:
+        return NO_WORKSPACE_ERROR
+
+    if str(_SCRIPTS_DIR) not in sys.path:
+        sys.path.insert(0, str(_SCRIPTS_DIR))
+    import ki_lint
+    import check_ki_drift
+    import generate_dir_index
+    import sync_agents_md
+    from knowledge_engine import KnowledgeEngine
+
+    opts = args or {}
+    fix_lint = bool(opts.get("fix_lint", False))
+    skip_drift = bool(opts.get("skip_drift", False))
+    agents_path = opts.get("agents_path")
+
+    # Ensure ki_utils resolves the same project root even in monkeypatched tests
+    prev_ws = ki_utils.ACTIVE_WORKSPACE_PATH
+    if not prev_ws or os.path.abspath(prev_ws) != os.path.abspath(project_root):
+        ki_utils.ACTIVE_WORKSPACE_PATH = ki_utils.normalize_path(project_root)
+
+    try:
+        # 1. ki_lint gate (before any state/AGENTS mutation)
+        lint_res = ki_lint.lint_knowledge_base(
+            project_root=project_root,
+            knowledge_root=jail,
+            staged=False,
+            fix=fix_lint,
+        )
+        if not lint_res.get("ok", False):
+            report = ki_lint.format_lint_report(lint_res)
+            return {
+                "isError": True,
+                "content": [{
+                    "type": "text",
+                    "text": (
+                        "❌ ki_sync aborted before updating doc_state.json or AGENTS.md: "
+                        "ki_lint found errors that must be fixed first.\n\n" + report
+                    ),
+                }],
+            }
+
+        know_dir = ki_lint._resolve_know_dir(project_root, jail)
+
+        # 2. Git diff & affected KIs
+        git_changed = _collect_git_changed_files(project_root)
+        target_kis = _resolve_target_ki_files(project_root, jail, know_dir, {}) if os.path.exists(know_dir) else []
+
+        # 3. check_ki_drift on affected KIs
+        drift_summary = "Skipped (no affected KIs in diff)."
+        if skip_drift:
+            drift_summary = "Skipped (skip_drift=true)."
+        elif target_kis:
+            drift_results = []
+            for ki_path in target_kis:
+                ki_name = os.path.basename(ki_path)
+                drift_results.extend(
+                    check_ki_drift.run_drift_check(
+                        ki_filter=ki_name,
+                        project_root=project_root,
+                        knowledge_root=jail,
+                    )
+                )
+            with_drift = [r for r in drift_results if r.get("drift_count", 0) > 0]
+            drift_summary = (
+                f"Checked {len(drift_results)} affected KI(s): {len(with_drift)} with drift."
+                if drift_results
+                else "No matching KIs checked."
+            )
+            if with_drift:
+                drift_summary += "\n" + check_ki_drift.format_drift_markdown(with_drift)
+
+        # 4. Targeted update_last_verified
+        today = datetime.datetime.now().strftime("%Y-%m-%d")
+        updated_verified = []
+        for ki_path in target_kis:
+            if _update_last_verified_in_file(ki_path, today):
+                updated_verified.append(os.path.basename(ki_path))
+
+        # 5. generate_dir_index
+        dir_index_path = os.path.join(jail, "DIR_INDEX.md")
+        generate_dir_index.generate_dir_index(dir_index_path)
+
+        # 6. save_state
+        ke = KnowledgeEngine(project_root, os.path.basename(jail))
+        ke.save_state(ke.capture_full_state())
+        state_name = os.path.basename(getattr(ke, "state_file", None) or "doc_state.json")
+
+        # 7. sync_agents_md
+        agents_msg = sync_agents_md.sync_agents_md(agents_path)
+
+        lines = [
+            "✅ **ki_sync completed.**",
+            f"- **1. ki_lint**: {lint_res['checked_kis']} KI(s), {lint_res['checked_adrs']} ADR(s) — 0 errors, {len(lint_res.get('warnings', []))} warning(s).",
+            f"- **2. Git diff**: {len(git_changed)} changed file(s); {len(target_kis)} affected KI(s).",
+            f"- **3. check_ki_drift**: {drift_summary}",
+            f"- **4. update_last_verified**: updated {len(updated_verified)} file(s)"
+            + (f" ({', '.join(updated_verified)})" if updated_verified else "") + ".",
+            f"- **5. generate_dir_index**: updated `{os.path.basename(jail)}/DIR_INDEX.md`.",
+            f"- **6. save_state**: saved `{state_name}`.",
+            f"- **7. sync_agents_md**: {agents_msg}",
+        ]
+        if lint_res.get("fixed"):
+            lines.append("- **Auto-fixed**: " + "; ".join(lint_res["fixed"]))
+        if lint_res.get("warnings"):
+            lines.append("\n**Lint Warnings:**")
+            for w in lint_res["warnings"]:
+                lines.append(f"- [{w['code']}] `{w['file']}`: {w['message']}")
+
+        return {"content": [{"type": "text", "text": "\n".join(lines)}]}
+    finally:
+        ki_utils.ACTIVE_WORKSPACE_PATH = prev_ws
+
+
 def tool_create_adr(args: dict) -> dict:
     jail = get_jail_dir()
     project_root = get_project_root()
@@ -1486,7 +1932,7 @@ def tool_create_adr(args: dict) -> dict:
         return NO_WORKSPACE_ERROR
 
     title = args.get("title", "").strip()
-    status = args.get("status", "Accepted").strip()
+    status = ki_utils.normalize_status(args.get("status", "accepted"), doc_type="adr")
     context = args.get("context", "").strip()
     decision = args.get("decision", "").strip()
     consequences = args.get("consequences", "").strip()
@@ -1574,13 +2020,30 @@ def tool_create_adr(args: dict) -> dict:
                 if re.search(r"<!--\s*status:\s*([^\n\r>]+?)\s*-->", old_content, re.IGNORECASE):
                     old_content = re.sub(
                         r"<!--\s*status:\s*([^\n\r>]+?)\s*-->",
-                        f"<!-- status: {new_status_str} -->",
+                        "<!-- status: superseded -->",
                         old_content,
                         count=1,
                         flags=re.IGNORECASE
                     )
                 else:
-                    old_content = f"<!-- status: {new_status_str} -->\n" + old_content
+                    old_content = "<!-- status: superseded -->\n" + old_content
+
+                if re.search(r"<!--\s*superseded_by:\s*([^\n\r>]+?)\s*-->", old_content, re.IGNORECASE):
+                    old_content = re.sub(
+                        r"<!--\s*superseded_by:\s*([^\n\r>]+?)\s*-->",
+                        f"<!-- superseded_by: {next_id} -->",
+                        old_content,
+                        count=1,
+                        flags=re.IGNORECASE
+                    )
+                else:
+                    old_content = re.sub(
+                        r"(<!--\s*status:\s*superseded\s*-->\s*\n?)",
+                        rf"\1<!-- superseded_by: {next_id} -->\n",
+                        old_content,
+                        count=1,
+                        flags=re.IGNORECASE
+                    )
 
                 if re.search(r"\*\*Status\*\*:\s*([^\n\r]+)", old_content, re.IGNORECASE):
                     old_content = re.sub(
@@ -1615,6 +2078,8 @@ def tool_create_adr(args: dict) -> dict:
 
                 for k_path, k_data in ki_entries.items():
                     if matched_filename in k_path:
+                        k_data["status"] = "superseded"
+                        k_data["superseded_by"] = next_id
                         desc = k_data.get("description", "")
                         if "(" in desc and ")" in desc:
                             k_data["description"] = re.sub(r"\([^\)]+\)$", f"({new_status_str})", desc)
@@ -1758,7 +2223,8 @@ def tool_create_adr(args: dict) -> dict:
         description=f"ADR {next_id}: {title} ({status})",
         covers=["Architecture Decisions"],
         depends_on=sorted(list(related_kis)),
-        summary=f"ADR {next_id}: {title}"
+        summary=f"ADR {next_id}: {title}",
+        status=status,
     )
 
     import sync_agents_md
@@ -1915,68 +2381,7 @@ def handle_tool_call(name: str, args: dict) -> Any:
         if name == "generate_dir_index":
             return run_script("generate_dir_index.py")
         if name == "update_last_verified":
-            import datetime
-            jail = get_jail_dir()
-            if not jail:
-                return "Error: No project."
-            today = datetime.datetime.now().strftime("%Y-%m-%d")
-            count = 0
-            know_dir = os.path.join(jail, "knowledge")
-            if os.path.exists(know_dir):
-                for fname in os.listdir(know_dir):
-                    if not ki_utils.is_ki_filename(fname, include_overview=True):
-                        continue
-                    filepath = os.path.join(know_dir, fname)
-                    if not os.path.isfile(filepath):
-                        continue
-                    with open(filepath, "r", encoding="utf-8") as f:
-                        content = f.read()
-
-                    new_content = content
-                    new_content = re.sub(
-                        r'<!--\s*last_verified:\s*"?\d{4}-\d{2}-\d{2}"?\s*-->',
-                        f'<!-- last_verified: {today} -->',
-                        new_content,
-                        flags=re.IGNORECASE
-                    )
-                    new_content = re.sub(
-                        r'^(last_verified:\s*)"?\d{4}-\d{2}-\d{2}"?',
-                        rf'\g<1>"{today}"',
-                        new_content,
-                        flags=re.MULTILINE
-                    )
-                    new_content = re.sub(
-                        r'(\*\*Last verified\*\*:\s*)"?\d{4}-\d{2}-\d{2}"?',
-                        rf'\g<1>{today}',
-                        new_content,
-                        flags=re.IGNORECASE
-                    )
-
-                    if new_content == content:
-                        lines = content.splitlines(keepends=True)
-                        res_lines = []
-                        inserted = False
-                        for line in lines:
-                            res_lines.append(line)
-                            if not inserted and line.startswith("# "):
-                                res_lines.append(f"\n<!-- last_verified: {today} -->\n")
-                                inserted = True
-                        if not inserted:
-                            res_lines.insert(0, f"<!-- last_verified: {today} -->\n\n")
-                        new_content = "".join(res_lines)
-
-                    if new_content != content:
-                        import tempfile
-                        fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(filepath), text=True)
-                        try:
-                            with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
-                                f.write(new_content)
-                            os.replace(tmp_path, filepath)
-                            count += 1
-                        except Exception:
-                            if os.path.exists(tmp_path):
-                                os.remove(tmp_path)
-            return f"Updated last_verified in {count} files."
+            return tool_update_last_verified(args)
         if name == "analyze_all_dependencies":
             return run_script("ki_dependency_analyzer.py", ["--all"])
         if name == "analyze_dependencies":
@@ -2066,6 +2471,10 @@ def handle_tool_call(name: str, args: dict) -> Any:
             return tool_sync_agents_md(args)
         if name == "create_adr":
             return tool_create_adr(args)
+        if name == "ki_lint":
+            return tool_ki_lint(args)
+        if name == "ki_sync":
+            return tool_ki_sync(args)
 
         # ─── File Ops ───
         if name == "read_know_file":
@@ -2146,7 +2555,8 @@ def handle_tool_call(name: str, args: dict) -> Any:
             scope = args.get("scope", "all")
             fmt = args.get("format", "markdown")
             flt = args.get("filter")
-            data = ki_utils.get_ki_list_data(scope=scope, filter_query=flt)
+            status = args.get("status", "active")
+            data = ki_utils.get_ki_list_data(scope=scope, filter_query=flt, status=status)
             if fmt == "json":
                 return json.dumps(data, ensure_ascii=False, indent=2)
             return ki_utils.format_ki_list_markdown(data)
@@ -2162,14 +2572,42 @@ def handle_tool_call(name: str, args: dict) -> Any:
                     page = int(page)
                 except (ValueError, TypeError):
                     page = None
+            include_inactive = bool(args.get("include_inactive", False))
             fmt = args.get("format", "markdown")
-            res = ki_search.search_knowledge(query, project_root=get_project_root(), scope=scope, limit=limit, offset=offset, page=page)
+            res = ki_search.search_knowledge(
+                query,
+                project_root=get_project_root(),
+                scope=scope,
+                limit=limit,
+                offset=offset,
+                page=page,
+                include_inactive=include_inactive,
+            )
             if fmt == "json":
                 return json.dumps(res, ensure_ascii=False, indent=2)
             return ki_search.format_search_markdown(res)
 
         if name == "ki_read":
             return tool_read_file(args)
+
+        if name == "ki_context_for":
+            files = args.get("files")
+            if not isinstance(files, list) or not files:
+                return "Error: 'files' must be a non-empty list of file or directory paths."
+            try:
+                max_chars = int(args.get("max_chars", 2000))
+            except (ValueError, TypeError):
+                max_chars = 2000
+            include_poc = bool(args.get("include_poc", True))
+            force = bool(args.get("force", False))
+            res = ki_context.get_context_for(
+                files=files,
+                max_chars=max_chars,
+                include_poc=include_poc,
+                force=force,
+                project_root=get_project_root(),
+            )
+            return res["text"]
 
         # ─── Facade Dispatchers & Catalog ───
         if name == "ki_tools":
@@ -2292,6 +2730,11 @@ def _extract_workspace_from_meta(params: dict) -> Optional[str]:
 
 
 def main():
+    if len(sys.argv) >= 2 and sys.argv[1] in ("lint", "install-hooks", "install-skills", "--version", "-v"):
+        from ki_manager import cli
+        cli.main()
+        return
+
     # Apply --workspace early so registry lookup works
     import argparse
     parser = argparse.ArgumentParser(add_help=False)
