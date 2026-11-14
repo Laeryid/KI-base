@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.0.dev2] — 2026-11-14
+
+### Fixed
+- **`ki_sync` MCP Stdio Transport Stability**:
+  - Prevented `DIR_INDEX.md` generation from printing status lines to `stdout` when invoked inside `ki_sync`, eliminating JSON-RPC stream corruption (`invalid character '+' looking for beginning of value`).
+  - Added `stdout` capture isolation around MCP tool execution so unexpected console output never breaks the MCP transport.
+- **Project Configuration Resolution (`sync_agents_md` & Legacy `.know/`)**:
+  - Fixed `ki_config.json` loading for projects registered with `inline_config` or a `doc_config.json` path, ensuring disk settings such as `"sync_agents_md": false` (including UTF-8 BOM files) are always honored by `ki_sync` and `sync_agents_md`.
+  - Unified configuration and workspace state across server and tool handlers and prevented CLI `--workspace` flags from overriding active workspace metadata.
+
 ## [2.4.0.dev0] — 2026-11-14
 
 ### Added

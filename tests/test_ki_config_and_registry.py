@@ -58,6 +58,51 @@ def test_register_with_inline_config(tmp_path, mock_registry, monkeypatch):
 
 
 @pytest.mark.positive
+def test_inline_config_merges_disk_ki_config_and_respects_sync_agents_md_false(tmp_path, mock_registry, monkeypatch):
+    """When registered with inline_config only, disk .know/ki_config.json settings are still loaded."""
+    ws = tmp_path / "KnowWithInlineProj"
+    know_dir = ws / ".know"
+    know_dir.mkdir(parents=True)
+    (know_dir / "ki_config.json").write_text(
+        json.dumps({"project_name": "KnowDisk", "sync_agents_md": False, "paths": {"knowledge_root": ".know"}}),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(ki_utils, "ACTIVE_WORKSPACE_PATH", str(ws))
+    monkeypatch.setattr(ki_utils, "_CACHE", {})
+    monkeypatch.setattr(sys, "argv", ["prog"])
+
+    success, _ = ki_utils.register_project(
+        workspace=str(ws),
+        inline_config={"paths": {"knowledge_root": ".know"}},
+    )
+    assert success is True
+    assert ki_utils.is_sync_agents_md_enabled() is False
+
+
+@pytest.mark.positive
+def test_registry_doc_config_path_falls_back_to_sibling_ki_config(tmp_path, mock_registry, monkeypatch):
+    """If registry config_path mistakenly points to doc_config.json, sibling ki_config.json is loaded."""
+    ws = tmp_path / "DocCfgRegisteredProj"
+    know_dir = ws / ".know"
+    know_dir.mkdir(parents=True)
+    doc_cfg = know_dir / "doc_config.json"
+    doc_cfg.write_text(json.dumps({"knowledge_items": {}}), encoding="utf-8")
+    (know_dir / "ki_config.json").write_text(
+        json.dumps({"project_name": "SiblingCfg", "sync_agents_md": False, "paths": {"knowledge_root": ".know"}}),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(ki_utils, "ACTIVE_WORKSPACE_PATH", str(ws))
+    monkeypatch.setattr(ki_utils, "_CACHE", {})
+    monkeypatch.setattr(sys, "argv", ["prog"])
+
+    success, _ = ki_utils.register_project(config_path=str(doc_cfg), workspace=str(ws))
+    assert success is True
+    assert ki_utils.is_sync_agents_md_enabled() is False
+
+
+@pytest.mark.positive
 @pytest.mark.parametrize("loc_type,sub_path", [
     ("root", "ki_config.json"),
     ("dot_config", os.path.join(".config", "ki_config.json")),

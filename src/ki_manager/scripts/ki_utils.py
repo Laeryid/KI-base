@@ -191,7 +191,7 @@ def load_ki_config() -> dict:
     registry_workspace = None
 
     global ACTIVE_WORKSPACE_PATH
-    if args.workspace:
+    if args.workspace and not ACTIVE_WORKSPACE_PATH:
         ACTIVE_WORKSPACE_PATH = normalize_path(args.workspace)
 
     if args.config:
@@ -205,18 +205,35 @@ def load_ki_config() -> dict:
         match = find_project_by_cwd()
         if match:
             config_path = match.get("config_path")
-            inline_config = match.get("config", {})
+            inline_config = match.get("config") or {}
             registry_workspace = match.get("workspace")
 
-    if not config_path and not inline_config:
-        current = Path(ACTIVE_WORKSPACE_PATH) if ACTIVE_WORKSPACE_PATH else Path.cwd()
-        for parent in [current] + list(current.parents):
+    if config_path:
+        if os.path.basename(config_path).lower() == "doc_config.json":
+            sibling_ki_cfg = os.path.join(os.path.dirname(config_path), "ki_config.json")
+            if os.path.exists(sibling_ki_cfg):
+                config_path = sibling_ki_cfg
+        if not os.path.exists(config_path):
+            config_path = None
+
+    if not config_path:
+        current = Path(ACTIVE_WORKSPACE_PATH) if ACTIVE_WORKSPACE_PATH else (
+            Path(registry_workspace) if registry_workspace else Path.cwd()
+        )
+        search_dirs = [current] + list(current.parents)
+        if registry_workspace:
+            norm_reg_ws = normalize_path(registry_workspace)
+            search_dirs = [d for d in search_dirs if is_subpath(str(d), norm_reg_ws)]
+            if not search_dirs:
+                search_dirs = [Path(norm_reg_ws)]
+
+        for parent in search_dirs:
             for candidate in [
                 parent / KI_BASE_DIR / "ki_config.json",
                 parent / "ki_config.json",
+                parent / ".know" / "ki_config.json",
                 parent / ".config" / "ki_config.json",
                 parent / "config" / "ki_config.json",
-                parent / ".know" / "ki_config.json"
             ]:
                 if candidate.exists():
                     config_path = str(candidate)
@@ -227,7 +244,7 @@ def load_ki_config() -> dict:
     cfg = {}
     if config_path and os.path.exists(config_path):
         try:
-            with open(config_path, "r", encoding="utf-8") as f:
+            with open(config_path, "r", encoding="utf-8-sig") as f:
                 cfg = json.load(f)
                 cfg["_loaded_from"] = config_path
         except Exception:
@@ -968,7 +985,10 @@ def save_doc_config(config: dict) -> str:
 def is_sync_agents_md_enabled() -> bool:
     """Checks whether sync_agents_md is enabled in ki_config.json (default: True)."""
     cfg = get_ki_cfg()
-    return bool(cfg.get("sync_agents_md", True))
+    val = cfg.get("sync_agents_md", True)
+    if isinstance(val, str):
+        return val.strip().lower() not in ("false", "0", "no", "off")
+    return bool(val)
 
 
 def is_auto_git_checkpoint_enabled() -> bool:

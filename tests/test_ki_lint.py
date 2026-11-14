@@ -280,3 +280,105 @@ def test_install_hooks_and_cli_lint(tmp_path, capsys):
     data = json.loads(proc.stdout)
     assert data["ok"] is True
     assert data["checked_kis"] == 2
+
+
+def test_ki_sync_no_stdout_and_respects_sync_agents_md_false_in_know(tmp_path, monkeypatch, capsys):
+    """ki_sync must not print to stdout and must respect sync_agents_md=false in .know/ki_config.json."""
+    proj = tmp_path / "legacy_know_proj"
+    proj.mkdir()
+    know_root = proj / ".know"
+    know_dir = know_root / "knowledge"
+    know_dir.mkdir(parents=True)
+    (proj / "src").mkdir()
+    (proj / "src" / "mod.py").write_text("x = 1\n", encoding="utf-8")
+
+    (know_dir / "_OVERVIEW.ki.md").write_text(
+        "<!-- last_verified: 2026-01-01 -->\n# Overview\n\n## Overview\nProject overview.\n",
+        encoding="utf-8",
+    )
+    (know_dir / "mod.ki.md").write_text(
+        "<!-- last_verified: 2026-01-01 -->\n# Mod\n\n## Overview\nModule docs.\n",
+        encoding="utf-8",
+    )
+    (know_root / "doc_config.json").write_text(
+        json.dumps({
+            "knowledge_items": {
+                "_OVERVIEW.ki.md": {"summary": "Overview", "depends_on": []},
+                "mod.ki.md": {"summary": "Mod", "depends_on": ["src/mod.py"]},
+            }
+        }),
+        encoding="utf-8",
+    )
+    # Write with UTF-8 BOM and sync_agents_md: false
+    (know_root / "ki_config.json").write_text(
+        json.dumps({
+            "project_name": "legacy_know_proj",
+            "sync_agents_md": False,
+            "paths": {"knowledge_root": ".know"},
+        }),
+        encoding="utf-8-sig",
+    )
+
+    agents_md = proj / "AGENTS.md"
+    original_agents = "# Custom Agents Rules\n\nKeep clean without tables.\n"
+    agents_md.write_text(original_agents, encoding="utf-8")
+
+    # Even if registered via inline_config without config_path, .know/ki_config.json must be read
+    reg_file = tmp_path / "reg.json"
+    monkeypatch.setattr(ki_utils, "get_registry_path", lambda: reg_file)
+    ki_utils.register_project(workspace=str(proj), inline_config={"paths": {"knowledge_root": ".know"}})
+
+    monkeypatch.setattr(ki_utils, "ACTIVE_WORKSPACE_PATH", str(proj))
+    monkeypatch.setattr(ki_utils, "_CACHE", {})
+    monkeypatch.setattr(sys, "argv", ["ki-manager"])
+
+    capsys.readouterr()  # flush any prior output
+    res = server.handle_tool_call("ki_sync", {})
+    captured = capsys.readouterr()
+
+    assert captured.out == "", f"ki_sync leaked to stdout: {captured.out!r}"
+    assert isinstance(res, dict) and not res.get("isError")
+    text = res["content"][0]["text"]
+    assert "ki_sync completed" in text
+    assert "sync_agents_md is disabled in ki_config.json" in text
+    assert (know_root / "doc_state.json").exists()
+    assert (know_root / "DIR_INDEX.md").exists()
+    assert agents_md.read_text(encoding="utf-8") == original_agents
+
+    # Verify real stdio MCP transport returns only valid JSON-RPC lines for ki_mutate(tool="ki_sync")
+    reqs = "\n".join([
+        json.dumps({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {"rootUri": proj.as_uri()},
+        }),
+        json.dumps({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {"name": "ki_mutate", "arguments": {"tool": "ki_sync", "args": {}}},
+        }),
+    ]) + "\n"
+    env = os.environ.copy()
+    env["HOME"] = str(tmp_path / "_stdio_home")
+    env["USERPROFILE"] = str(tmp_path / "_stdio_home")
+    Path(env["HOME"]).mkdir(exist_ok=True)
+
+    proc = subprocess.run(
+        [sys.executable, "-m", "ki_manager.server", "--tool-mode", "compact", "--workspace", str(proj)],
+        input=reqs,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=env,
+        timeout=20,
+    )
+    assert proc.returncode == 0, f"stderr: {proc.stderr}"
+    stdout_lines = [ln for ln in proc.stdout.splitlines() if ln.strip()]
+    assert len(stdout_lines) == 2, f"Unexpected stdout lines: {stdout_lines!r}"
+    parsed = [json.loads(ln) for ln in stdout_lines]
+    sync_resp = parsed[1]["result"]
+    assert not sync_resp.get("isError")
+    assert "sync_agents_md is disabled in ki_config.json" in sync_resp["content"][0]["text"]
+    assert agents_md.read_text(encoding="utf-8") == original_agents

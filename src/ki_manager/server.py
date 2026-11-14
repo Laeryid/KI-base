@@ -14,6 +14,8 @@ import sys
 import json
 import os
 import re
+import io
+import contextlib
 import subprocess
 import importlib.metadata
 from pathlib import Path
@@ -36,7 +38,18 @@ _WORKFLOWS_DIR = _PACKAGE_DIR / "workflows"
 _TOOLS_DIR = _PACKAGE_DIR / "tools"
 sys.path.insert(0, str(_SCRIPTS_DIR))
 sys.path.insert(0, str(_TOOLS_DIR))
-import ki_utils
+if "ki_manager.scripts.ki_utils" in sys.modules:
+    ki_utils = sys.modules["ki_manager.scripts.ki_utils"]
+    sys.modules["ki_utils"] = ki_utils
+elif "ki_utils" in sys.modules:
+    ki_utils = sys.modules["ki_utils"]
+    sys.modules["ki_manager.scripts.ki_utils"] = ki_utils
+else:
+    try:
+        from ki_manager.scripts import ki_utils
+        sys.modules["ki_utils"] = ki_utils
+    except ImportError:
+        import ki_utils
 import facade
 import ki_search
 import ki_context
@@ -1316,7 +1329,7 @@ def tool_git_checkpoint(args: dict) -> dict:
     try:
         for t in existing_targets:
             subprocess.run(["git", "add", t], cwd=project_root, check=False, capture_output=True)
-        status = subprocess.run(["git", "diff", "--quiet", "--cached"], cwd=project_root)
+        status = subprocess.run(["git", "diff", "--quiet", "--cached"], cwd=project_root, capture_output=True)
         if status.returncode == 0:
             return {"content": [{"type": "text", "text": "No changes to checkpoint."}]}
         user_msg = args.get("message", "Knowledge checkpoint")
@@ -2898,7 +2911,12 @@ def main():
                         ki_utils.ACTIVE_WORKSPACE_PATH = ki_utils.normalize_path(_ws_arg)
                         ki_utils._CACHE.clear()
                         safe_log(f"SET workspace via tool args: {ki_utils.ACTIVE_WORKSPACE_PATH}")
-                result = handle_tool_call(tool_name, tool_args)
+                captured_stdout = io.StringIO()
+                with contextlib.redirect_stdout(captured_stdout):
+                    result = handle_tool_call(tool_name, tool_args)
+                leaked = captured_stdout.getvalue()
+                if leaked:
+                    safe_log(f"STDOUT_CAPTURED ({tool_name}): {leaked.strip()}")
                 if isinstance(result, dict) and "content" in result:
                     send(result)
                 else:

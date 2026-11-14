@@ -131,8 +131,6 @@ def generate_dir_index(output_path: str, max_depth: int = 3) -> None:
     with open(output_path, "w", encoding="utf-8") as f:
         f.write("\n".join(content_lines) + "\n")
 
-    print(f"[+] DIR_INDEX.md generated: {output_path}")
-
 
 def main():
     parser = argparse.ArgumentParser(description="Generates DIR_INDEX.md.")
@@ -147,6 +145,7 @@ def main():
     output_path = os.path.abspath(output_path)
 
     generate_dir_index(output_path, max_depth=args.depth)
+    print(f"[+] DIR_INDEX.md generated: {output_path}")
 
 
 if __name__ == "__main__":
