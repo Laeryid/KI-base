@@ -1,0 +1,63 @@
+{
+  "name": "antigravity",
+  "aliases": ["agy", "antigravity", "vaib"],
+  "description": "Antigravity IDE / CLI (.agents/hooks.json)",
+  "install": {
+    "target_file": ".agents/hooks.json",
+    "merge": {
+      "ki-manager": {
+        "PreToolUse": [
+          {
+            "matcher": "edit_file|write_file|replace_file_content|multi_replace_file_content",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "{ki_cmd} hook pre-edit --harness antigravity",
+                "timeout": 10
+              }
+            ]
+          }
+        ],
+        "Stop": [
+          {
+            "type": "command",
+            "command": "{ki_cmd} hook stop-lint --harness antigravity",
+            "timeout": 15
+          }
+        ]
+      }
+    }
+  },
+  "runtime": {
+    "workspace_paths": ["workspacePaths.0", "cwd"],
+    "file_arg_paths": ["toolCall.args.Path", "toolCall.args.TargetFile", "toolCall.args.path"],
+    "ignore_paths": [".ki-base/", ".know/", "knowledge/", "decisions/", "AGENTS.md"],
+    "ignore_dir_fields": ["artifactDirectoryPath"],
+    "stop_skip_if": {
+      "continuationActive": true
+    },
+    "stop_require_field_equals": {
+      "terminationReason": "NO_TOOL_CALL"
+    },
+    "pre_edit": {
+      "allow": {
+        "stdout": { "decision": "allow" },
+        "exit_code": 0
+      },
+      "deny": {
+        "stdout": { "decision": "deny", "reason": "{context}" },
+        "exit_code": 0
+      }
+    },
+    "stop_lint": {
+      "allow": {
+        "stdout": {},
+        "exit_code": 0
+      },
+      "block": {
+        "stdout": { "decision": "continue", "reason": "{errors}" },
+        "exit_code": 0
+      }
+    }
+  }
+}

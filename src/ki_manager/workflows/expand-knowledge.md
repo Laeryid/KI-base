@@ -163,6 +163,10 @@ Write the file using `write_know_file` or `edit_know_file` (passing `rel_path="<
 - Test commands: `pytest tests/test_<module>.py`
 - Test files: `tests/test_<module>.py`
 
+## Invariants
+- [MUST] <Hard constraint or architectural rule>
+- [MUST NOT] <Forbidden pattern>
+
 ## Non-obvious Details
 - <A fact not visible from function signatures>
 

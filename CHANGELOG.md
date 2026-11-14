@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.0.dev0] — 2026-11-14
+
+### Added
+- **Just-in-Time Context Delivery (`ki_context_for`)**:
+  - Added eager MCP tool `ki_context_for(files, max_chars=2000, include_poc=True, force=False)` across both `full` (40 tools) and `compact` (8 tools) modes.
+  - Matches target file paths, directories, and glob patterns (`*`, `**`, `?`) against `doc_config.json` `depends_on` and ADR `Scope & Affected Files` / `Related KI` references.
+  - Prioritizes KI `## Invariants`, `## Non-obvious Details`, and `## Common Pitfalls`, and ADR `## Invariants & Rules for AI`, excluding `superseded`/`draft`/`archived`/`deprecated` entries and tagging `stale`/`poc`/`stub`.
+- **Smart Session Deduplication Cache**:
+  - Caches per-rule content hashes, timestamps (configurable TTL via `context_cache_ttl` in `ki_config.json` or `KI_CONTEXT_CACHE_TTL`), and step counts under `~/.ki_base/cache/`.
+  - Replaces repeated unchanged deliveries with compact markers (`Already delivered: ... Pass force=true if context was compacted.`), automatically invalidating on file edits, TTL expiry, or `force=true`.
+- **Deterministic Linter (`ki_lint`) & Composite Sync (`ki_sync`)**:
+  - Added `ki_lint` MCP tool and `ki-manager lint [--staged] [--fix] [--json]` CLI checking KB directory layout, `_OVERVIEW.ki.md` presence, valid lifecycle statuses, acyclic `superseded_by` chains, `last_verified` tags, unfilled sections, and `depends_on` disk existence.
+  - Added `ki_sync` MCP tool combining `ki_lint` → diff → `check_ki_drift` → targeted `update_last_verified` → `DIR_INDEX.md` → `save_state` → `AGENTS.md` into one gated call.
+- **Lifecycle Statuses & Bidirectional Superseding**:
+  - Standardized normalized statuses: ADR (`draft`, `poc`, `accepted`, `superseded`, `deprecated`, `archived`; `proposed` aliases to `draft`) and KI (`stub`, `draft`, `poc`, `active`, `stale`, `archived`).
+  - `create_adr(..., supersedes=[...])` writes `<!-- superseded_by: NNN -->` markers and structured `status` / `superseded_by` fields in `doc_config.json`.
+  - Filtered `AGENTS.md` tables (hiding `superseded`/`deprecated`/`archived` ADRs and `archived` KIs behind summary hints) and added `status` / `include_inactive` filtering in `ki_list` and `ki_search`.
+- **Optional Git & Declarative Agent Harness Hooks**:
+  - Added `ki-manager install-hooks` for universal Git `pre-commit` (`ki-manager lint --staged`), works in any IDE without runtime hook support.
+  - Added declarative JSON harness manifests with bundled presets (`antigravity` with aliases `agy`/`antigravity`/`vaib`, and `claude` with aliases `claude`/`claude-code`) plus project/user custom manifests in `.ki-base/harnesses/` or `~/.ki_base/harnesses/`.
+  - Added `ki-manager install-hooks --harness <name_or_file>` (non-destructive idempotent merge), `--list-harnesses`, and `ki-manager hook pre-edit|stop-lint` integrating with the shared `ki_context_for` deduplication cache.
+
+### Changed
+- **Git Hygiene & Targeted Verification**:
+  - `git_checkpoint` now includes `doc_state.json` and no longer auto-commits unless `commit=true` is passed or `auto_git_checkpoint: true` is enabled in `ki_config.json`.
+  - `update_last_verified` updates only KIs affected by uncommitted git changes or code diffs (including nested subdirectories in `knowledge/`), or explicit `ki_files`.
+- **Native File Tooling Freedom**:
+  - Relaxed workflow instructions across `overview`, `agent-rules`, `create-adr`, `expand-knowledge`, `scaffold-knowledge`, and `sync-knowledge` to allow native `read_file` / `edit_file` inside `knowledge/` and `decisions/`, backed by `ki_lint` and `ki_sync`.
+
 ## [2.3.3.dev3] — 2026-11-08
 
 ### Fixed

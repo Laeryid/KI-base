@@ -2,170 +2,194 @@
   "coverage_settings": {
     "tracked_modules": [
       [
-        ".know",
-        "Knowledge Infrastructure",
+        "src/ki_manager",
+        "Core Package",
         8
       ]
     ],
     "thresholds": {
       "density": 50.0,
       "complexity": 10
-    }
+    },
+    "ignore_dirs": [
+      "tests",
+      "plans"
+    ]
   },
   "artifacts": {
     "README.md": {
       "description": "General documentation and project overview.",
       "depends_on": [
-        ".know/"
+        "src/ki_manager/"
       ]
     },
     "AGENTS.md": {
       "description": "Instructions and context for AI agents.",
       "depends_on": [
-        ".know/knowledge/",
-        ".know/doc_config.json"
+        "knowledge/",
+        "doc_config.json"
       ]
     }
   },
   "knowledge_items": {
+    "_OVERVIEW.ki.md": {
+      "summary": "Overview and core invariants of the ki-manager MCP server and CLI.",
+      "covers": [
+        "Core Package"
+      ],
+      "depends_on": [
+        "src/ki_manager/server.py",
+        "src/ki_manager/cli.py",
+        "src/ki_manager/scripts/ki_context.py",
+        "src/ki_manager/scripts/ki_lint.py",
+        "src/ki_manager/scripts/ki_hooks.py",
+        "src/ki_manager/tools/facade.py"
+      ],
+      "status": "active"
+    },
     "KI_knowledge_testing_scripts.md": {
       "summary": "Tests for scripts: init, sync, and utils.",
       "covers": [
-        "Knowledge Infrastructure"
+        "Core Package"
       ],
       "depends_on": [
-        ".know/tests/test_init_ki_system.py",
-        ".know/tests/test_sync_and_add_ki.py",
-        ".know/tests/test_ki_utils.py",
-        ".know/scripts/init_ki_system.py",
-        ".know/scripts/sync_agents_md.py",
-        ".know/scripts/add_ki_to_config.py",
-        ".know/scripts/ki_utils.py"
-      ]
+        "tests/test_ki_utils.py",
+        "src/ki_manager/scripts/sync_agents_md.py",
+        "src/ki_manager/scripts/add_ki_to_config.py",
+        "src/ki_manager/scripts/ki_utils.py"
+      ],
+      "status": "stale"
     },
     "KI_knowledge_system.md": {
       "description": "Knowledge Management Infrastructure (Core): Engine, MCP, and Audit logic.",
       "covers": [
-        "Knowledge Infrastructure"
+        "Core Package"
       ],
       "depends_on": [
-        ".know/scripts/",
-        ".know/scripts/analyze_module.py",
-        ".know/scripts/audit_coverage.py",
-        ".know/scripts/find_unmapped_files.py",
-        ".know/scripts/generate_dir_index.py",
-        ".know/scripts/init_ki_system.py",
-        ".know/scripts/ki_dependency_analyzer.py",
-        ".know/scripts/ki_utils.py",
-        ".know/scripts/knowledge_engine.py",
-        ".know/scripts/knowledge_mcp.py",
-        ".know/scripts/sync_agents_md.py"
-      ]
+        "src/ki_manager/scripts/",
+        "src/ki_manager/scripts/analyze_module.py",
+        "src/ki_manager/scripts/audit_coverage.py",
+        "src/ki_manager/scripts/find_unmapped_files.py",
+        "src/ki_manager/scripts/generate_dir_index.py",
+        "src/ki_manager/scripts/ki_dependency_analyzer.py",
+        "src/ki_manager/scripts/ki_utils.py",
+        "src/ki_manager/scripts/knowledge_engine.py",
+        "src/ki_manager/scripts/sync_agents_md.py"
+      ],
+      "status": "stale"
     },
     "KI_knowledge_ops.md": {
       "description": "Knowledge Operations: Maintenance scripts, indexing, and agent sync.",
       "covers": [
-        "Knowledge Infrastructure"
+        "Core Package"
       ],
       "depends_on": [
-        ".know/scripts/",
-        ".know/scripts/audit_coverage.py",
-        ".know/scripts/sync_agents_md.py",
-        ".know/scripts/generate_dir_index.py",
-        ".know/scripts/ki_dependency_analyzer.py",
-        ".know/scripts/knowledge_mcp.py",
-        ".know/scripts/find_unmapped_files.py",
-        ".know/scripts/init_ki_system.py",
-        ".know/scripts/ki_utils.py"
-      ]
+        "src/ki_manager/scripts/",
+        "src/ki_manager/scripts/audit_coverage.py",
+        "src/ki_manager/scripts/sync_agents_md.py",
+        "src/ki_manager/scripts/generate_dir_index.py",
+        "src/ki_manager/scripts/ki_dependency_analyzer.py",
+        "src/ki_manager/scripts/find_unmapped_files.py",
+        "src/ki_manager/scripts/ki_utils.py"
+      ],
+      "status": "stale"
     },
     "KI_knowledge_workflows.md": {
       "description": "Knowledge Management Workflows: Procedures for expanding and syncing documentation.",
       "covers": [
-        "Knowledge Infrastructure"
+        "Core Package"
       ],
       "depends_on": [
-        ".know/workflows/",
-        ".know/workflows/expand-knowledge.md",
-        ".know/workflows/sync-knowledge.md"
-      ]
+        "src/ki_manager/workflows/",
+        "src/ki_manager/workflows/expand-knowledge.md",
+        "src/ki_manager/workflows/sync-knowledge.md"
+      ],
+      "status": "stale"
     },
     "KI_knowledge_dependency_analysis.md": {
       "description": "Knowledge Dependency Analysis: Automatic linking of KIs based on source code imports.",
       "covers": [
-        "Knowledge Infrastructure"
+        "Core Package"
       ],
       "depends_on": [
-        ".know/scripts/ki_dependency_analyzer.py"
-      ]
+        "src/ki_manager/scripts/ki_dependency_analyzer.py"
+      ],
+      "status": "stale"
     },
     "KI_knowledge_architecture.md": {
-      "description": "Architectural Decisions (ADR): Decision process and chrononoly.",
+      "description": "Architectural Decisions (ADR): Decision process and chronology.",
       "covers": [
-        "Knowledge Infrastructure"
+        "Core Package"
       ],
       "depends_on": [
-        ".know/decisions/",
-        ".know/decisions/000_adr_template.md",
-        ".know/workflows/create-adr.md"
-      ]
+        "decisions/",
+        "decisions/000_adr_template.md",
+        "src/ki_manager/workflows/create-adr.md"
+      ],
+      "status": "stale"
     },
     "KI_knowledge_testing_core.md": {
       "description": "Knowledge System Core Testing: Infrastructure, fixtures, and engine verification.",
       "covers": [
-        "Knowledge Infrastructure"
+        "Core Package"
       ],
       "depends_on": [
-        ".know/tests/conftest.py",
-        ".know/tests/test_edge_cases.py",
-        ".know/tests/test_ki_utils.py",
-        ".know/tests/test_knowledge_engine.py",
-        ".know/tests/test_knowledge_engine_extra.py",
-        ".know/tests/test_mcp_arguments.py",
-        ".know/tests/test_mcp_security.py"
-      ]
+        "tests/conftest.py",
+        "tests/test_edge_cases.py",
+        "tests/test_ki_utils.py",
+        "tests/test_knowledge_engine.py",
+        "tests/test_knowledge_engine_extra.py",
+        "tests/test_mcp_arguments.py",
+        "tests/test_mcp_security.py"
+      ],
+      "status": "stale"
     },
     "KI_knowledge_infra_testing.md": {
-      "summary": "Tests for knowledge infrastructure inside .know/tests/.",
+      "summary": "Tests for knowledge infrastructure inside tests/.",
       "covers": [
-        "Knowledge Infrastructure"
+        "Core Package"
       ],
       "depends_on": [
-        ".know/tests/"
-      ]
+        "tests/"
+      ],
+      "status": "stale"
     },
     "KI_knowledge_infra_scripts.md": {
-      "summary": "Scripts and tools for managing the knowledge base inside .know/scripts/.",
+      "summary": "Scripts and tools for managing the knowledge base inside src/ki_manager/scripts/.",
       "covers": [
-        "Knowledge Infrastructure"
+        "Core Package"
       ],
       "depends_on": [
-        ".know/scripts/"
-      ]
+        "src/ki_manager/scripts/"
+      ],
+      "status": "stale"
     },
     "KI_knowledge_testing.md": {
       "path": "knowledge/KI_knowledge_testing.md",
       "summary": "Testing infrastructure for Knowledge Engine, audit coverage, and MCP security with FS isolation.",
       "covers": [
-        "Knowledge Infrastructure"
+        "Core Package"
       ],
       "depends_on": [
-        ".know/tests/conftest.py",
-        ".know/tests/test_audit_coverage.py",
-        ".know/tests/test_edge_cases.py",
-        ".know/tests/test_knowledge_engine.py",
-        ".know/tests/test_mcp_security.py"
-      ]
+        "tests/conftest.py",
+        "tests/test_audit_coverage.py",
+        "tests/test_edge_cases.py",
+        "tests/test_knowledge_engine.py",
+        "tests/test_mcp_security.py"
+      ],
+      "status": "stale"
     },
     "KI_knowledge_mcp.md": {
       "path": "knowledge/KI_knowledge_mcp.md",
-      "summary": "Auto-restored KI",
+      "summary": "MCP Server implementation and sandboxing rules.",
       "covers": [
-        "Knowledge Infrastructure"
+        "Core Package"
       ],
       "depends_on": [
-        ".know/scripts/"
-      ]
+        "src/ki_manager/server.py",
+        "src/ki_manager/tools/facade.py"
+      ],
+      "status": "stale"
     }
   }
 }

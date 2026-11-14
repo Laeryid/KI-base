@@ -200,6 +200,34 @@ def _dep_exists(dep: str, project_root: str, know_dir: str) -> bool:
     return any(os.path.exists(c) for c in candidates)
 
 
+def _insert_last_verified(filepath: str, content: str, today: str) -> Optional[str]:
+    """Insert <!-- last_verified: YYYY-MM-DD --> atomically. Returns updated content or None on failure."""
+    import tempfile
+
+    lines = content.splitlines(keepends=True)
+    res_lines: List[str] = []
+    inserted = False
+    for line in lines:
+        res_lines.append(line)
+        if not inserted and line.startswith("# "):
+            res_lines.append(f"\n<!-- last_verified: {today} -->\n")
+            inserted = True
+    if not inserted:
+        res_lines.insert(0, f"<!-- last_verified: {today} -->\n\n")
+    new_content = "".join(res_lines)
+
+    fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(filepath), text=True)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
+            f.write(new_content)
+        os.replace(tmp_path, filepath)
+        return new_content
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        return None
+
+
 def _check_ki_file(
     filepath: str,
     rel_ki: str,
@@ -277,13 +305,21 @@ def _check_ki_file(
     if status == "active":
         last_verified = _extract_last_verified(content)
         if not last_verified:
-            errors.append(
-                _make_issue(
-                    "MISSING_LAST_VERIFIED",
-                    rel_display,
-                    "Active KI must contain '<!-- last_verified: YYYY-MM-DD -->'.",
+            if fix:
+                today = datetime.now().strftime("%Y-%m-%d")
+                updated = _insert_last_verified(filepath, content, today)
+                if updated is not None:
+                    content = updated
+                    last_verified = today
+                    fixed.append(f"Inserted '<!-- last_verified: {today} -->' into '{rel_ki}'.")
+            if not last_verified:
+                errors.append(
+                    _make_issue(
+                        "MISSING_LAST_VERIFIED",
+                        rel_display,
+                        "Active KI must contain '<!-- last_verified: YYYY-MM-DD -->'.",
+                    )
                 )
-            )
         elif not _is_valid_date(last_verified):
             errors.append(
                 _make_issue(

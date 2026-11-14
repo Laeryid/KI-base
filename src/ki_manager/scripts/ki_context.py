@@ -8,9 +8,13 @@ non-obvious details, and pitfalls within a strict character budget.
 """
 
 import argparse
+import hashlib
+import json
 import os
 import re
 import sys
+import tempfile
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -19,6 +23,81 @@ try:
 except ImportError:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import ki_utils
+
+
+DEFAULT_CACHE_TTL_SECONDS = 1800
+DEFAULT_MAX_STEP_GAP = 50
+
+
+def _get_cache_dir() -> Path:
+    """Resolve ~/.ki_base/cache dynamically so test HOME monkeypatches apply."""
+    return Path.home() / ".ki_base" / "cache"
+
+
+def _get_cache_ttl() -> int:
+    env_ttl = os.environ.get("KI_CONTEXT_CACHE_TTL")
+    if env_ttl is not None:
+        try:
+            return max(0, int(env_ttl))
+        except (ValueError, TypeError):
+            pass
+    try:
+        cfg = ki_utils.get_ki_cfg() or {}
+        if "context_cache_ttl" in cfg:
+            return max(0, int(cfg["context_cache_ttl"]))
+    except Exception:
+        pass
+    return DEFAULT_CACHE_TTL_SECONDS
+
+
+def _get_max_step_gap() -> int:
+    env_gap = os.environ.get("KI_CONTEXT_MAX_STEP_GAP")
+    if env_gap is not None:
+        try:
+            return max(1, int(env_gap))
+        except (ValueError, TypeError):
+            pass
+    return DEFAULT_MAX_STEP_GAP
+
+
+def _cache_file_for_workspace(project_root: str) -> Path:
+    norm_root = os.path.normcase(os.path.abspath(project_root or os.getcwd()))
+    ws_hash = hashlib.sha256(norm_root.encode("utf-8")).hexdigest()[:16]
+    return _get_cache_dir() / f"context_{ws_hash}.json"
+
+
+def _load_context_cache(project_root: str) -> Dict[str, Any]:
+    cache_file = _cache_file_for_workspace(project_root)
+    if not cache_file.exists():
+        return {"version": 1, "step_counter": 0, "rules": {}}
+    try:
+        data = json.loads(cache_file.read_text(encoding="utf-8"))
+        if isinstance(data, dict) and isinstance(data.get("rules"), dict):
+            return data
+    except Exception:
+        pass
+    return {"version": 1, "step_counter": 0, "rules": {}}
+
+
+def _save_context_cache(project_root: str, data: Dict[str, Any]) -> None:
+    cache_file = _cache_file_for_workspace(project_root)
+    try:
+        cache_file.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp_path = tempfile.mkstemp(dir=str(cache_file.parent), text=True)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            os.replace(tmp_path, str(cache_file))
+        except Exception:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+    except Exception:
+        pass
+
+
+def _compute_rule_hash(status: str, label: str, rules_text: str, raw_content: str = "") -> str:
+    payload = f"{status}\n{label}\n{raw_content or rules_text}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:8]
 
 
 _PLACEHOLDER_PATTERNS = (
@@ -353,6 +432,22 @@ def format_context_markdown(result: Dict[str, Any], max_chars: int = 2000) -> st
             "Tip: Check `_OVERVIEW.ki.md` or run `ki_search` if looking for general architecture."
         )
 
+    fresh_adrs = [a for a in adrs if not a.get("deduplicated")]
+    fresh_kis = [k for k in kis if not k.get("deduplicated")]
+    dedup_items = [x for x in (*adrs, *kis) if x.get("deduplicated")]
+
+    if not fresh_adrs and not fresh_kis and dedup_items:
+        markers = [
+            f"{item.get('label', item.get('rel_path', 'rule'))} (hash: {item.get('content_hash', '')})"
+            for item in dedup_items
+        ]
+        msg = f"Already delivered: {', '.join(markers)}. Pass force=true if context was compacted."
+        if max_chars and max_chars > 0 and len(msg) > max_chars:
+            result["truncated"] = True
+            return msg[: max(0, max_chars - 3)].rstrip() + "..."
+        result["truncated"] = False
+        return msg
+
     targets_str = ", ".join(f"`{f}`" for f in files[:5])
     if len(files) > 5:
         targets_str += f" (+{len(files) - 5} more)"
@@ -372,15 +467,21 @@ def format_context_markdown(result: Dict[str, Any], max_chars: int = 2000) -> st
         summary_parts.append(f"KIs ({len(kis)}): {', '.join(ki_labels)}")
 
     header = f"## Architectural Context for {targets_str}\n" + " | ".join(summary_parts)
+    if dedup_items:
+        markers = [
+            f"{item.get('label', item.get('rel_path', 'rule'))} (hash: {item.get('content_hash', '')})"
+            for item in dedup_items
+        ]
+        header += f"\n_Already delivered: {', '.join(markers)}. Pass `force=true` if context was compacted._"
 
     blocks: List[Tuple[str, str, str]] = []  # (heading_and_meta, body, rel_path)
-    for adr in adrs:
+    for adr in fresh_adrs:
         badge = f" [{adr['status'].upper()}]" if adr["status"] != "accepted" else ""
         head = f"### ADR {adr['id']}: {adr['title']}{badge}\n_Source: `{adr['rel_path']}`_"
         body = adr.get("rules_text") or adr.get("summary") or "(no explicit invariants)"
         blocks.append((head, body, adr["rel_path"]))
 
-    for ki in kis:
+    for ki in fresh_kis:
         badge = f" [{ki['status'].upper()}]" if ki["status"] in ("stale", "poc", "stub") else ""
         stale_warn = " — *Warning: rules may be outdated, verify against code.*" if ki["status"] == "stale" else ""
         head = f"### KI: `{ki['display_name']}`{badge}\n_Source: `{ki['rel_path']}`_{stale_warn}"
@@ -444,6 +545,8 @@ def get_context_for(
     include_poc: bool = True,
     force: bool = False,
     project_root: Optional[str] = None,
+    deduplicate: bool = True,
+    record_cache: bool = True,
 ) -> Dict[str, Any]:
     """Extracts relevant active KI and ADR rules for the given list of file paths.
 
@@ -451,11 +554,11 @@ def get_context_for(
         files: List of relative/absolute paths, directories, or glob patterns.
         max_chars: Maximum formatted output length in characters.
         include_poc: Whether to include items marked 'poc' (default True).
-        force: Reserved for Stage 5 deduplication cache bypass.
+        force: Bypass deduplication cache and deliver full rules again.
         project_root: Optional workspace override.
+        deduplicate: Collapse recently delivered, unchanged rules into compact markers.
+        record_cache: Persist newly delivered rule hashes to workspace cache.
     """
-    _ = force  # Hooked in Stage 5 deduplication
-
     if not files:
         return {
             "files": [],
@@ -464,6 +567,7 @@ def get_context_for(
             "text": "Error: 'files' must be a non-empty list of file or directory paths.",
             "char_count": 0,
             "truncated": False,
+            "all_deduplicated": False,
         }
 
     prev_workspace = ki_utils.ACTIVE_WORKSPACE_PATH
@@ -564,6 +668,7 @@ def get_context_for(
 
             summary = str(info.get("summary") or info.get("description") or "").strip()
             rules_text = _extract_ki_rules(content, fallback_summary=summary) if content else summary
+            rule_hash = _compute_rule_hash(status, display_name, rules_text, content)
 
             matched_kis.append({
                 "name": ki_name,
@@ -572,6 +677,10 @@ def get_context_for(
                 "status": status,
                 "summary": summary,
                 "rules_text": rules_text,
+                "rule_key": f"ki:{display_name}",
+                "label": display_name,
+                "content_hash": rule_hash,
+                "deduplicated": False,
             })
             matched_ki_keys.add(ki_name)
             matched_ki_keys.add(os.path.basename(ki_name))
@@ -649,20 +758,68 @@ def get_context_for(
             rules_text = _extract_adr_rules(
                 adr_content, fallback_summary=meta.get("summary", "")
             )
+            adr_id = meta.get("id", "—")
+            adr_label = f"ADR-{adr_id}" if adr_id and adr_id != "—" else os.path.basename(adr_path)
+            adr_hash = _compute_rule_hash(adr_status, adr_label, rules_text, adr_content)
             matched_adrs.append({
-                "id": meta.get("id", "—"),
+                "id": adr_id,
                 "title": meta.get("title", os.path.basename(adr_path)),
                 "rel_path": meta.get("rel_path", os.path.basename(adr_path)),
                 "status": adr_status,
                 "summary": meta.get("summary", ""),
                 "rules_text": rules_text,
+                "rule_key": f"adr:{adr_id}" if adr_id and adr_id != "—" else f"adr:{meta.get('rel_path', os.path.basename(adr_path))}",
+                "label": adr_label,
+                "content_hash": adr_hash,
+                "deduplicated": False,
             })
 
+        # 3. Evaluate and update per-rule deduplication cache
+        all_items = [*matched_adrs, *matched_kis]
+        if all_items:
+            cache = _load_context_cache(proj)
+            rules_cache = cache.setdefault("rules", {})
+            now = time.time()
+            ttl = _get_cache_ttl()
+            max_steps = _get_max_step_gap()
+            step_counter = int(cache.get("step_counter", 0)) + (1 if record_cache else 0)
+            cache_dirty = False
+
+            for item in all_items:
+                rkey = item["rule_key"]
+                rhash = item["content_hash"]
+                prev = rules_cache.get(rkey)
+                is_cached = False
+                if deduplicate and not force and isinstance(prev, dict):
+                    same_hash = prev.get("content_hash") == rhash
+                    age = now - float(prev.get("timestamp", 0))
+                    within_ttl = (ttl > 0) and (age <= ttl)
+                    step_gap = step_counter - int(prev.get("step", 0))
+                    within_steps = step_gap <= max_steps
+                    if same_hash and within_ttl and within_steps:
+                        is_cached = True
+
+                item["deduplicated"] = is_cached
+                if record_cache and not is_cached:
+                    rules_cache[rkey] = {
+                        "label": item["label"],
+                        "content_hash": rhash,
+                        "timestamp": now,
+                        "step": step_counter,
+                    }
+                    cache_dirty = True
+
+            if record_cache and (cache_dirty or step_counter != int(cache.get("step_counter", 0))):
+                cache["step_counter"] = step_counter
+                _save_context_cache(proj, cache)
+
+        all_deduplicated = bool(all_items and all(x.get("deduplicated") for x in all_items))
         result: Dict[str, Any] = {
             "files": target_display_files,
             "adrs": matched_adrs,
             "kis": matched_kis,
             "truncated": False,
+            "all_deduplicated": all_deduplicated,
         }
         formatted = format_context_markdown(result, max_chars=max_chars)
         result["text"] = formatted
@@ -679,6 +836,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("files", nargs="+", help="Target file or directory paths.")
     parser.add_argument("--max-chars", type=int, default=2000, help="Maximum response characters.")
     parser.add_argument("--no-poc", action="store_true", help="Exclude poc documents.")
+    parser.add_argument("--force", action="store_true", help="Bypass deduplication cache.")
+    parser.add_argument("--no-cache", action="store_true", help="Disable deduplication read/write.")
     parser.add_argument("--workspace", type=str, default=None, help="Explicit project root.")
     args = parser.parse_args(argv)
 
@@ -686,7 +845,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         files=args.files,
         max_chars=args.max_chars,
         include_poc=not args.no_poc,
+        force=args.force,
         project_root=args.workspace,
+        deduplicate=not args.no_cache,
+        record_cache=not args.no_cache,
     )
     print(res["text"])
     return 0

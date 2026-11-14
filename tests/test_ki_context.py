@@ -253,3 +253,52 @@ def test_context_for_unmatched_file_and_empty_input(tmp_path):
 
     empty_res = ki_context.get_context_for(files=[], project_root=str(proj))
     assert "Error" in empty_res["text"]
+
+
+def test_context_for_deduplicates_then_resends_on_force_or_change(tmp_path):
+    proj = _setup_workspace(tmp_path)
+
+    # First delivery returns full rules
+    first = ki_context.get_context_for(files=["src/auth/tokens.py"], project_root=str(proj))
+    assert first["all_deduplicated"] is False
+    assert "Always rotate signing keys via KeyStore." in first["text"]
+    assert "Reject alg=none and HS256 tokens immediately." in first["text"]
+
+    # Immediate repeat call returns compact deduplication marker
+    second = ki_context.get_context_for(files=["src/auth/tokens.py"], project_root=str(proj))
+    assert second["all_deduplicated"] is True
+    assert "Already delivered:" in second["text"]
+    assert "Pass force=true if context was compacted." in second["text"]
+    assert "Always rotate signing keys via KeyStore." not in second["text"]
+
+    # force=True bypasses cache
+    forced = ki_context.get_context_for(
+        files=["src/auth/tokens.py"], force=True, project_root=str(proj)
+    )
+    assert forced["all_deduplicated"] is False
+    assert "Always rotate signing keys via KeyStore." in forced["text"]
+
+    # Editing KI_auth.md invalidates only KI_auth.md while ADR 002 & KI_poc_cache stay deduplicated
+    ki_auth = proj / ".ki-base" / "knowledge" / "KI_auth.md"
+    ki_auth.write_text(
+        ki_auth.read_text(encoding="utf-8") + "\n- [MUST] Enforce 15m access token TTL.\n",
+        encoding="utf-8",
+    )
+    updated = ki_context.get_context_for(files=["src/auth/tokens.py"], project_root=str(proj))
+    assert updated["all_deduplicated"] is False
+    assert "Enforce 15m access token TTL." in updated["text"]
+    assert "Already delivered:" in updated["text"]
+    assert "Reject alg=none and HS256 tokens immediately." not in updated["text"]
+
+
+def test_context_for_ttl_expiry_redelivers_rules(tmp_path, monkeypatch):
+    proj = _setup_workspace(tmp_path)
+
+    first = ki_context.get_context_for(files=["src/auth/tokens.py"], project_root=str(proj))
+    assert first["all_deduplicated"] is False
+
+    # TTL=0 forces immediate expiry on next lookup
+    monkeypatch.setenv("KI_CONTEXT_CACHE_TTL", "0")
+    after_ttl = ki_context.get_context_for(files=["src/auth/tokens.py"], project_root=str(proj))
+    assert after_ttl["all_deduplicated"] is False
+    assert "Always rotate signing keys via KeyStore." in after_ttl["text"]

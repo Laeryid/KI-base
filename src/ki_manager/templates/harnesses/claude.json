@@ -1,0 +1,61 @@
+{
+  "name": "claude",
+  "aliases": ["claude", "claude-code"],
+  "description": "Claude Code (.claude/settings.json)",
+  "install": {
+    "target_file": ".claude/settings.json",
+    "merge": {
+      "hooks": {
+        "PreToolUse": [
+          {
+            "matcher": "Edit|Write|MultiEdit",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "{ki_cmd} hook pre-edit --harness claude"
+              }
+            ]
+          }
+        ],
+        "Stop": [
+          {
+            "hooks": [
+              {
+                "type": "command",
+                "command": "{ki_cmd} hook stop-lint --harness claude"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "runtime": {
+    "workspace_paths": ["cwd"],
+    "file_arg_paths": ["tool_input.file_path", "tool_input.path", "tool_input.target_file"],
+    "ignore_paths": [".ki-base/", ".know/", "knowledge/", "decisions/", "AGENTS.md"],
+    "ignore_dir_fields": [],
+    "stop_skip_if": {
+      "stop_hook_active": true
+    },
+    "stop_require_field_equals": {},
+    "pre_edit": {
+      "allow": {
+        "exit_code": 0
+      },
+      "deny": {
+        "stderr": "{context}",
+        "exit_code": 2
+      }
+    },
+    "stop_lint": {
+      "allow": {
+        "exit_code": 0
+      },
+      "block": {
+        "stdout": { "decision": "block", "reason": "{errors}" },
+        "exit_code": 0
+      }
+    }
+  }
+}

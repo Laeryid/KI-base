@@ -3,11 +3,11 @@ name: ki-manager-scaffold-knowledge
 description: Bootstrap the knowledge base — generate KI stubs for all uncovered modules, then enrich them with AI analysis in small batches
 metadata:
   author: ki-manager
-  version: "1.3"
+  version: "1.4"
 <!-- if-compact -->
 allowed-tools: ki_instructions ki_read ki_search ki_tools ki_call ki_mutate
 <!-- else-compact -->
-allowed-tools: audit_coverage ki_scaffold ki_scaffold_status ki_finalize_scaffolds analyze_all_dependencies generate_dir_index git_checkpoint read_know_file write_know_file ki_instructions ki_read edit_doc_config
+allowed-tools: audit_coverage ki_scaffold ki_scaffold_status ki_finalize_scaffolds analyze_all_dependencies generate_dir_index git_checkpoint read_know_file write_know_file ki_instructions ki_read ki_lint ki_sync sync_agents_md edit_doc_config
 <!-- /if-compact -->
 ---
 
@@ -84,13 +84,15 @@ If all modules are ✅ GREEN — skip Phase 1 entirely and go to Phase 2.
 `ki_scaffold(force=true)`
 <!-- /if-compact -->
 
-### Step 1.4 — Git Checkpoint
+### Step 1.4 — Optional Git Checkpoint
+
+By default, `auto_git_checkpoint` is disabled (`false`) so knowledge changes stay in the working tree for atomic commits. Create an explicit git commit only if desired:
 
 // turbo
 <!-- if-compact -->
-`ki_mutate(tool="git_checkpoint", args={"message": "Bootstrap knowledge base: scaffold KI stubs"})`
+`ki_mutate(tool="git_checkpoint", args={"message": "Bootstrap knowledge base: scaffold KI stubs", "commit": true})`
 <!-- else-compact -->
-`git_checkpoint(message="Bootstrap knowledge base: scaffold KI stubs")`
+`git_checkpoint(message="Bootstrap knowledge base: scaffold KI stubs", commit=true)`
 <!-- /if-compact -->
 
 ---
@@ -136,7 +138,7 @@ For the current KI:
 
 ### Step 2.4 — Overwrite the KI with Enriched Content
 
-Replace the stub with the enriched version:
+You may use native `edit_file` / `write_file` inside `{{KI_DIR}}/knowledge/` or MCP `write_know_file` (passing `rel_path="<filename>.ki.md"` automatically targets `{{KI_DIR}}/knowledge/<filename>.ki.md`):
 <!-- if-compact -->
 // turbo
 `ki_mutate(tool="write_know_file", args={"rel_path": "<filename>.ki.md", "content": "..."})`
@@ -146,7 +148,7 @@ Replace the stub with the enriched version:
 <!-- /if-compact -->
 
 > [!NOTE]
-> All Knowledge Items live in `{{KI_DIR}}/knowledge/`. Calling `write_know_file(rel_path="<filename>.ki.md", ...)` automatically targets `{{KI_DIR}}/knowledge/<filename>.ki.md`.
+> All Knowledge Items live in `{{KI_DIR}}/knowledge/`.
 > **Never** write `.ki.md` files to the root of `{{KI_DIR}}/`, and **never** delete `{{KI_DIR}}/knowledge/` (including `_OVERVIEW.ki.md`, which is the project bootstrap stub).
 
 > [!IMPORTANT]
@@ -175,6 +177,10 @@ This text will automatically become the summary in doc_config.json on finalizati
 ## Testing & Verification
 - Test commands: `pytest tests/test_<module>.py`
 - Test files: `tests/test_<module>.py`
+
+## Invariants
+- [MUST] <Hard constraint or architectural rule enforced for this module>
+- [MUST NOT] <Forbidden pattern>
 
 ## Non-obvious Details
 - <Specific architectural rule, side-effect, initialization constraint, or env var>
@@ -239,22 +245,24 @@ Populates the `Related KIs` section in every KI by analyzing code imports.
 `analyze_all_dependencies()`
 <!-- /if-compact -->
 
-### Step 3.3 — Rebuild Directory Index
+### Step 3.3 — Lint & Synchronize (`ki_sync`)
+Validate metadata/references and rebuild `DIR_INDEX.md`, `doc_state.json`, and `AGENTS.md` in one pass:
 
 // turbo
 <!-- if-compact -->
-`ki_call(tool="generate_dir_index")`
+`ki_mutate(tool="ki_sync")`
 <!-- else-compact -->
-`generate_dir_index()`
+`ki_sync()`
 <!-- /if-compact -->
 
-### Step 3.4 — Final Git Checkpoint
+### Step 3.4 — Optional Git Checkpoint
 
-// turbo
+Only create a dedicated git commit if requested or configured (`auto_git_checkpoint: true`):
+
 <!-- if-compact -->
-`ki_mutate(tool="git_checkpoint", args={"message": "Knowledge base bootstrapped and finalized"})`
+`ki_mutate(tool="git_checkpoint", args={"message": "Knowledge base bootstrapped and finalized", "commit": true})`
 <!-- else-compact -->
-`git_checkpoint(message="Knowledge base bootstrapped and finalized")`
+`git_checkpoint(message="Knowledge base bootstrapped and finalized", commit=true)`
 <!-- /if-compact -->
 
 ---
@@ -274,5 +282,4 @@ Populates the `Related KIs` section in every KI by analyzing code imports.
 - [ ] Phase 2: `ki_scaffold_status()` shows 0 `pending` stubs; all are `enriched`.
 - [ ] Phase 3: `ki_finalize_scaffolds()` run; no scaffold markers remain.
 - [ ] Phase 3: `analyze_all_dependencies()` run; `Related KIs` populated.
-- [ ] Phase 3: `DIR_INDEX.md` regenerated.
-- [ ] Phase 3: Final git checkpoint created.
+- [ ] Phase 3: `ki_sync()` passed with 0 `ki_lint` errors and updated `DIR_INDEX.md` / `AGENTS.md`.

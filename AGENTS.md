@@ -18,17 +18,22 @@
 
 ```
 src/ki_manager/
-├── server.py              ← Единственный entry point. MCP-петля stdin/stdout.
+├── server.py              ← Единственный entry point. MCP-петля stdin/stdout и CLI-маршрутизация.
+├── cli.py                 ← CLI-команды: install-skills, install-hooks, hook, lint
 ├── __init__.py            ← Версия пакета (__version__)
 ├── scripts/               ← Бизнес-логика. НЕ зависит от MCP.
-│   ├── ki_utils.py        ← Утилиты: пути, нормализация, workspace detection
+│   ├── ki_utils.py        ← Утилиты: пути, статусы, нормализация, workspace detection
+│   ├── ki_context.py      ← Just-in-Time извлечение инвариантов (ki_context_for + кэш дедупликации)
+│   ├── ki_lint.py         ← Детерминированный линтер базы знаний (ki_lint / --staged / --fix)
+│   ├── ki_hooks.py        ← Декларативный движок хуков и установка манифестов харнессов
 │   ├── audit_coverage.py  ← Анализ покрытия документацией
 │   ├── generate_dir_index.py
 │   ├── ki_dependency_analyzer.py
 │   └── knowledge_engine.py
 ├── tools/
+│   ├── facade.py          ← Схемы компактного фасада (compact mode) и рендерер инструкций
 │   └── scaffold.py        ← ki_init_project (создание структуры .ki-base/)
-├── templates/             ← Jinja/md-шаблоны для генерации файлов
+├── templates/             ← Шаблоны KI/ADR и декларативные манифесты harnesses/*.json
 └── workflows/             ← Bundled workflow-инструкции (копируются в IDE)
 ```
 
@@ -58,18 +63,19 @@ src/ki_manager/
 ## Режимы работы (`--tool-mode`)
 
 Сервер поддерживает два режима экспозиции инструментов:
-- `--tool-mode full` (по умолчанию, или `KI_TOOL_MODE=full`): возвращает все 37 инструментов.
-- `--tool-mode compact` (или `KI_TOOL_MODE=compact`): возвращает 7 фасадных инструментов, экономя тысячи токенов контекста.
+- `--tool-mode full` (по умолчанию, или `KI_TOOL_MODE=full`): возвращает все 40 инструментов.
+- `--tool-mode compact` (или `KI_TOOL_MODE=compact`): возвращает 8 фасадных инструментов, экономя тысячи токенов контекста.
 
 ### Компактный режим (Compact Facade)
 В режиме `compact` в `tools/list` видны только:
 1. `ki_instructions` — доступ к воркфло-инструкциям.
-2. `ki_list` — структурированный список всех KI и ADR проекта (с поддержкой `scope`, `format`, `filter`).
-3. `ki_search` — BM25-поиск по KI и ADR (названия, заголовки, сниппеты, пагинация через `page`).
+2. `ki_list` — структурированный список всех KI и ADR проекта (с поддержкой `scope`, `format`, `filter`, `status`).
+3. `ki_search` — BM25-поиск по KI и ADR (названия, заголовки, сниппеты, пагинация через `page`, `include_inactive`).
 4. `ki_read` — быстрое чтение KI или ADR (с опциональным `section` и `max_chars`).
-5. `ki_tools` — просмотр каталога инструментов (`ki_tools()`) или схемы конкретного инструмента (`ki_tools({"name": "..."})`).
-6. `ki_call` — диспетчер вызова read-only инструментов (`ki_call({"tool": "...", "args": {...}})`).
-7. `ki_mutate` — диспетчер вызова мутирующих инструментов (`ki_mutate({"tool": "...", "args": {...}})`).
+5. `ki_context_for` — Just-in-Time извлечение активных инвариантов и ADR для списка файлов перед правкой кода (с кэшем дедупликации).
+6. `ki_tools` — просмотр каталога инструментов (`ki_tools()`) или схемы конкретного инструмента (`ki_tools({"name": "..."})`).
+7. `ki_call` — диспетчер вызова read-only инструментов (`ki_call({"tool": "...", "args": {...}})`).
+8. `ki_mutate` — диспетчер вызова мутирующих инструментов (`ki_mutate({"tool": "...", "args": {...}})`).
 
 ---
 
@@ -80,13 +86,13 @@ src/ki_manager/
 | Группа | Инструменты |
 |--------|-------------|
 | Инструкции | `ki_instructions` |
-| Навигация, поиск и чтение | `ki_list`, `ki_search`, `ki_read` |
+| Навигация, поиск и чтение | `ki_list`, `ki_search`, `ki_read`, `ki_context_for` |
 | Инициализация | `ki_init_project`, `ki_migrate_project` |
 | Реестр | `ki_register_project`, `ki_list_projects`, `ki_status`, `ki_prune_registry` |
 | Покрытие | `audit_coverage`, `generate_dir_index`, `analyze_dependencies`, `analyze_all_dependencies`, `find_unmapped_files`, `analyze_module`, `ki_graph_visualize`, `check_ki_drift` |
 | Scaffold | `ki_scaffold`, `ki_scaffold_status`, `ki_finalize_scaffolds`, `update_last_verified`, `ki_split_analyze`, `ki_split` |
 | Файлы | `read_know_file`, `write_know_file`, `edit_know_file`, `make_know_dir` |
-| Конфиг и ADR | `add_ki_to_config`, `edit_doc_config`, `sync_agents_md`, `create_adr` |
+| Конфиг, линтинг и ADR | `add_ki_to_config`, `edit_doc_config`, `sync_agents_md`, `create_adr`, `ki_lint`, `ki_sync` |
 | Git | `git_checkpoint`, `git_restore`, `git_diff_secured` |
 | Состояние | `save_state`, `restore_mapping` |
 
@@ -181,7 +187,7 @@ ki-manager-skills install-skills --path ~/.gemini/config/skills/
 ki_instructions({"document": "create-adr"})
 ```
 
-Доступные документы: `overview`, `knowledge-items`, `create-adr`, `expand-knowledge`, `sync-knowledge`, `scaffold-knowledge`.
+Доступные документы: `overview`, `knowledge-items`, `agent-rules`, `create-adr`, `expand-knowledge`, `sync-knowledge`, `scaffold-knowledge`.
 
 ---
 
@@ -225,7 +231,7 @@ ki_instructions({"document": "create-adr"})
 | Файл | Зачем читать |
 |------|-------------|
 | `src/ki_manager/server.py` | Весь MCP-цикл, все методы, вся диспетчеризация инструментов |
-| `src/ki_manager/cli.py` | CLI-команды (install-skills) |
+| `src/ki_manager/cli.py` | CLI-команды (`install-skills`, `install-hooks`, `hook`, `lint`) |
 | `src/ki_manager/workflows/*.md` | Воркфло-инструкции в формате Agent Skills |
 | `src/ki_manager/scripts/ki_utils.py` | Нормализация путей, загрузка конфигов, workspace detection |
 | `pyproject.toml` | Версия, entrypoint (`ki-manager = "ki_manager.server:main"`) |

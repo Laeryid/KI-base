@@ -4,12 +4,14 @@ ki_manager/cli.py
 CLI commands for ki-manager (besides the MCP server).
 Provides:
   install-skills  — install bundled workflows as Agent Skills
-  install-hooks   — install Git pre-commit hook running `ki-manager lint --staged`
+  install-hooks   — install Git pre-commit hook or declarative agent harness hooks
+  hook            — execute a lifecycle hook event (pre-edit, stop-lint) reading JSON stdin
   lint            — run deterministic linter on the knowledge base
 
 Usage:
     ki-manager install-skills [--path /path/to/skills/dir]
-    ki-manager install-hooks [--path /path/to/repo] [--force]
+    ki-manager install-hooks [--path /path/to/repo] [--harness <name_or_file>] [--list-harnesses] [--force]
+    ki-manager hook <pre-edit|stop-lint> [--harness <name_or_file>] [--workspace <path>]
     ki-manager lint [--staged] [--fix] [--json]
 """
 
@@ -172,26 +174,83 @@ def _find_git_hooks_dir(target_dir: Path) -> Optional[Path]:
         return None
 
 
+def _import_ki_hooks():
+    scripts_dir = str(_PACKAGE_DIR / "scripts")
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    import ki_hooks
+    return ki_hooks
+
+
 def install_hooks(argv=None) -> int:
     """Entry point for `ki-manager install-hooks`."""
     parser = argparse.ArgumentParser(
         prog="ki-manager install-hooks",
-        description="Install Git pre-commit hook to run `ki-manager lint --staged`.",
+        description="Install Git pre-commit hook or declarative agent harness hooks.",
     )
     parser.add_argument(
         "--path",
         type=str,
         default=None,
-        help="Path inside target Git repository (default: current working directory)",
+        help="Path inside target repository/project (default: current working directory)",
+    )
+    parser.add_argument(
+        "--harness",
+        type=str,
+        default=None,
+        help="Harness name, alias (e.g. agy, antigravity, vaib, claude), or path to custom JSON manifest",
+    )
+    parser.add_argument(
+        "--list-harnesses",
+        action="store_true",
+        help="List discovered harness manifests and aliases",
+    )
+    parser.add_argument(
+        "--cmd",
+        type=str,
+        default=None,
+        help="Override {ki_cmd} prefix when installing harness hooks",
     )
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Overwrite an existing non-ki-manager pre-commit hook",
+        help="Overwrite an existing non-ki-manager hook or malformed JSON config",
     )
     args = parser.parse_args(argv)
 
     target = Path(args.path).resolve() if args.path else Path.cwd()
+
+    if args.list_harnesses:
+        ki_hooks = _import_ki_hooks()
+        harnesses = ki_hooks.list_harnesses(project_root=str(target))
+        if not harnesses:
+            print("No harness manifests found.")
+            return 0
+        print("Available harnesses:")
+        for h in harnesses:
+            aliases = ", ".join(h.get("aliases") or [])
+            tgt = (h.get("install") or {}).get("target_file", "—")
+            desc = h.get("description", "")
+            print(f"  - {h['name']} (aliases: {aliases}) -> {tgt}")
+            if desc:
+                print(f"      {desc}")
+        return 0
+
+    if args.harness:
+        ki_hooks = _import_ki_hooks()
+        try:
+            res = ki_hooks.install_harness_hooks(
+                harness_ref=args.harness,
+                project_root=str(target),
+                force=args.force,
+                ki_cmd=args.cmd,
+            )
+            print(f"Installed '{res['harness']}' hooks into: {res['target_file']}")
+            return 0
+        except Exception as e:
+            print(f"Error installing harness hooks: {e}", file=sys.stderr)
+            return 1
+
     hooks_dir = _find_git_hooks_dir(target)
     if hooks_dir is None:
         print(f"Error: '{target}' is not inside a Git repository.", file=sys.stderr)
@@ -222,6 +281,38 @@ def install_hooks(argv=None) -> int:
     return 0
 
 
+def run_hook(argv=None) -> int:
+    """Entry point for `ki-manager hook <event>`."""
+    parser = argparse.ArgumentParser(
+        prog="ki-manager hook",
+        description="Execute a declarative ki-manager hook handler reading JSON from stdin.",
+    )
+    parser.add_argument(
+        "event",
+        choices=["pre-edit", "stop-lint"],
+        help="Hook lifecycle event to handle",
+    )
+    parser.add_argument(
+        "--harness",
+        type=str,
+        default=None,
+        help="Harness name, alias, or path to JSON manifest",
+    )
+    parser.add_argument(
+        "--workspace",
+        type=str,
+        default=None,
+        help="Explicit project root override",
+    )
+    args = parser.parse_args(argv)
+    ki_hooks = _import_ki_hooks()
+    return ki_hooks.run_hook_cli(
+        hook_event=args.event,
+        harness=args.harness,
+        project_root=args.workspace,
+    )
+
+
 def run_lint(argv=None):
     """Entry point for `ki-manager lint`."""
     scripts_dir = str(_PACKAGE_DIR / "scripts")
@@ -249,7 +340,8 @@ def main():
         print("Usage: ki-manager <command> [options]")
         print("Commands:")
         print("  install-skills  Install bundled workflows as Agent Skills")
-        print("  install-hooks   Install Git pre-commit hook (runs ki-manager lint --staged)")
+        print("  install-hooks   Install Git pre-commit hook or agent harness hooks (--harness)")
+        print("  hook            Run a lifecycle hook handler (pre-edit, stop-lint)")
         print("  lint            Lint the project knowledge base")
         sys.exit(0 if len(sys.argv) >= 2 and sys.argv[1] in ("--help", "-h") else 1)
 
@@ -258,6 +350,9 @@ def main():
         install_skills(sys.argv[2:])
     elif command == "install-hooks":
         rc = install_hooks(sys.argv[2:])
+        sys.exit(rc)
+    elif command == "hook":
+        rc = run_hook(sys.argv[2:])
         sys.exit(rc)
     elif command == "lint":
         run_lint(sys.argv[2:])

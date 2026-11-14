@@ -1384,18 +1384,25 @@ def _collect_git_changed_files(project_root: str) -> list:
 def _resolve_target_ki_files(project_root: str, jail: str, know_dir: str, args: dict) -> list:
     """Resolves which KI files should have last_verified updated."""
     all_ki_map = {}
-    for fname in sorted(os.listdir(know_dir)):
-        if not ki_utils.is_ki_filename(fname, include_overview=True):
-            continue
-        fpath = os.path.join(know_dir, fname)
-        if os.path.isfile(fpath):
-            all_ki_map[fname] = fpath
+    for root, dirs, files in os.walk(know_dir):
+        dirs[:] = sorted(d for d in dirs if d != "decisions" and not d.startswith("."))
+        for fname in sorted(files):
+            if not ki_utils.is_ki_filename(fname, include_overview=True):
+                continue
+            fpath = os.path.join(root, fname)
+            if os.path.isfile(fpath):
+                rel_posix = os.path.relpath(fpath, know_dir).replace("\\", "/")
+                all_ki_map[rel_posix] = fpath
 
     if not all_ki_map:
         return []
 
     if args.get("all_files"):
-        return list(all_ki_map.values())
+        return [all_ki_map[k] for k in sorted(all_ki_map)]
+
+    basename_lookup = {}
+    for rel_k, fpath in all_ki_map.items():
+        basename_lookup.setdefault(os.path.basename(rel_k), []).append(rel_k)
 
     ki_files_arg = args.get("ki_files")
     if isinstance(ki_files_arg, str):
@@ -1404,10 +1411,20 @@ def _resolve_target_ki_files(project_root: str, jail: str, know_dir: str, args: 
         selected = []
         seen = set()
         for item in ki_files_arg:
-            base = os.path.basename(str(item).strip().replace("\\", "/"))
-            if base in all_ki_map and base not in seen:
-                seen.add(base)
-                selected.append(all_ki_map[base])
+            item_norm = str(item).strip().replace("\\", "/")
+            while item_norm.startswith("./"):
+                item_norm = item_norm[2:]
+            item_norm = item_norm.lstrip("/")
+            matched_keys = []
+            if item_norm in all_ki_map:
+                matched_keys = [item_norm]
+            else:
+                base = os.path.basename(item_norm)
+                matched_keys = basename_lookup.get(base, [])
+            for mk in matched_keys:
+                if mk not in seen:
+                    seen.add(mk)
+                    selected.append(all_ki_map[mk])
         return selected
 
     changed_files = set(_collect_git_changed_files(project_root))
@@ -1420,21 +1437,41 @@ def _resolve_target_ki_files(project_root: str, jail: str, know_dir: str, args: 
         modified, new_files, _ = ke.check_for_changes()
         changed_files.update(p.replace("\\", "/") for p in (modified + new_files))
 
-    affected_bases = set()
+    affected_keys = set()
     if changed_files:
         affected_map = ke.get_affected_ki_map(list(changed_files))
         for ki_key in affected_map:
-            affected_bases.add(os.path.basename(ki_key.replace("\\", "/")))
+            key_norm = ki_key.replace("\\", "/")
+            while key_norm.startswith("./"):
+                key_norm = key_norm[2:]
+            key_norm = key_norm.lstrip("/")
+            if key_norm.startswith("knowledge/"):
+                key_norm = key_norm[len("knowledge/"):]
+            if key_norm in all_ki_map:
+                affected_keys.add(key_norm)
+            else:
+                for mk in basename_lookup.get(os.path.basename(key_norm), []):
+                    affected_keys.add(mk)
 
         know_rel = os.path.relpath(know_dir, project_root).replace("\\", "/").strip("/")
         for cf in changed_files:
-            cf_norm = cf.strip("./")
-            if cf_norm.startswith(know_rel + "/") or cf_norm.startswith("knowledge/"):
-                base = os.path.basename(cf_norm)
-                if base in all_ki_map:
-                    affected_bases.add(base)
+            cf_norm = cf.replace("\\", "/")
+            while cf_norm.startswith("./"):
+                cf_norm = cf_norm[2:]
+            cf_norm = cf_norm.lstrip("/")
+            rel_candidate = ""
+            if cf_norm.startswith(know_rel + "/"):
+                rel_candidate = cf_norm[len(know_rel) + 1:]
+            elif cf_norm.startswith("knowledge/"):
+                rel_candidate = cf_norm[len("knowledge/"):]
+            if rel_candidate:
+                if rel_candidate in all_ki_map:
+                    affected_keys.add(rel_candidate)
+                else:
+                    for mk in basename_lookup.get(os.path.basename(rel_candidate), []):
+                        affected_keys.add(mk)
 
-    return [all_ki_map[b] for b in sorted(affected_bases) if b in all_ki_map]
+    return [all_ki_map[k] for k in sorted(affected_keys) if k in all_ki_map]
 
 
 def _update_last_verified_in_file(filepath: str, today: str) -> bool:
@@ -2730,7 +2767,7 @@ def _extract_workspace_from_meta(params: dict) -> Optional[str]:
 
 
 def main():
-    if len(sys.argv) >= 2 and sys.argv[1] in ("lint", "install-hooks", "install-skills", "--version", "-v"):
+    if len(sys.argv) >= 2 and sys.argv[1] in ("lint", "install-hooks", "install-skills", "hook", "--version", "-v"):
         from ki_manager import cli
         cli.main()
         return
